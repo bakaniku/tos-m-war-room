@@ -37,7 +37,7 @@
     <div id="app">
         <div id="idleOverlay" class="idle-overlay" style="display:none;">
             <h2 style="color:#0f0">TOS M FB TIME</h2>
-            <p>連線已斷開（閒置超過 30 分鐘）</p>
+            <p>連線已斷開（已達 3 小時自動保護限制）</p>
             <button class="btn-solid" onclick="location.reload()" style="width:200px">重新連接</button>
         </div>
 
@@ -59,7 +59,7 @@
                 </div>
                 <button style="background:none; color:#444;" onclick="location.reload()">退出房間</button>
             </div>
-            <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 分鐘/階段 (例: 123 3 R1)">
+            <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 分鐘/00X (例: 113 1 001)">
             <div class="grid" id="bossList"></div>
         </div>
     </div>
@@ -77,13 +77,13 @@
         let timers = {};
         let idleTimer;
 
-        // 閒置控制
+        // 閒置控制：門檻改為 3 小時
         function resetIdleTimer() {
             clearTimeout(idleTimer);
             idleTimer = setTimeout(() => {
                 db.goOffline();
                 document.getElementById('idleOverlay').style.display = 'flex';
-            }, 30 * 60 * 1000);
+            }, 3 * 60 * 60 * 1000); // 3小時
         }
         window.onload = window.onmousemove = window.onmousedown = window.ontouchstart = window.onkeydown = resetIdleTimer;
 
@@ -108,7 +108,6 @@
             listenData();
         }
 
-        // 核心功能：添加 BOSS 與 R 轉換
         function addBoss() {
             const input = document.getElementById('bossInput');
             const p = input.value.trim().split(/\s+/);
@@ -116,22 +115,22 @@
 
             let map = p[0];
             let ch = p[1];
-            let rawVal = p[2].toUpperCase();
+            let rawVal = p[2];
             let targetTime = 0;
-            let displayMins = rawVal;
+            let displayValue = rawVal;
 
-            // R 階段轉換邏輯
-            const rMap = { "R1": "第一階段", "R2": "第二階段", "R3": "第三階段", "R4": "第四階段" };
+            // 00X 階段轉換邏輯
+            const stageMap = { "001": "第一階段", "002": "第二階段", "003": "第三階段", "004": "第四階段" };
             
-            if (rMap[rawVal]) {
-                displayMins = rMap[rawVal];
-                targetTime = 0; // 階段模式不計時，顯示為階段名稱
+            if (stageMap[rawVal]) {
+                displayValue = stageMap[rawVal];
+                targetTime = 0; 
             } else {
                 targetTime = Date.now() + parseInt(rawVal) * 60000;
             }
 
             db.ref(`rooms/${currentRoom}/bosses/${map}_${ch}`).set({
-                map, ch, targetTime, lastMins: displayMins
+                map, ch, targetTime, lastInput: rawVal, displayValue
             });
             db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
             input.value = '';
@@ -143,12 +142,9 @@
             }
         }
 
-        function editBoss(map, ch, lastMins) {
+        function editBoss(map, ch, lastInput) {
             const input = document.getElementById('bossInput');
-            // 如果是階段，轉換回 R 格式方便快速輸入
-            const revRMap = { "第一階段": "R1", "第二階段": "R2", "第三階段": "R3", "第四階段": "R4" };
-            const displayVal = revRMap[lastMins] || lastMins;
-            input.value = `${map} ${ch} ${displayVal}`;
+            input.value = `${map} ${ch} ${lastInput}`;
             input.focus();
             const start = `${map} ${ch} `.length;
             input.setSelectionRange(start, input.value.length);
@@ -163,7 +159,6 @@
                 timers = {};
 
                 const sorted = Object.entries(data).sort((a, b) => {
-                    // 階段優先顯示在最上方，之後按時間排序
                     if (a[1].targetTime === 0 && b[1].targetTime !== 0) return -1;
                     if (a[1].targetTime !== 0 && b[1].targetTime === 0) return 1;
                     return a[1].targetTime - b[1].targetTime;
@@ -172,11 +167,11 @@
                 sorted.forEach(([id, boss]) => {
                     const card = document.createElement('div');
                     card.className = 'card';
-                    card.onclick = (e) => { if (e.target.className !== 'del') editBoss(boss.map, boss.ch, boss.lastMins); };
+                    card.onclick = (e) => { if (e.target.className !== 'del') editBoss(boss.map, boss.ch, boss.lastInput); };
                     
                     let timerHtml = '';
                     if (boss.targetTime === 0) {
-                        timerHtml = `<div class="timer" style="color:#aaa; font-size:18px;">${boss.lastMins}</div>`;
+                        timerHtml = `<div class="timer" style="color:#aaa; font-size:18px;">${boss.displayValue}</div>`;
                     } else {
                         timerHtml = `<div class="timer" id="t_${id}">--:--</div>`;
                     }
