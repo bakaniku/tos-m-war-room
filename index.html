@@ -245,6 +245,23 @@
             }
         };
 
+        // 💡 取得排序分數的核心邏輯
+        function getBossScore(boss) {
+            const now = Date.now();
+            // 優先順序分數 (越小越前面)
+            if (boss.targetTime > now) return 10; // 計時中
+            if (boss.targetTime > 0 && boss.targetTime <= now) return 20; // 已超時
+            
+            if (boss.lastInput.startsWith("00")) {
+                // 💡 階段排序修正：004 排最前，001 排最後
+                // 使用 30 減去第一個數字，讓 4 變成 26，1 變成 29 (數值越小越前面)
+                let stageDigit = parseInt(boss.lastInput.substring(2, 3)) || 0;
+                return 35 - stageDigit; 
+            }
+            
+            return 40; // ON 排最後
+        }
+
         function renderList() {
             const list = document.getElementById('bossList');
             list.innerHTML = '';
@@ -254,22 +271,27 @@
             
             if (currentSort === 'countdown') {
                 sorted.sort((a, b) => {
-                    const now = Date.now();
-                    const getScore = (boss) => {
-                        if (boss.targetTime > now) return 1; 
-                        if (boss.targetTime > 0 && boss.targetTime <= now) return 2; 
-                        if (boss.lastInput.startsWith("00")) return 3; 
-                        return 4; 
-                    };
-                    const scoreA = getScore(a[1]);
-                    const scoreB = getScore(b[1]);
+                    const scoreA = getBossScore(a[1]);
+                    const scoreB = getBossScore(b[1]);
                     if (scoreA !== scoreB) return scoreA - scoreB;
+                    // 同分時 (如同為計時中)，按時間排
                     return a[1].targetTime - b[1].targetTime || parseInt(a[1].map) - parseInt(b[1].map);
                 });
             } else if (currentSort === 'map') {
                 sorted.sort((a, b) => parseInt(a[1].map) - parseInt(b[1].map));
             } else {
-                sorted.sort((a, b) => (a[1].targetTime === 0 ? -1 : (b[1].targetTime === 0 ? 1 : a[1].targetTime - b[1].targetTime)));
+                // 💡 時間排序：計時卡優先按時間，無計時卡按 4 > 3 > 2 > 1
+                sorted.sort((a, b) => {
+                    const scoreA = getBossScore(a[1]);
+                    const scoreB = getBossScore(b[1]);
+                    
+                    // 如果兩者都是計時卡，按時間排
+                    if (scoreA <= 20 && scoreB <= 20) {
+                        return a[1].targetTime - b[1].targetTime;
+                    }
+                    // 否則按類別分數排 (包含階段 4>3>2>1 邏輯)
+                    return scoreA - scoreB;
+                });
             }
 
             sorted.forEach(([id, boss]) => {
