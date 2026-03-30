@@ -3,18 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME (BETA)</title>
+    <title>TOS M FB TIME</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: sans-serif; display: flex; justify-content: center; }
         #app { width: 100%; max-width: 1000px; min-height: 100vh; padding: 20px; box-sizing: border-box; }
-        .beta-tag { font-size: 10px; color: #f0f; border: 1px solid #f0f; padding: 2px 4px; border-radius: 4px; margin-left: 5px; vertical-align: middle; }
+        
         .login-view { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh; }
         .title { color: #0f0; font-size: 32px; font-weight: bold; margin-bottom: 40px; }
         .input-group { width: 220px; display: flex; flex-direction: column; gap: 15px; }
+        
         input { background: #111; border: 1px solid #333; color: #fff; padding: 12px; border-radius: 8px; font-size: 16px; outline: none; text-align: center; }
         input:focus { border-color: #0f0; }
+        
         button { padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; border: none; transition: 0.2s; }
         .btn-outline { background: none; border: 1px solid #0f0; color: #0f0; }
         .btn-solid { background: #0f0; color: #000; }
@@ -28,30 +30,33 @@
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .room-id { color: #0f0; font-size: 20px; font-weight: bold; }
+        
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; border-radius: 0; margin-bottom: 20px; }
         .sort-row { margin-bottom: 15px; display: flex; gap: 10px; }
+        
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; cursor: pointer; }
         .card:hover { border-color: #555; background: #1a1a1a; }
         
-        /* 地圖與分流樣式保持強化版 */
+        /* 強化版地圖文字 */
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; pointer-events: none; }
         
-        .timer { font-size: 24px; font-weight: bold; margin-top: 8px; font-family: monospace; pointer-events: none; }
+        .timer { font-size: 24px; font-weight: bold; margin-top: 8px; font-family: monospace; pointer-events: none; white-space: nowrap; }
         .del { position: absolute; top: 5px; right: 10px; color: #444; background: none; border: none; font-size: 20px; cursor: pointer; z-index: 10; }
-        .idle-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; text-align: center; }
+        
+        .idle-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; text-align: center; padding: 20px; }
     </style>
 </head>
 <body>
     <div id="app">
         <div id="idleOverlay" class="idle-overlay" style="display:none;">
-            <h2 style="color:#0f0">TOS M FB TIME <span class="beta-tag">BETA</span></h2>
+            <h2 style="color:#0f0">TOS M FB TIME</h2>
             <p>連線已斷開（已達 24 小時自動保護限制）</p>
             <button class="btn-solid" onclick="location.reload()" style="width:200px">重新連接</button>
         </div>
 
         <div id="loginView" class="login-view">
-            <div class="title">TOS M FB TIME <span class="beta-tag" style="font-size:16px">BETA</span></div>
+            <div class="title">TOS M FB TIME</div>
             <div class="input-group">
                 <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
                 <input type="text" id="roomInput" placeholder="輸入房號" maxlength="6">
@@ -148,13 +153,12 @@
             resetIdleTimer();
         }
 
-        // 💡 斷線時間修改為 24 小時 (1440 分鐘)
         function resetIdleTimer() {
             clearTimeout(idleTimer);
             idleTimer = setTimeout(() => {
                 db.goOffline();
                 document.getElementById('idleOverlay').style.display = 'flex';
-            }, 1440 * 60 * 1000); 
+            }, 1440 * 60 * 1000); // 24小時
         }
         window.onmousemove = window.onmousedown = window.ontouchstart = window.onkeydown = resetIdleTimer;
 
@@ -210,11 +214,11 @@
             sorted.forEach(([id, boss]) => {
                 const card = document.createElement('div');
                 card.className = 'card';
-                card.onclick = (e) => { doEdit(boss); };
+                card.onclick = (e) => { if(e.target.tagName !== 'BUTTON' && e.target.tagName !== 'svg') doEdit(boss); };
                 
                 let content = (boss.targetTime === 0) 
                     ? `<div class="timer" style="color:#0f0;">${boss.displayValue}</div>`
-                    : `<div class="timer" id="t_${id}">--:--</div>`;
+                    : `<div class="timer" id="t_${id}">--:--:--</div>`;
 
                 card.innerHTML = `<button class="del" onclick="event.stopPropagation(); deleteBoss('${id}')">×</button><h3>${boss.map} - ${boss.ch}線</h3>${content}`;
                 list.appendChild(card);
@@ -247,7 +251,7 @@
         }
 
         function deleteBoss(id) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
-        function clearAllBosses() { if(confirm("確定清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
+        function clearAllBosses() { if(confirm("確定清除全房間？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
         
         function checkEmptyRoom() {
             db.ref(`rooms/${currentRoom}`).once('value', s => {
