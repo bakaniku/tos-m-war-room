@@ -24,17 +24,13 @@
         .copy-icon { width: 18px; height: 18px; vertical-align: middle; margin-left: 8px; cursor: pointer; opacity: 0.7; }
         .copy-icon:hover { opacity: 1; }
         .btn-next { background: #050; color: #0f0; border: 1px solid #0f0; font-size: 11px; padding: 3px 10px; border-radius: 4px; margin-left: 10px; cursor: pointer; display: inline-block; vertical-align: middle; }
-        
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .room-id { color: #0f0; font-size: 20px; font-weight: bold; }
-        
         .vol-group { display: flex; align-items: center; gap: 5px; background: #111; padding: 5px 10px; border-radius: 20px; border: 1px solid #333; }
         input[type=range] { width: 60px; height: 4px; accent-color: #0f0; cursor: pointer; }
-
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; border-radius: 0; margin-bottom: 20px; }
         .sort-row { margin-bottom: 15px; display: flex; gap: 8px; flex-wrap: wrap; }
-        
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
@@ -92,19 +88,24 @@
         
         let currentRoom = '', timers = {}, isAudioEnabled = false, playedAlerts = new Set(), currentSort = 'time';
 
-        function toggleAudio() {
-            isAudioEnabled = !isAudioEnabled;
-            document.getElementById('audioToggle').innerText = isAudioEnabled ? '🔊' : '🔈';
-            if (isAudioEnabled) speak("語音功能已開啟");
-        }
-
+        // 統一語音入口，確保測試音與播報音音量百分之百一致
         function speak(text) {
             if (!isAudioEnabled) return;
+            // 每次說話前先取消之前的，防止重疊導致的音量不穩感
+            window.speechSynthesis.cancel(); 
+            
             const msg = new SpeechSynthesisUtterance(text);
-            msg.volume = document.getElementById('volRange').value;
+            msg.volume = parseFloat(document.getElementById('volRange').value); // 強制獲取當前滑桿值
             msg.lang = 'zh-TW';
             msg.rate = 1.1;
             window.speechSynthesis.speak(msg);
+        }
+
+        function toggleAudio() {
+            isAudioEnabled = !isAudioEnabled;
+            document.getElementById('audioToggle').innerText = isAudioEnabled ? '🔊' : '🔈';
+            // 當開啟或點擊 🔊 時播報測試，音量與實際報時完全相同
+            if (isAudioEnabled) speak("語音功能已開啟");
         }
 
         function copyRoomID() {
@@ -114,9 +115,7 @@
         function setSort(type) {
             currentSort = type;
             document.querySelectorAll('.btn-toggle').forEach(b => b.classList.remove('active'));
-            if(type === 'time') document.getElementById('sortTimeBtn').classList.add('active');
-            if(type === 'countdown') document.getElementById('sortCountdownBtn').classList.add('active');
-            if(type === 'map') document.getElementById('sortMapBtn').classList.add('active');
+            document.getElementById(`sort${type.charAt(0).toUpperCase() + type.slice(1)}Btn`).classList.add('active');
             renderList();
         }
 
@@ -141,7 +140,7 @@
             db.ref(`rooms/${currentRoom}`).on('value', s => {
                 const data = s.val();
                 if (!data) {
-                    alert("房間已不存在");
+                    alert("房間已不存在或已逾期刪除");
                     exitRoom();
                     return;
                 }
@@ -154,19 +153,18 @@
 
         function exitRoom() { location.reload(); }
 
-        // 💡 修正後的清理邏輯
         function checkRoomStatus() {
             if (!currentRoom) return;
             db.ref(`rooms/${currentRoom}`).once('value', s => {
                 const d = s.val();
                 if (!d) return;
 
-                const bosses = d.bosses || {};
-                const bossCount = Object.keys(bosses).length; // 檢查卡片總數（含倒數、階段、ON）
+                const bossCount = d.bosses ? Object.keys(d.bosses).length : 0;
                 const idleTime = Date.now() - (d.lastActive || 0);
 
-                // 只有「卡片清單完全為空」且「閒置超過 1 小時」才清理
-                if (bossCount === 0 && idleTime > 60 * 60 * 1000) {
+                // 1. 強制清理：超過 24 小時沒動靜（不論有沒有資料）
+                // 2. 空房清理：沒有地圖資訊且超過 1 小時沒動靜
+                if (idleTime > 24 * 60 * 60 * 1000 || (bossCount === 0 && idleTime > 60 * 60 * 1000)) {
                     db.ref(`rooms/${currentRoom}`).remove();
                     exitRoom();
                 }
