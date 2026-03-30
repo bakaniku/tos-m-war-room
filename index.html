@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TOS M 戰情室</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    <script src="https://unpkg.com/react-native-web@0.19.10/dist/bundle.js"></script>
+</head>
+<body style="margin:0; padding:0; background-color:#000; overflow:hidden;">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        const { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity } = ReactNativeWeb;
+
+        const firebaseConfig = {
+          apiKey: "AIzaSyAff__U1cLBr92gYmtbWpm80zO4rHvObUI",
+          authDomain: "tos-m-fb.firebaseapp.com",
+          databaseURL: "https://tos-m-fb-default-rtdb.asia-southeast1.firebasedatabase.app",
+          projectId: "tos-m-fb",
+          storageBucket: "tos-m-fb.firebasestorage.app",
+          messagingSenderId: "182442840060",
+          appId: "1:182442840060:web:8163505d26c96837c6ac79"
+        };
+
+        function App() {
+          const [roomID, setRoomID] = useState('');
+          const [tempRoomID, setTempRoomID] = useState('');
+          const [inputText, setInputText] = useState('');
+          const [bossData, setBossData] = useState({});
+          const [db, setDb] = useState(null);
+          const [isMini, setIsMini] = useState(false);
+          const [tick, setTick] = useState(0);
+          const inputRef = useRef(null);
+
+          useEffect(() => {
+            const loadFirebase = async () => {
+                const s1 = document.createElement('script');
+                s1.src = "https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js";
+                document.head.appendChild(s1);
+                const s2 = document.createElement('script');
+                s2.src = "https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js";
+                document.head.appendChild(s2);
+                s2.onload = () => {
+                  if (!window.firebase.apps.length) window.firebase.initializeApp(firebaseConfig);
+                  setDb(window.firebase.database());
+                };
+            };
+            loadFirebase();
+            const timer = setInterval(() => setTick(t => t + 1), 1000);
+            return () => clearInterval(timer);
+          }, []);
+
+          useEffect(() => {
+            if (!db || !roomID) return;
+            const bossRef = db.ref(`rooms/${roomID}/bosses`);
+            bossRef.on('value', (snapshot) => setBossData(snapshot.val() || {}));
+            return () => bossRef.off();
+          }, [db, roomID]);
+
+          const generateRoom = () => {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let result = '';
+            for (let i = 0; i < 6; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
+            setRoomID(result);
+          };
+
+          const handleUpdate = () => {
+            if (!db || !roomID) return;
+            const parts = inputText.trim().split(/\s+/);
+            if (parts.length < 3) return;
+            const [map, ch, status] = parts;
+            const bossId = `${map}_${ch}`;
+            let updateObj = { map, ch, updatedAt: Date.now() };
+            if (status.toUpperCase().includes('R')) {
+              updateObj.type = 'STAGE';
+              updateObj.val = status.toUpperCase();
+            } else if (status.toLowerCase() === 'on') {
+              updateObj.type = 'ON';
+              updateObj.val = 'ON';
+            } else {
+              const mins = parseInt(status);
+              if (!isNaN(mins)) {
+                updateObj.type = 'TIMER';
+                updateObj.targetTime = Date.now() + mins * 60000;
+                updateObj.initialMins = mins;
+              }
+            }
+            db.ref(`rooms/${roomID}/bosses/${bossId}`).set(updateObj);
+            setInputText('');
+          };
+
+          const deleteBoss = (id) => { if (db && roomID) db.ref(`rooms/${roomID}/bosses/${id}`).remove(); };
+          const clearAllInRoom = () => { if (confirm("確定要清除本房間所有 BOSS 紀錄嗎？")) db.ref(`rooms/${roomID}/bosses`).remove(); };
+
+          const handleEdit = (boss) => {
+            let currentStatus = boss.type === 'TIMER' ? (boss.initialMins || "0") : boss.val;
+            const prefix = `${boss.map} ${boss.ch} `;
+            const fullText = prefix + currentStatus;
+            setInputText(fullText);
+            setTimeout(() => {
+              if (inputRef.current) {
+                inputRef.current.focus();
+                inputRef.current.setSelectionRange(prefix.length, fullText.length);
+              }
+            }, 50);
+          };
+
+          const customSort = (aObj, bObj) => {
+            const a = aObj[1], b = bObj[1];
+            const getScore = (boss) => {
+              if (boss.type === 'ON') return 1005;
+              if (boss.type === 'STAGE') {
+                const rLevels = { 'R4': 1004, 'R3': 1003, 'R2': 1002, 'R1': 1001 };
+                return rLevels[boss.val] || 1000;
+              }
+              if (boss.type === 'TIMER') {
+                const diff = (boss.targetTime - Date.now()) / 1000;
+                return diff <= 0 ? 999 - (Math.abs(diff) / 100000) : 500 - (diff / 100000);
+              }
+              return 0;
+            };
+            return getScore(b) - getScore(a);
+          };
+
+          const renderStatus = (boss) => {
+            if (boss.type === 'STAGE' || boss.type === 'ON') return { text: boss.val, color: '#0f0' };
+            if (boss.type === 'TIMER') {
+              const diff = Math.floor((boss.targetTime - Date.now()) / 1000);
+              const h = Math.floor(Math.abs(diff) / 3600), m = Math.floor((Math.abs(diff) % 3600) / 60), s = Math.abs(diff) % 60;
+              const timeStr = `${h > 0 ? h + ':' : ''}${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
+              return diff > 0 ? { text: timeStr, color: '#0f0' } : { text: `-${timeStr}`, color: '#ff4444' };
+            }
+            return { text: "---", color: "#aaa" };
+          };
+
+          if (!roomID) {
+            return (
+              <View style={styles.loginContainer}>
+                <Text style={styles.loginTitle}>TOS M 戰情室</Text>
+                <TouchableOpacity style={styles.createBtn} onPress={generateRoom}>
+                  <Text style={styles.createBtnText}>＋ 創建新房間</Text>
+                </TouchableOpacity>
+                <TextInput style={styles.loginInput} placeholder="輸入代碼加入" placeholderTextColor="#444" autoCapitalize="characters" value={tempRoomID} onChangeText={setTempRoomID}/>
+                <TouchableOpacity style={styles.loginBtn} onPress={() => setRoomID(tempRoomID.toUpperCase())}>
+                  <Text style={styles.loginBtnText}>加入房間</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          }
+
+          return (
+            <View style={[styles.container, isMini && styles.miniContainer]}>
+              <View style={styles.topRow}>
+                <TouchableOpacity onPress={() => setIsMini(!isMini)} style={styles.miniBtn}><Text style={{ color: '#0f0', fontSize: 12 }}>{isMini ? '▣ 展開' : '▢ 懸浮'}</Text></TouchableOpacity>
+                <Text style={{color:'#fff', fontWeight:'bold'}}>{roomID}</Text>
+                {!isMini && <TouchableOpacity onPress={clearAllInRoom}><Text style={{ color: '#ff4444', fontSize: 12 }}>清除所有</Text></TouchableOpacity>}
+                <TouchableOpacity onPress={() => setRoomID('')}><Text style={{ color: '#444', fontSize: 12 }}>退出</Text></TouchableOpacity>
+              </View>
+              <TextInput ref={inputRef} style={[styles.input, isMini && styles.miniInput]} placeholder="123 3 180" placeholderTextColor="#333" value={inputText} onChangeText={setInputText} onSubmitEditing={handleUpdate}/>
+              <View style={isMini ? styles.miniListScroll : styles.listScroll}>
+                <ScrollView>
+                  {Object.entries(bossData).sort(customSort).map(([id, boss]) => {
+                    const status = renderStatus(boss);
+                    return (
+                      <View key={id} style={styles.itemContainer}>
+                        <TouchableOpacity style={styles.deleteBtn} onPress={() => deleteBoss(id)}><Text style={{ color: '#333', fontSize: 18 }}>×</Text></TouchableOpacity>
+                        <TouchableOpacity style={styles.itemMain} onPress={() => handleEdit(boss)}>
+                          <Text style={{color: '#666', fontSize: 14}}>{boss.map}-{boss.ch}</Text>
+                          <Text style={{color: status.color, fontSize: 18, fontWeight: 'bold', fontFamily: 'monospace'}}>{status.text}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            </View>
+          );
+        }
+
+        const styles = {
+          container: { flex: 1, backgroundColor: '#000', padding: 20 },
+          miniContainer: { padding: 10 },
+          loginContainer: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', padding: 40 },
+          loginTitle: { color: '#0f0', fontSize: 32, fontWeight: 'bold', marginBottom: 40 },
+          createBtn: { borderSize: 1, borderColor: '#0f0', padding: 15, width: '100%', alignItems: 'center', borderRadius: 8, marginBottom: 20, borderStyle: 'solid', borderWidth: 1 },
+          createBtnText: { color: '#0f0', fontSize: 16, fontWeight: 'bold' },
+          loginInput: { borderBottomWidth: 2, borderBottomColor: '#333', color: '#fff', width: '100%', padding: 10, fontSize: 20, textAlign: 'center', marginBottom: 20 },
+          loginBtn: { backgroundColor: '#0f0', padding: 12, width: '100%', alignItems: 'center', borderRadius: 8 },
+          loginBtnText: { color: '#000', fontWeight: 'bold', fontSize: 16 },
+          topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, marginTop: 20 },
+          miniBtn: { padding: 4, borderWidth: 1, borderColor: '#0f0', borderRadius: 4 },
+          input: { backgroundColor: '#0a0a0a', borderBottomWidth: 1, borderBottomColor: '#0f0', color: '#fff', padding: 8, fontSize: 16, marginBottom: 10 },
+          miniInput: { padding: 5, fontSize: 14, marginBottom: 5 },
+          listScroll: { flex: 1 },
+          miniListScroll: { height: 90 },
+          itemContainer: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 0.5, borderBottomColor: '#222' },
+          deleteBtn: { paddingHorizontal: 12 },
+          itemMain: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 }
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
