@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M 戰情室</title>
+    <title>TOS M 戰情室 - 安全穩定版</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -21,18 +21,23 @@
         .room-id { color: #0f0; font-size: 20px; font-weight: bold; }
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; border-radius: 0; margin-bottom: 20px; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
-        /* 卡片增加手勢指引 */
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; cursor: pointer; transition: 0.2s; }
         .card:hover { border-color: #555; background: #1a1a1a; }
         .card h3 { margin: 0; color: #666; font-size: 12px; pointer-events: none; }
         .timer { font-size: 24px; font-weight: bold; margin-top: 8px; font-family: monospace; pointer-events: none; }
         .del { position: absolute; top: 5px; right: 10px; color: #444; background: none; border: none; font-size: 20px; cursor: pointer; z-index: 10; }
-        .del:hover { color: #f44; }
         .divider { height: 1px; background: #222; margin: 20px 0; }
+        .idle-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; text-align: center; }
     </style>
 </head>
 <body>
     <div id="app">
+        <div id="idleOverlay" class="idle-overlay" style="display:none;">
+            <h2 style="color:#0f0">連線已斷開</h2>
+            <p>為了節省流量，閒置超過 30 分鐘已自動斷線</p>
+            <button class="btn-solid" onclick="location.reload()" style="width:200px">重新連接</button>
+        </div>
+
         <div id="loginView" class="login-view">
             <div class="title">TOS M 戰情室</div>
             <div class="input-group">
@@ -63,7 +68,23 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
         let currentRoom = '';
-        let timers = {}; // 存放定時器引用
+        let timers = {};
+        let idleTimer;
+
+        // --- 流量控管：閒置偵測 ---
+        function resetIdleTimer() {
+            clearTimeout(idleTimer);
+            // 30分鐘閒置則斷開
+            idleTimer = setTimeout(() => {
+                db.goOffline(); // 斷開 Firebase 連線節省流量
+                document.getElementById('idleOverlay').style.display = 'flex';
+            }, 30 * 60 * 1000);
+        }
+        window.onload = resetIdleTimer;
+        window.onmousemove = resetIdleTimer;
+        window.onmousedown = resetIdleTimer;
+        window.ontouchstart = resetIdleTimer;
+        window.onkeydown = resetIdleTimer;
 
         function joinRoom() {
             const id = document.getElementById('roomInput').value.trim().toUpperCase();
@@ -84,6 +105,13 @@
             document.getElementById('bossInput').addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') addBoss();
             });
+            
+            // --- 自動清理：進入房間時更新「最後活動時間」 ---
+            db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
+            
+            // 嘗試清理舊房間 (隨機觸發，避免每次都執行耗能)
+            if(Math.random() < 0.1) cleanOldRooms();
+
             listenData();
         }
 
@@ -91,19 +119,20 @@
             const input = document.getElementById('bossInput');
             const p = input.value.trim().split(/\s+/);
             if (p.length < 3) return;
+            const now = Date.now();
             db.ref(`rooms/${currentRoom}/bosses/${p[0]}_${p[1]}`).set({
-                map: p[0], ch: p[1], targetTime: Date.now() + parseInt(p[2]) * 60000,
-                lastMins: p[2] // 紀錄最後輸入的分鐘數，方便編輯
+                map: p[0], ch: p[1], targetTime: now + parseInt(p[2]) * 60000,
+                lastMins: p[2]
             });
+            // 更新房間活動時間
+            db.ref(`rooms/${currentRoom}/lastActive`).set(now);
             input.value = '';
         }
 
-        // 💡 點擊卡片編輯邏輯
         function editBoss(map, ch, lastMins) {
             const input = document.getElementById('bossInput');
             input.value = `${map} ${ch} ${lastMins || 180}`;
             input.focus();
-            // 自動選取分鐘部分，方便直接改數字
             const start = `${map} ${ch} `.length;
             input.setSelectionRange(start, input.value.length);
         }
@@ -113,12 +142,9 @@
                 const data = snapshot.val() || {};
                 const list = document.getElementById('bossList');
                 list.innerHTML = '';
-                
-                // 清除舊的定時器
                 Object.values(timers).forEach(clearInterval);
                 timers = {};
 
-                // 排序邏輯：負數（過期）優先，其餘按剩餘時間排序
                 const sorted = Object.entries(data).sort((a, b) => {
                     const diffA = a[1].targetTime - Date.now();
                     const diffB = b[1].targetTime - Date.now();
@@ -130,18 +156,8 @@
                 sorted.forEach(([id, boss]) => {
                     const card = document.createElement('div');
                     card.className = 'card';
-                    // 點擊卡片觸發編輯 (排除刪除按鈕)
-                    card.onclick = (e) => {
-                        if (e.target.className !== 'del') {
-                            editBoss(boss.map, boss.ch, boss.lastMins);
-                        }
-                    };
-
-                    card.innerHTML = `
-                        <button class="del" onclick="deleteBoss('${id}')">×</button>
-                        <h3>${boss.map} - ${boss.ch}線</h3>
-                        <div class="timer" id="t_${id}">--:--</div>
-                    `;
+                    card.onclick = (e) => { if (e.target.className !== 'del') editBoss(boss.map, boss.ch, boss.lastMins); };
+                    card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button><h3>${boss.map} - ${boss.ch}線</h3><div class="timer" id="t_${id}">--:--</div>`;
                     list.appendChild(card);
                     startTimer(id, boss.targetTime);
                 });
@@ -158,13 +174,24 @@
                 const abs = Math.abs(diff);
                 const m = Math.floor(abs / 60);
                 const s = (abs % 60).toString().padStart(2, '0');
-                if (el) {
-                    el.innerText = (isOver ? '-' : '') + m + ':' + s;
-                    el.style.color = isOver ? '#f44' : '#0f0';
-                }
+                if (el) { el.innerText = (isOver ? '-' : '') + m + ':' + s; el.style.color = isOver ? '#f44' : '#0f0'; }
             };
             update();
             timers[id] = setInterval(update, 1000);
+        }
+
+        // --- 自動清理邏輯：刪除 24 小時未活動的房間 ---
+        function cleanOldRooms() {
+            const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+            db.ref('rooms').once('value', (snapshot) => {
+                const rooms = snapshot.val();
+                if (!rooms) return;
+                Object.keys(rooms).forEach(key => {
+                    if (rooms[key].lastActive < oneDayAgo) {
+                        db.ref(`rooms/${key}`).remove();
+                    }
+                });
+            });
         }
     </script>
 </body>
