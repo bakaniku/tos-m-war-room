@@ -2,158 +2,163 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TOS M 戰情儀表板</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TOS M FB Timer</title>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/react-native-web@0.19.10/dist/bundle.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
-        body { margin: 0; background-color: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto; }
-        #root { min-height: 100vh; }
-        
-        /* 佈局切分 */
-        .app-container { display: flex; height: 100vh; flex-direction: column; }
-        @media (min-width: 768px) {
-            .app-container { flex-direction: row; }
-        }
-
-        /* 左側控制區 */
-        .sidebar { background: #0a0a0a; padding: 25px; border-right: 1px solid #222; flex: 0 0 300px; box-sizing: border-box; }
-        .sidebar h2 { color: #0f0; margin-top: 0; }
-        
-        /* 右側顯示區 */
-        .main-content { flex: 1; padding: 20px; overflow-y: auto; background: #000; }
-        
-        /* 卡片設計 */
-        .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; }
-        .boss-card { background: #111; border: 1px solid #222; border-radius: 8px; padding: 15px; position: relative; }
-        .boss-card:hover { border-color: #0f0; }
-        .timer-text { font-size: 28px; font-weight: bold; font-family: monospace; margin: 10px 0; }
-        
-        /* 輸入框與按鈕 */
-        input { width: 100%; background: #1a1a1a; border: 1px solid #333; color: #fff; padding: 12px; border-radius: 5px; margin-bottom: 15px; box-sizing: border-box; font-size: 16px; }
-        input:focus { border-color: #0f0; outline: none; }
-        .btn-green { background: #0f0; color: #000; border: none; padding: 12px; border-radius: 5px; cursor: pointer; width: 100%; font-weight: bold; }
-        .del-btn { position: absolute; top: 10px; right: 10px; color: #444; cursor: pointer; background: none; border: none; font-size: 18px; }
-        
-        /* 登入畫面 */
-        .login-screen { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; }
-        .login-screen input { max-width: 300px; text-align: center; font-size: 24px; letter-spacing: 2px; }
+        body { margin: 0; background-color: #000; color: #fff; overflow-x: hidden; }
+        /* 滾動條美化 */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity } = ReactNativeWeb;
+        const { useState, useEffect, useRef } = React;
 
         const firebaseConfig = {
           apiKey: "AIzaSyAff__U1cLBr92gYmtbWpm80zO4rHvObUI",
           authDomain: "tos-m-fb.firebaseapp.com",
           databaseURL: "https://tos-m-fb-default-rtdb.asia-southeast1.firebasedatabase.app",
-          projectId: "tos-m-fb",
-          storageBucket: "tos-m-fb.firebasestorage.app",
-          messagingSenderId: "182442840060",
-          appId: "1:182442840060:web:8163505d26c96837c6ac79"
+          projectId: "tos-m-fb"
         };
 
-        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
+        if (!window.firebase.apps.length) window.firebase.initializeApp(firebaseConfig);
+        const db = window.firebase.database();
 
         function App() {
-            const [roomID, setRoomID] = useState('');
-            const [tempID, setTempID] = useState('');
-            const [inputText, setInputText] = useState('');
-            const [bossData, setBossData] = useState({});
-            const [now, setNow] = useState(Date.now());
+          const [roomID, setRoomID] = useState('');
+          const [tempRoomID, setTempRoomID] = useState('');
+          const [inputText, setInputText] = useState('');
+          const [bossData, setBossData] = useState({});
+          const [tick, setTick] = useState(0);
 
-            useEffect(() => {
-                const t = setInterval(() => setNow(Date.now()), 1000);
-                return () => clearInterval(t);
-            }, []);
+          useEffect(() => {
+            const timer = setInterval(() => setTick(t => t + 1), 1000);
+            return () => clearInterval(timer);
+          }, []);
 
-            useEffect(() => {
-                if (!roomID) return;
-                const ref = db.ref(`rooms/${roomID}/bosses`);
-                ref.on('value', s => setBossData(s.val() || {}));
-                return () => ref.off();
-            }, [roomID]);
+          useEffect(() => {
+            if (!roomID) return;
+            const ref = db.ref(`rooms/${roomID}/bosses`);
+            ref.on('value', (s) => setBossData(s.val() || {}));
+            return () => ref.off();
+          }, [roomID]);
 
-            const handleUpdate = (e) => {
-                if (e.key !== 'Enter' || !inputText.trim()) return;
-                const p = inputText.trim().split(/\s+/);
-                if (p.length < 3) return;
-                const [map, ch, mins] = p;
-                db.ref(`rooms/${roomID}/bosses/${map}_${ch}`).set({
-                    map, ch, targetTime: Date.now() + parseInt(mins) * 60000
-                });
-                setInputText('');
-            };
+          const generateRoom = () => {
+            const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+            setRoomID(code);
+          };
 
-            if (!roomID) {
-                return (
-                    <div className="login-screen">
-                        <h1 style={{color:'#0f0', fontSize:'48px'}}>TOS M</h1>
-                        <p style={{color:'#666'}}>戰情室系統</p>
-                        <input 
-                            placeholder="房間代碼" 
-                            value={tempID} 
-                            onChange={e => setTempID(e.target.value.toUpperCase())}
-                            onKeyDown={e => e.key === 'Enter' && setRoomID(tempID)}
-                        />
-                        <button className="btn-green" onClick={() => setRoomID(tempID)}>進入房間</button>
-                    </div>
-                );
-            }
+          const handleUpdate = () => {
+            const p = inputText.trim().split(/\s+/);
+            if (p.length < 3) return;
+            db.ref(`rooms/${roomID}/bosses/${p[0]}_${p[1]}`).set({
+                map: p[0], ch: p[1], targetTime: Date.now() + parseInt(p[2]) * 60000
+            });
+            setInputText('');
+          };
 
+          // 登入畫面
+          if (!roomID) {
             return (
-                <div className="app-container">
-                    <div className="sidebar">
-                        <h2>房號：{roomID}</h2>
-                        <p style={{fontSize:'12px', color:'#666'}}>快速錄入 (地圖 分流 分鐘)</p>
-                        <input 
-                            placeholder="123 3 180" 
-                            value={inputText}
-                            onChange={e => setInputText(e.target.value)}
-                            onKeyDown={handleUpdate}
-                        />
-                        <button className="btn-green" onClick={() => {
-                            const e = {key: 'Enter'};
-                            handleUpdate(e);
-                        }}>更新資料</button>
-                        <div style={{marginTop:'40px'}}>
-                            <button style={{background:'none', border:'none', color:'#444', cursor:'pointer'}} onClick={() => setRoomID('')}>← 登出房間</button>
-                        </div>
-                    </div>
-                    
-                    <div className="main-content">
-                        <div className="card-grid">
-                            {Object.entries(bossData).map(([id, boss]) => {
-                                const diff = Math.floor((boss.targetTime - now) / 1000);
-                                const isOver = diff <= 0;
-                                const absDiff = Math.abs(diff);
-                                const h = Math.floor(absDiff / 3600);
-                                const m = Math.floor((absDiff % 3600) / 60);
-                                const s = absDiff % 60;
-                                const timeStr = `${h>0?h+':':''}${m<10?'0':''}${m}:${s<10?'0':''}${s}`;
+              <View style={s.loginContainer}>
+                <Text style={s.loginTitle}>TOS M 戰情室</Text>
+                
+                <TouchableOpacity style={s.createBtn} onPress={generateRoom}>
+                  <Text style={s.createBtnText}>＋ 創建新房間</Text>
+                </TouchableOpacity>
 
-                                return (
-                                    <div key={id} className="boss-card">
-                                        <button className="del-btn" onClick={() => db.ref(`rooms/${roomID}/bosses/${id}`).remove()}>×</button>
-                                        <div style={{color:'#888', fontSize:'14px'}}>{boss.map} - {boss.ch}線</div>
-                                        <div className="timer-text" style={{color: isOver ? '#ff4444' : '#00ff00'}}>
-                                            {isOver ? '-' : ''}{timeStr}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                </div>
+                <View style={s.dividerLine} />
+
+                <TextInput 
+                  style={s.loginInput} 
+                  placeholder="輸入 6 位代碼" 
+                  placeholderTextColor="#444"
+                  maxLength={6}
+                  autoCapitalize="characters"
+                  value={tempRoomID}
+                  onChangeText={setTempRoomID}
+                />
+                
+                <TouchableOpacity style={s.loginBtn} onPress={() => setRoomID(tempRoomID.toUpperCase())}>
+                  <Text style={s.loginBtnText}>進入房間</Text>
+                </TouchableOpacity>
+              </View>
             );
+          }
+
+          // 主畫面 (PC/手機通用佈局)
+          return (
+            <View style={s.container}>
+              <View style={s.header}>
+                <Text style={s.roomLabel}>房號：{roomID}</Text>
+                <TouchableOpacity onPress={() => setRoomID('')}>
+                  <Text style={{color: '#444'}}>退出</Text>
+                </TouchableOpacity>
+              </View>
+
+              <TextInput 
+                style={s.mainInput} 
+                placeholder="地圖 分流 分鐘 (123 3 180)" 
+                placeholderTextColor="#333"
+                value={inputText}
+                onChangeText={setInputText}
+                onSubmitEditing={handleUpdate}
+              />
+
+              <ScrollView style={{flex: 1}}>
+                <View style={s.grid}>
+                  {Object.entries(bossData).map(([id, boss]) => {
+                    const diff = Math.floor((boss.targetTime - Date.now()) / 1000);
+                    const isOver = diff <= 0;
+                    const abs = Math.abs(diff);
+                    const timeStr = `${isOver?'-':''}${Math.floor(abs/60)}:${(abs%60).toString().padStart(2,'0')}`;
+                    
+                    return (
+                      <View key={id} style={s.card}>
+                        <TouchableOpacity style={s.del} onPress={() => db.ref(`rooms/${roomID}/bosses/${id}`).remove()}>
+                          <Text style={{color:'#444'}}>×</Text>
+                        </TouchableOpacity>
+                        <Text style={s.cardTitle}>{boss.map} - {boss.ch}線</Text>
+                        <Text style={[s.timer, {color: isOver ? '#f44' : '#0f0'}]}>{timeStr}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            </View>
+          );
         }
+
+        const s = StyleSheet.create({
+          loginContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+          loginTitle: { color: '#0f0', fontSize: 36, fontWeight: 'bold', marginBottom: 40 },
+          createBtn: { borderSize: 1, borderColor: '#0f0', borderWidth: 1, padding: 15, borderRadius: 8, width: 220, alignItems: 'center' },
+          createBtnText: { color: '#0f0', fontWeight: 'bold' },
+          dividerLine: { height: 1, backgroundColor: '#222', width: 220, marginVertical: 30 },
+          loginInput: { backgroundColor: '#111', color: '#fff', padding: 12, borderRadius: 8, width: 220, textAlign: 'center', fontSize: 18, marginBottom: 15, borderSize: 1, borderColor: '#333', borderWidth: 1 },
+          loginBtn: { backgroundColor: '#0f0', padding: 12, borderRadius: 8, width: 220, alignItems: 'center' },
+          loginBtnText: { color: '#000', fontWeight: 'bold' },
+          
+          container: { flex: 1, padding: 20, maxWidth: 1000, alignSelf: 'center', width: '100%' },
+          header: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
+          roomLabel: { color: '#0f0', fontSize: 20, fontWeight: 'bold' },
+          mainInput: { backgroundColor: '#0a0a0a', borderBottomWidth: 2, borderColor: '#0f0', color: '#fff', padding: 15, fontSize: 16, marginBottom: 20 },
+          grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+          card: { backgroundColor: '#111', padding: 15, borderRadius: 8, minWidth: 160, flex: 1, position: 'relative' },
+          cardTitle: { color: '#666', fontSize: 12 },
+          timer: { fontSize: 24, fontWeight: 'bold', marginTop: 5, fontFamily: 'monospace' },
+          del: { position: 'absolute', top: 5, right: 10 }
+        });
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
