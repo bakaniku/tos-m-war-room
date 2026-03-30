@@ -25,8 +25,7 @@
         .copy-icon { width: 18px; height: 18px; vertical-align: middle; margin-left: 8px; cursor: pointer; opacity: 0.7; }
         .copy-icon:hover { opacity: 1; }
 
-        /* NEXT 按鈕：增加點擊感與層級 */
-        .btn-next { background: #050; color: #0f0; border: 1px solid #0f0; font-size: 11px; padding: 3px 10px; border-radius: 4px; margin-left: 10px; cursor: pointer; display: inline-block; }
+        .btn-next { background: #050; color: #0f0; border: 1px solid #0f0; font-size: 11px; padding: 3px 10px; border-radius: 4px; margin-left: 10px; cursor: pointer; display: inline-block; vertical-align: middle; }
         .btn-next:active { background: #0f0; color: #000; }
 
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
@@ -36,14 +35,13 @@
         .sort-row { margin-bottom: 15px; display: flex; gap: 10px; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         
-        /* 卡片不再綁定全局點擊 */
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
-        
-        /* 💡 編輯功能改為綁定在文字上，並增加底線提示可點擊 */
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
         .card h3:hover { color: #fff; border-bottom-color: #0f0; }
         
-        .timer { font-size: 24px; font-weight: bold; margin-top: 8px; font-family: monospace; }
+        /* 💡 縮小字體防止換行 */
+        .timer { font-size: 20px; font-weight: bold; margin-top: 8px; font-family: monospace; }
+        
         .del { position: absolute; top: 5px; right: 10px; color: #444; background: none; border: none; font-size: 20px; cursor: pointer; z-index: 10; }
         .idle-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; text-align: center; }
     </style>
@@ -184,7 +182,10 @@
             let displayValue = val;
             let targetTime = 0;
 
-            if (val.startsWith("00")) {
+            if (val.toUpperCase() === "ON") {
+                displayValue = "ON";
+                targetTime = 0;
+            } else if (val.startsWith("00")) {
                 const stageNum = val.substring(2); 
                 displayValue = "階段" + (stageNum.length > 1 ? stageNum.split('').join('.') : stageNum);
                 targetTime = 0;
@@ -199,13 +200,19 @@
             db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
         }
 
-        // 💡 修正後 NEXT 邏輯
+        // 💡 強化後的 NEXT 邏輯：階段 4 -> ON -> 編輯模式
         window.triggerNext = function(map, ch, last) {
-            if (last.startsWith("00")) {
-                let firstDigit = last.substring(2, 3);
-                if (!isNaN(firstDigit)) {
-                    let nextMainNum = parseInt(firstDigit) + 1;
-                    saveBoss(map, ch, "00" + nextMainNum);
+            if (last.toUpperCase() === "ON") {
+                // 進入編輯模式
+                doEdit(map, ch, ""); 
+            } else if (last.startsWith("00")) {
+                let firstDigit = parseInt(last.substring(2, 3));
+                if (firstDigit >= 4) {
+                    // 階段 4 以後變 ON
+                    saveBoss(map, ch, "ON");
+                } else {
+                    // 階段進位
+                    saveBoss(map, ch, "00" + (firstDigit + 1));
                 }
             }
         };
@@ -229,14 +236,13 @@
                 
                 let content = '';
                 if (boss.targetTime === 0) {
-                    // NEXT 按鈕：獨立元件，不再被 card.onclick 影響
+                    // 階段或 ON 都顯示 NEXT
                     content = `<div class="timer" style="color:#0f0;">${boss.displayValue} <button class="btn-next" onclick="triggerNext('${boss.map}','${boss.ch}','${boss.lastInput}')">NEXT</button></div>`;
                 } else {
-                    // 計時文字：點擊觸發編輯
+                    // 計時顯示
                     content = `<div class="timer" style="cursor:pointer" onclick="doEdit('${boss.map}','${boss.ch}','${boss.lastInput}')" id="t_${id}">--:--</div>`;
                 }
 
-                // 💡 只有 H3 文字點擊會觸發 doEdit
                 card.innerHTML = `
                     <button class="del" onclick="deleteBoss('${id}')">×</button>
                     <h3 onclick="doEdit('${boss.map}','${boss.ch}','${boss.lastInput}')">${boss.map} - ${boss.ch}線</h3>
