@@ -22,11 +22,13 @@
         .btn-toggle { background: #222; color: #888; font-size: 12px; padding: 5px 10px; border: 1px solid #444; }
         .btn-toggle.active { background: #050; color: #0f0; border-color: #0f0; }
         
-        /* 複製按鈕與圖示 */
         .copy-icon { width: 18px; height: 18px; vertical-align: middle; margin-left: 8px; cursor: pointer; opacity: 0.7; }
         .copy-icon:hover { opacity: 1; }
 
-        .btn-next { background: #050; color: #0f0; border: 1px solid #0f0; font-size: 11px; padding: 2px 8px; border-radius: 4px; margin-left: 8px; cursor: pointer; }
+        /* NEXT 按鈕樣式 */
+        .btn-next { background: #050; color: #0f0; border: 1px solid #0f0; font-size: 12px; padding: 3px 10px; border-radius: 4px; margin-left: 10px; cursor: pointer; }
+        .btn-next:hover { background: #0a0; }
+
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .room-id { color: #0f0; font-size: 20px; font-weight: bold; }
@@ -35,7 +37,10 @@
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; cursor: pointer; }
         .card:hover { border-color: #555; background: #1a1a1a; }
-        .card h3 { margin: 0; color: #666; font-size: 12px; pointer-events: none; }
+        
+        /* 💡 地圖與分流：字體變大、明度調高 */
+        .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; pointer-events: none; }
+        
         .timer { font-size: 24px; font-weight: bold; margin-top: 8px; font-family: monospace; pointer-events: none; }
         .del { position: absolute; top: 5px; right: 10px; color: #444; background: none; border: none; font-size: 20px; cursor: pointer; z-index: 10; }
         .idle-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; text-align: center; }
@@ -137,7 +142,6 @@
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
             db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
             
-            // 監聽數據
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
                 window.currentData = s.val() || {};
                 renderList();
@@ -155,7 +159,6 @@
         }
 
         function parseTimeInput(val) {
-            // 處理 時:分, 時.分, 時：分
             const timeParts = val.split(/[:.：]/);
             if (timeParts.length === 2) {
                 const h = parseInt(timeParts[0]) || 0;
@@ -183,8 +186,9 @@
             db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
         }
 
-        // 下一階段功能修復
-        window.triggerNext = function(map, ch, last) {
+        // 💡 修正後 NEXT 邏輯：阻止事件冒泡，防止編輯卡片
+        window.triggerNext = function(event, map, ch, last) {
+            event.stopPropagation(); // 防止點擊 NEXT 時觸發 doEdit
             const nextMap = { "001": "002", "002": "003", "003": "004" };
             if (nextMap[last]) saveBoss(map, ch, nextMap[last]);
         };
@@ -205,17 +209,20 @@
             sorted.forEach(([id, boss]) => {
                 const card = document.createElement('div');
                 card.className = 'card';
-                card.onclick = (e) => { if(e.target.tagName !== 'BUTTON' && e.target.tagName !== 'svg') doEdit(boss); };
+                // 💡 只在點擊卡片本身（非 NEXT 按鈕、非刪除按鈕）時才編輯
+                card.onclick = (e) => { doEdit(boss); };
                 
                 let content = '';
                 if (boss.targetTime === 0) {
                     const hasNext = ["001","002","003"].includes(boss.lastInput);
-                    content = `<div class="timer" style="color:#0f0;">${boss.displayValue} ${hasNext ? `<button class="btn-next" onclick="triggerNext('${boss.map}','${boss.ch}','${boss.lastInput}')">NEXT</button>` : ''}</div>`;
+                    // 💡 傳遞 event 參數到 triggerNext
+                    content = `<div class="timer" style="color:#0f0;">${boss.displayValue} ${hasNext ? `<button class="btn-next" onclick="triggerNext(event, '${boss.map}','${boss.ch}','${boss.lastInput}')">NEXT</button>` : ''}</div>`;
                 } else {
                     content = `<div class="timer" id="t_${id}">--:--</div>`;
                 }
 
-                card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button><h3>${boss.map} - ${boss.ch}線</h3>${content}`;
+                // 💡 刪除按鈕增加阻止冒泡
+                card.innerHTML = `<button class="del" onclick="event.stopPropagation(); deleteBoss('${id}')">×</button><h3>${boss.map} - ${boss.ch}線</h3>${content}`;
                 list.appendChild(card);
                 if (boss.targetTime !== 0) startTimer(id, boss.targetTime);
             });
