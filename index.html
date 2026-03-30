@@ -18,18 +18,18 @@
         .btn-outline { background: none; border: 1px solid #0f0; color: #0f0; }
         .btn-solid { background: #0f0; color: #000; }
         .btn-danger { background: #422; color: #f66; font-size: 12px; padding: 5px 10px; }
-        .btn-danger:hover { background: #622; }
+        .btn-toggle { background: #222; color: #888; font-size: 12px; padding: 5px 10px; border: 1px solid #444; }
+        .btn-toggle.active { background: #050; color: #0f0; border-color: #0f0; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
-        .room-info { display: flex; align-items: center; gap: 15px; }
-        .room-id { color: #0f0; font-size: 20px; font-weight: bold; }
+        .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .room-id { color: #0f0; font-size: 20px; font-weight: bold; margin-right: 5px; }
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; border-radius: 0; margin-bottom: 20px; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; cursor: pointer; }
         .card:hover { border-color: #555; background: #1a1a1a; }
         .card h3 { margin: 0; color: #666; font-size: 12px; pointer-events: none; }
-        .timer { font-size: 24px; font-weight: bold; margin-top: 8px; font-family: monospace; pointer-events: none; }
+        .timer { font-size: 24px; font-weight: bold; margin-top: 8px; font-family: monospace; pointer-events: none; white-space: nowrap; }
         .del { position: absolute; top: 5px; right: 10px; color: #444; background: none; border: none; font-size: 20px; cursor: pointer; z-index: 10; }
-        .divider { height: 1px; background: #222; margin: 20px 0; }
         .idle-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; text-align: center; padding: 20px; }
     </style>
 </head>
@@ -55,11 +55,12 @@
             <div class="header">
                 <div class="room-info">
                     <div class="room-id" id="displayID"></div>
+                    <button id="audioToggle" class="btn-toggle" onclick="toggleAudio()">🔊 音效關閉</button>
                     <button class="btn-danger" onclick="clearAllBosses()">一鍵清除</button>
                 </div>
                 <button style="background:none; color:#444;" onclick="location.reload()">退出房間</button>
             </div>
-            <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 分鐘/00X (例: 113 1 001)">
+            <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 分鐘/00X (例: 113 1 180)">
             <div class="grid" id="bossList"></div>
         </div>
     </div>
@@ -73,9 +74,47 @@
         };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
+        
         let currentRoom = '';
         let timers = {};
         let idleTimer;
+        let isAudioEnabled = false;
+        let playedAlerts = new Set(); 
+
+        function toggleAudio() {
+            isAudioEnabled = !isAudioEnabled;
+            const btn = document.getElementById('audioToggle');
+            btn.innerText = isAudioEnabled ? '🔊 音效開啟' : '🔈 音效關閉';
+            btn.className = isAudioEnabled ? 'btn-toggle active' : 'btn-toggle';
+            
+            if (isAudioEnabled) {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                gain.gain.value = 0; 
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start(0);
+                osc.stop(0.1);
+            }
+        }
+
+        function playDing() {
+            if (!isAudioEnabled) return;
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, ctx.currentTime); 
+                gain.gain.setValueAtTime(0.5, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 1);
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 1);
+            } catch (e) { console.error("Audio error", e); }
+        }
 
         function resetIdleTimer() {
             clearTimeout(idleTimer);
@@ -100,7 +139,7 @@
             currentRoom = id;
             document.getElementById('loginView').style.display = 'none';
             document.getElementById('mainView').style.display = 'block';
-            document.getElementById('displayID').innerText = '房號：' + id;
+            document.getElementById('displayID').innerText = id;
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
             db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
             if(Math.random() < 0.1) cleanOldRooms();
@@ -112,13 +151,8 @@
             const p = input.value.trim().split(/\s+/);
             if (p.length < 3) return;
 
-            let map = p[0];
-            let ch = p[1];
-            let rawVal = p[2];
-            let targetTime = 0;
-            let displayValue = rawVal;
-
-            // 改為「階段」顯示
+            let map = p[0], ch = p[1], rawVal = p[2];
+            let targetTime = 0, displayValue = rawVal;
             const stageMap = { "001": "階段1", "002": "階段2", "003": "階段3", "004": "階段4" };
             
             if (stageMap[rawVal]) {
@@ -167,15 +201,7 @@
                     const card = document.createElement('div');
                     card.className = 'card';
                     card.onclick = (e) => { if (e.target.className !== 'del') editBoss(boss.map, boss.ch, boss.lastInput); };
-                    
-                    let timerHtml = '';
-                    if (boss.targetTime === 0) {
-                        // 階段也使用綠色 (#0f0)
-                        timerHtml = `<div class="timer" style="color:#0f0;">${boss.displayValue}</div>`;
-                    } else {
-                        timerHtml = `<div class="timer" id="t_${id}">--:--</div>`;
-                    }
-
+                    let timerHtml = (boss.targetTime === 0) ? `<div class="timer" style="color:#0f0;">${boss.displayValue}</div>` : `<div class="timer" id="t_${id}">--:--:--</div>`;
                     card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button><h3>${boss.map} - ${boss.ch}線</h3>${timerHtml}`;
                     list.appendChild(card);
                     if (boss.targetTime !== 0) startTimer(id, boss.targetTime);
@@ -188,15 +214,25 @@
         function startTimer(id, target) {
             const el = document.getElementById('t_' + id);
             const update = () => {
-                const diff = Math.floor((target - Date.now()) / 1000);
+                const now = Date.now();
+                const diff = Math.floor((target - now) / 1000);
                 const isOver = diff <= 0;
                 const abs = Math.abs(diff);
-                const m = Math.floor(abs / 60);
-                const s = (abs % 60).toString().padStart(2, '0');
+                
+                const h = Math.floor(abs / 3600);
+                const m = Math.floor((abs % 3600) / 60);
+                const s = abs % 60;
+                const timeStr = `${h > 0 ? h + ':' : ''}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+                
                 if (el) { 
-                    // 移除負號，超時依然顯示時間
-                    el.innerText = m + ':' + s; 
+                    el.innerText = timeStr; 
                     el.style.color = isOver ? '#f44' : '#0f0'; 
+                }
+
+                // 只在重生瞬間 (diff === 0) 叮一聲
+                if (isOver && diff === 0 && !playedAlerts.has(id + "_0")) {
+                    playDing();
+                    playedAlerts.add(id + "_0");
                 }
             };
             update();
