@@ -4,108 +4,159 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TOS M 戰情儀表板</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
-        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; }
-        #app { display: flex; height: 100vh; flex-direction: column; }
-        @media (min-width: 768px) { #app { flex-direction: row; } }
-        .sidebar { background: #111; padding: 20px; flex: 0 0 280px; border-right: 1px solid #333; box-sizing: border-box; }
-        .main { flex: 1; padding: 20px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; align-content: start; }
-        .card { background: #1a1a1a; border: 1px solid #333; border-radius: 8px; padding: 15px; position: relative; }
-        .card h3 { margin: 0; color: #888; font-size: 14px; }
-        .timer { font-size: 24px; font-weight: bold; margin-top: 10px; font-family: monospace; }
-        input { width: 100%; background: #222; border: 1px solid #444; color: #fff; padding: 10px; margin-bottom: 10px; border-radius: 4px; box-sizing: border-box; }
-        button { width: 100%; padding: 10px; background: #0f0; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
-        .login { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        .del { position: absolute; top: 5px; right: 10px; color: #555; cursor: pointer; background: none; border: none; font-size: 20px; }
+        body { margin: 0; background-color: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto; }
+        #root { min-height: 100vh; }
+        
+        /* 佈局切分 */
+        .app-container { display: flex; height: 100vh; flex-direction: column; }
+        @media (min-width: 768px) {
+            .app-container { flex-direction: row; }
+        }
+
+        /* 左側控制區 */
+        .sidebar { background: #0a0a0a; padding: 25px; border-right: 1px solid #222; flex: 0 0 300px; box-sizing: border-box; }
+        .sidebar h2 { color: #0f0; margin-top: 0; }
+        
+        /* 右側顯示區 */
+        .main-content { flex: 1; padding: 20px; overflow-y: auto; background: #000; }
+        
+        /* 卡片設計 */
+        .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; }
+        .boss-card { background: #111; border: 1px solid #222; border-radius: 8px; padding: 15px; position: relative; }
+        .boss-card:hover { border-color: #0f0; }
+        .timer-text { font-size: 28px; font-weight: bold; font-family: monospace; margin: 10px 0; }
+        
+        /* 輸入框與按鈕 */
+        input { width: 100%; background: #1a1a1a; border: 1px solid #333; color: #fff; padding: 12px; border-radius: 5px; margin-bottom: 15px; box-sizing: border-box; font-size: 16px; }
+        input:focus { border-color: #0f0; outline: none; }
+        .btn-green { background: #0f0; color: #000; border: none; padding: 12px; border-radius: 5px; cursor: pointer; width: 100%; font-weight: bold; }
+        .del-btn { position: absolute; top: 10px; right: 10px; color: #444; cursor: pointer; background: none; border: none; font-size: 18px; }
+        
+        /* 登入畫面 */
+        .login-screen { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; }
+        .login-screen input { max-width: 300px; text-align: center; font-size: 24px; letter-spacing: 2px; }
     </style>
 </head>
 <body>
-    <div id="app">
-        <div class="login" id="loginView">
-            <h1 style="color:#0f0">TOS M</h1>
-            <input type="text" id="roomInput" placeholder="請輸入房號" style="max-width:200px">
-            <button onclick="joinRoom()" style="max-width:200px">進入房間</button>
-        </div>
-        <div id="mainView" style="display:none; width: 100%; height: 100%; flex-direction: inherit;">
-            <div class="sidebar">
-                <h2 id="displayRoomID" style="color:#0f0"></h2>
-                <p style="color:#555; font-size:12px">格式：地圖 分流 分鐘</p>
-                <input type="text" id="bossInput" placeholder="123 3 180">
-                <button onclick="addBoss()">送出資料</button>
-                <button onclick="location.reload()" style="margin-top:20px; background:#333; color:#aaa">切換房間</button>
-            </div>
-            <div class="main" id="bossList"></div>
-        </div>
-    </div>
+    <div id="root"></div>
 
-    <script>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
         const firebaseConfig = {
-            apiKey: "AIzaSyAff__U1cLBr92gYmtbWpm80zO4rHvObUI",
-            authDomain: "tos-m-fb.firebaseapp.com",
-            databaseURL: "https://tos-m-fb-default-rtdb.asia-southeast1.firebasedatabase.app",
-            projectId: "tos-m-fb"
+          apiKey: "AIzaSyAff__U1cLBr92gYmtbWpm80zO4rHvObUI",
+          authDomain: "tos-m-fb.firebaseapp.com",
+          databaseURL: "https://tos-m-fb-default-rtdb.asia-southeast1.firebasedatabase.app",
+          projectId: "tos-m-fb",
+          storageBucket: "tos-m-fb.firebasestorage.app",
+          messagingSenderId: "182442840060",
+          appId: "1:182442840060:web:8163505d26c96837c6ac79"
         };
-        firebase.initializeApp(firebaseConfig);
+
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
-        let currentRoom = '';
 
-        function joinRoom() {
-            currentRoom = document.getElementById('roomInput').value.toUpperCase();
-            if(!currentRoom) return;
-            document.getElementById('loginView').style.display = 'none';
-            document.getElementById('mainView').style.display = 'flex';
-            document.getElementById('displayRoomID').innerText = '房號：' + currentRoom;
-            listenData();
-        }
+        function App() {
+            const [roomID, setRoomID] = useState('');
+            const [tempID, setTempID] = useState('');
+            const [inputText, setInputText] = useState('');
+            const [bossData, setBossData] = useState({});
+            const [now, setNow] = useState(Date.now());
 
-        function addBoss() {
-            const val = document.getElementById('bossInput').value.trim();
-            const p = val.split(/\s+/);
-            if(p.length < 3) return alert('格式錯誤：地圖 分流 分鐘');
-            db.ref(`rooms/${currentRoom}/bosses/${p[0]}_${p[1]}`).set({
-                map: p[0], ch: p[1], targetTime: Date.now() + parseInt(p[2]) * 60000
-            });
-            document.getElementById('bossInput').value = '';
-        }
+            useEffect(() => {
+                const t = setInterval(() => setNow(Date.now()), 1000);
+                return () => clearInterval(t);
+            }, []);
 
-        function listenData() {
-            db.ref(`rooms/${currentRoom}/bosses`).on('value', (snapshot) => {
-                const data = snapshot.val() || {};
-                const list = document.getElementById('bossList');
-                list.innerHTML = '';
-                Object.entries(data).forEach(([id, boss]) => {
-                    const card = document.createElement('div');
-                    card.className = 'card';
-                    card.innerHTML = `
-                        <button class="del" onclick="deleteBoss('${id}')">×</button>
-                        <h3>${boss.map} - ${boss.ch}線</h3>
-                        <div class="timer" id="t_${id}">--:--</div>
-                    `;
-                    list.appendChild(card);
-                    updateTimer(id, boss.targetTime);
+            useEffect(() => {
+                if (!roomID) return;
+                const ref = db.ref(`rooms/${roomID}/bosses`);
+                ref.on('value', s => setBossData(s.val() || {}));
+                return () => ref.off();
+            }, [roomID]);
+
+            const handleUpdate = (e) => {
+                if (e.key !== 'Enter' || !inputText.trim()) return;
+                const p = inputText.trim().split(/\s+/);
+                if (p.length < 3) return;
+                const [map, ch, mins] = p;
+                db.ref(`rooms/${roomID}/bosses/${map}_${ch}`).set({
+                    map, ch, targetTime: Date.now() + parseInt(mins) * 60000
                 });
-            });
-        }
-
-        function deleteBoss(id) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
-
-        function updateTimer(id, target) {
-            const el = document.getElementById('t_' + id);
-            if(!el) return;
-            const run = () => {
-                const diff = Math.floor((target - Date.now()) / 1000);
-                const isOver = diff <= 0;
-                const abs = Math.abs(diff);
-                const m = Math.floor(abs / 60);
-                const s = abs % 60;
-                el.innerText = (isOver ? '-' : '') + (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
-                el.style.color = isOver ? '#f44' : '#0f0';
+                setInputText('');
             };
-            run();
-            setInterval(run, 1000);
+
+            if (!roomID) {
+                return (
+                    <div className="login-screen">
+                        <h1 style={{color:'#0f0', fontSize:'48px'}}>TOS M</h1>
+                        <p style={{color:'#666'}}>戰情室系統</p>
+                        <input 
+                            placeholder="房間代碼" 
+                            value={tempID} 
+                            onChange={e => setTempID(e.target.value.toUpperCase())}
+                            onKeyDown={e => e.key === 'Enter' && setRoomID(tempID)}
+                        />
+                        <button className="btn-green" onClick={() => setRoomID(tempID)}>進入房間</button>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="app-container">
+                    <div className="sidebar">
+                        <h2>房號：{roomID}</h2>
+                        <p style={{fontSize:'12px', color:'#666'}}>快速錄入 (地圖 分流 分鐘)</p>
+                        <input 
+                            placeholder="123 3 180" 
+                            value={inputText}
+                            onChange={e => setInputText(e.target.value)}
+                            onKeyDown={handleUpdate}
+                        />
+                        <button className="btn-green" onClick={() => {
+                            const e = {key: 'Enter'};
+                            handleUpdate(e);
+                        }}>更新資料</button>
+                        <div style={{marginTop:'40px'}}>
+                            <button style={{background:'none', border:'none', color:'#444', cursor:'pointer'}} onClick={() => setRoomID('')}>← 登出房間</button>
+                        </div>
+                    </div>
+                    
+                    <div className="main-content">
+                        <div className="card-grid">
+                            {Object.entries(bossData).map(([id, boss]) => {
+                                const diff = Math.floor((boss.targetTime - now) / 1000);
+                                const isOver = diff <= 0;
+                                const absDiff = Math.abs(diff);
+                                const h = Math.floor(absDiff / 3600);
+                                const m = Math.floor((absDiff % 3600) / 60);
+                                const s = absDiff % 60;
+                                const timeStr = `${h>0?h+':':''}${m<10?'0':''}${m}:${s<10?'0':''}${s}`;
+
+                                return (
+                                    <div key={id} className="boss-card">
+                                        <button className="del-btn" onClick={() => db.ref(`rooms/${roomID}/bosses/${id}`).remove()}>×</button>
+                                        <div style={{color:'#888', fontSize:'14px'}}>{boss.map} - {boss.ch}線</div>
+                                        <div className="timer-text" style={{color: isOver ? '#ff4444' : '#00ff00'}}>
+                                            {isOver ? '-' : ''}{timeStr}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            );
         }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>
