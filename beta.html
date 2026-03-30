@@ -71,7 +71,7 @@
                 <button id="sortMapBtn" class="btn-toggle" onclick="setSort('map')">地圖排序</button>
             </div>
 
-            <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 分鐘/00X/時:分">
+            <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 分鐘/00X/時:分:秒">
             <div class="grid" id="bossList"></div>
         </div>
     </div>
@@ -88,14 +88,11 @@
         
         let currentRoom = '', timers = {}, isAudioEnabled = false, playedAlerts = new Set(), currentSort = 'time';
 
-        // 統一語音入口，確保測試音與播報音音量百分之百一致
         function speak(text) {
             if (!isAudioEnabled) return;
-            // 每次說話前先取消之前的，防止重疊導致的音量不穩感
             window.speechSynthesis.cancel(); 
-            
             const msg = new SpeechSynthesisUtterance(text);
-            msg.volume = parseFloat(document.getElementById('volRange').value); // 強制獲取當前滑桿值
+            msg.volume = parseFloat(document.getElementById('volRange').value);
             msg.lang = 'zh-TW';
             msg.rate = 1.1;
             window.speechSynthesis.speak(msg);
@@ -104,7 +101,6 @@
         function toggleAudio() {
             isAudioEnabled = !isAudioEnabled;
             document.getElementById('audioToggle').innerText = isAudioEnabled ? '🔊' : '🔈';
-            // 當開啟或點擊 🔊 時播報測試，音量與實際報時完全相同
             if (isAudioEnabled) speak("語音功能已開啟");
         }
 
@@ -136,18 +132,12 @@
             document.getElementById('displayID').innerText = id;
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
             db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
-            
             db.ref(`rooms/${currentRoom}`).on('value', s => {
                 const data = s.val();
-                if (!data) {
-                    alert("房間已不存在或已逾期刪除");
-                    exitRoom();
-                    return;
-                }
+                if (!data) { alert("房間已不存在"); exitRoom(); return; }
                 window.currentData = data.bosses || {};
                 renderList();
             });
-            
             setInterval(checkRoomStatus, 60000);
         }
 
@@ -158,15 +148,10 @@
             db.ref(`rooms/${currentRoom}`).once('value', s => {
                 const d = s.val();
                 if (!d) return;
-
                 const bossCount = d.bosses ? Object.keys(d.bosses).length : 0;
                 const idleTime = Date.now() - (d.lastActive || 0);
-
-                // 1. 強制清理：超過 24 小時沒動靜（不論有沒有資料）
-                // 2. 空房清理：沒有地圖資訊且超過 1 小時沒動靜
                 if (idleTime > 24 * 60 * 60 * 1000 || (bossCount === 0 && idleTime > 60 * 60 * 1000)) {
-                    db.ref(`rooms/${currentRoom}`).remove();
-                    exitRoom();
+                    db.ref(`rooms/${currentRoom}`).remove(); exitRoom();
                 }
             });
         }
@@ -179,6 +164,19 @@
             input.value = '';
         }
 
+        function parseTimeInput(val) {
+            val = val.toLowerCase();
+            if (val.endsWith('s')) { return parseFloat(val) / 60; }
+            const timeParts = val.split(/[:.：]/);
+            if (timeParts.length === 3) {
+                return (parseInt(timeParts[0])*60) + parseInt(timeParts[1]) + (parseInt(timeParts[2])/60);
+            }
+            if (timeParts.length === 2) {
+                return (parseInt(timeParts[0])*60) + parseInt(timeParts[1]);
+            }
+            return parseFloat(val) || 0;
+        }
+
         function saveBoss(map, ch, val) {
             let displayValue = val;
             let targetTime = 0;
@@ -189,9 +187,8 @@
                 displayValue = "階段" + (stageNum.length > 1 ? stageNum.split('').join('.') : stageNum);
                 targetTime = 0;
             } else {
-                const timeParts = val.split(/[:.：]/);
-                let mins = (timeParts.length === 2) ? (parseInt(timeParts[0])*60 + parseInt(timeParts[1])) : parseInt(val);
-                targetTime = Date.now() + (mins * 60000);
+                const totalMins = parseTimeInput(val);
+                targetTime = Date.now() + (totalMins * 60000);
             }
             db.ref(`rooms/${currentRoom}/bosses/${map}_${ch}`).set({ map, ch, targetTime, lastInput: val, displayValue });
             db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
@@ -211,7 +208,6 @@
             list.innerHTML = '';
             Object.values(timers).forEach(clearInterval);
             timers = {};
-
             let sorted = Object.entries(window.currentData || {});
             
             if (currentSort === 'countdown') {
@@ -240,7 +236,9 @@
                 let content = (boss.targetTime === 0) 
                     ? `<div class="timer" style="color:#0f0;">${boss.displayValue} <button class="btn-next" onclick="triggerNext('${boss.map}','${boss.ch}','${boss.lastInput}')">NEXT</button></div>`
                     : `<div class="timer" style="cursor:pointer" onclick="doEdit('${boss.map}','${boss.ch}','${boss.lastInput}')" id="t_${id}">--:--:--</div>`;
-                card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button><h3 onclick="doEdit('${boss.map}','${boss.ch}','${boss.lastInput}')">${boss.map} - ${boss.ch}線</h3>${content}`;
+                
+                // 💡 修改點：將「線」改成「分流」並加上語音報時內容
+                card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button><h3 onclick="doEdit('${boss.map}','${boss.ch}','${boss.lastInput}')">${boss.map} - 分流${boss.ch}</h3>${content}`;
                 list.appendChild(card);
                 if (boss.targetTime !== 0) startTimer(id, boss.targetTime, boss.map, boss.ch);
             });
@@ -264,7 +262,8 @@
                     el.style.color = diff <= 0 ? '#f44' : '#0f0';
                 }
                 if (diff === 0 && !playedAlerts.has(id)) { 
-                    speak(`${map}, ${ch}線, 已重生`); 
+                    // 💡 語音報時同步修改為「分流」
+                    speak(`${map}, 分流 ${ch}, 已重生`); 
                     playedAlerts.add(id); 
                 }
             };
