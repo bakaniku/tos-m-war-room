@@ -31,6 +31,7 @@
         .vol-icon.muted { color: #f44; }
         .vol-range { -webkit-appearance: none; width: 70px; height: 6px; background: #333; border-radius: 3px; outline: none; transition: background 0.2s; margin: 0; padding: 0; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #0f0; border-radius: 50%; cursor: pointer; border: 2px solid #111; margin-top: -4px; }
+        .vol-range::-webkit-slider-runnable-track { width: 100%; height: 6px; border-radius: 3px; cursor: pointer; }
         .vol-range.muted { background: #222 !important; }
         .vol-range.muted::-webkit-slider-thumb { background: #555; }
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; border-radius: 0; margin-bottom: 20px; }
@@ -242,20 +243,22 @@
             }
         };
 
-        // 💡 取得排序分數的核心邏輯
+        // 💡 排序核心邏輯優化
         function getBossScore(boss) {
             const now = Date.now();
-            if (boss.targetTime > now) return 10; // 計時中
-            if (boss.targetTime > 0 && boss.targetTime <= now) return 20; // 已超時
+            // 類別權重：計時(10) < 超時(20) < 階段(30) < ON(40)
+            if (boss.targetTime > now) return 10; 
+            if (boss.targetTime > 0 && boss.targetTime <= now) return 20; 
             
             if (boss.lastInput.startsWith("00")) {
-                // 💡 階段排序強化：將 00X.Y 轉為浮點數
-                // 例如 004.2 會變成 35 - 4.2 = 30.8，比 004.1 (30.9) 更靠前
+                // 💡 階段排序：使用 10 減去階段值，確保 4.2 < 4.1 < 3.2
+                // 例如 004.2 分數 = 30 + (10 - 4.2) = 35.8
+                // 例如 003.2 分數 = 30 + (10 - 3.2) = 36.8
                 let stageVal = parseFloat(boss.lastInput.substring(2)) || 0;
-                return 35 - stageVal; 
+                return 30 + (10 - stageVal); 
             }
             
-            return 40; // ON 排最後
+            return 40; // ON
         }
 
         function renderList() {
@@ -266,28 +269,31 @@
             let sorted = Object.entries(window.currentData || {});
             
             if (currentSort === 'countdown') {
+                // 💡 倒數排序：倒數中 > 已超時 > 階段 > ON
                 sorted.sort((a, b) => {
                     const scoreA = getBossScore(a[1]);
                     const scoreB = getBossScore(b[1]);
                     if (scoreA !== scoreB) return scoreA - scoreB;
-                    return a[1].targetTime - b[1].targetTime || parseInt(a[1].map) - parseInt(b[1].map);
+                    // 同類別時：
+                    if (scoreA === 10) return a[1].targetTime - b[1].targetTime; // 計時中，快重生的在前
+                    if (scoreA === 20) return b[1].targetTime - a[1].targetTime; // 已超時，超時久的在後 (或可自訂)
+                    return parseInt(a[1].map) - parseInt(b[1].map);
                 });
             } else if (currentSort === 'map') {
-                // 💡 等級排序：嚴格以等級為先，分流為後
                 sorted.sort((a, b) => {
                     const mapA = parseInt(a[1].map) || 0;
                     const mapB = parseInt(b[1].map) || 0;
-                    if (mapA !== mapB) return mapA - mapB; // 地圖編號小到大
-                    
-                    const chA = parseInt(a[1].ch) || 0;
-                    const chB = parseInt(b[1].ch) || 0;
-                    return chA - chB; // 同地圖時，分流小到大
+                    if (mapA !== mapB) return mapA - mapB;
+                    return (parseInt(a[1].ch) || 0) - (parseInt(b[1].ch) || 0);
                 });
             } else {
+                // 💡 時間排序
                 sorted.sort((a, b) => {
                     const scoreA = getBossScore(a[1]);
                     const scoreB = getBossScore(b[1]);
+                    // 如果兩邊都有時間 (計時中或超時)，按重生先後排
                     if (scoreA <= 20 && scoreB <= 20) return a[1].targetTime - b[1].targetTime;
+                    // 否則按類別權重 (包含階段 4>3 邏輯)
                     return scoreA - scoreB;
                 });
             }
