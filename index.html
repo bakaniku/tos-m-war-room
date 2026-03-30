@@ -9,31 +9,25 @@
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: sans-serif; display: flex; justify-content: center; }
         #app { width: 100%; max-width: 1000px; min-height: 100vh; padding: 20px; box-sizing: border-box; }
-        
-        /* 登入介面 */
         .login-view { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh; }
         .title { color: #0f0; font-size: 32px; font-weight: bold; margin-bottom: 40px; }
         .input-group { width: 220px; display: flex; flex-direction: column; gap: 15px; }
-        
-        /* 通用元件 */
         input { background: #111; border: 1px solid #333; color: #fff; padding: 12px; border-radius: 8px; font-size: 16px; outline: none; text-align: center; }
         input:focus { border-color: #0f0; }
         button { padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; border: none; }
         .btn-outline { background: none; border: 1px solid #0f0; color: #0f0; }
         .btn-solid { background: #0f0; color: #000; }
-        
-        /* 主介面 */
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         .room-id { color: #0f0; font-size: 20px; font-weight: bold; }
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; border-radius: 0; margin-bottom: 20px; }
-        
-        /* 卡片佈局 */
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
-        .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
-        .card h3 { margin: 0; color: #666; font-size: 12px; }
-        .timer { font-size: 24px; font-weight: bold; margin-top: 8px; font-family: monospace; }
-        .del { position: absolute; top: 5px; right: 10px; color: #444; background: none; border: none; font-size: 18px; cursor: pointer; }
-        
+        /* 卡片增加手勢指引 */
+        .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; cursor: pointer; transition: 0.2s; }
+        .card:hover { border-color: #555; background: #1a1a1a; }
+        .card h3 { margin: 0; color: #666; font-size: 12px; pointer-events: none; }
+        .timer { font-size: 24px; font-weight: bold; margin-top: 8px; font-family: monospace; pointer-events: none; }
+        .del { position: absolute; top: 5px; right: 10px; color: #444; background: none; border: none; font-size: 20px; cursor: pointer; z-index: 10; }
+        .del:hover { color: #f44; }
         .divider { height: 1px; background: #222; margin: 20px 0; }
     </style>
 </head>
@@ -69,15 +63,14 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
         let currentRoom = '';
+        let timers = {}; // 存放定時器引用
 
-        // 進入房間邏輯
         function joinRoom() {
             const id = document.getElementById('roomInput').value.trim().toUpperCase();
             if (!id) return;
             startSession(id);
         }
 
-        // 創建房間邏輯
         function createRoom() {
             const id = Math.random().toString(36).substring(2, 8).toUpperCase();
             startSession(id);
@@ -88,12 +81,9 @@
             document.getElementById('loginView').style.display = 'none';
             document.getElementById('mainView').style.display = 'block';
             document.getElementById('displayID').innerText = '房號：' + id;
-            
-            // 綁定 Enter 鍵
             document.getElementById('bossInput').addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') addBoss();
             });
-
             listenData();
         }
 
@@ -102,9 +92,20 @@
             const p = input.value.trim().split(/\s+/);
             if (p.length < 3) return;
             db.ref(`rooms/${currentRoom}/bosses/${p[0]}_${p[1]}`).set({
-                map: p[0], ch: p[1], targetTime: Date.now() + parseInt(p[2]) * 60000
+                map: p[0], ch: p[1], targetTime: Date.now() + parseInt(p[2]) * 60000,
+                lastMins: p[2] // 紀錄最後輸入的分鐘數，方便編輯
             });
             input.value = '';
+        }
+
+        // 💡 點擊卡片編輯邏輯
+        function editBoss(map, ch, lastMins) {
+            const input = document.getElementById('bossInput');
+            input.value = `${map} ${ch} ${lastMins || 180}`;
+            input.focus();
+            // 自動選取分鐘部分，方便直接改數字
+            const start = `${map} ${ch} `.length;
+            input.setSelectionRange(start, input.value.length);
         }
 
         function listenData() {
@@ -113,12 +114,29 @@
                 const list = document.getElementById('bossList');
                 list.innerHTML = '';
                 
-                // 排序：時間快到的排前面
-                const sorted = Object.entries(data).sort((a, b) => a[1].targetTime - b[1].targetTime);
+                // 清除舊的定時器
+                Object.values(timers).forEach(clearInterval);
+                timers = {};
+
+                // 排序邏輯：負數（過期）優先，其餘按剩餘時間排序
+                const sorted = Object.entries(data).sort((a, b) => {
+                    const diffA = a[1].targetTime - Date.now();
+                    const diffB = b[1].targetTime - Date.now();
+                    if (diffA < 0 && diffB >= 0) return -1;
+                    if (diffA >= 0 && diffB < 0) return 1;
+                    return diffA - diffB;
+                });
 
                 sorted.forEach(([id, boss]) => {
                     const card = document.createElement('div');
                     card.className = 'card';
+                    // 點擊卡片觸發編輯 (排除刪除按鈕)
+                    card.onclick = (e) => {
+                        if (e.target.className !== 'del') {
+                            editBoss(boss.map, boss.ch, boss.lastMins);
+                        }
+                    };
+
                     card.innerHTML = `
                         <button class="del" onclick="deleteBoss('${id}')">×</button>
                         <h3>${boss.map} - ${boss.ch}線</h3>
@@ -146,7 +164,7 @@
                 }
             };
             update();
-            setInterval(update, 1000);
+            timers[id] = setInterval(update, 1000);
         }
     </script>
 </body>
