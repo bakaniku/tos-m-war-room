@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME (BETA)</title>
+    <title>TOS M FB TIME</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: sans-serif; display: flex; justify-content: center; }
         #app { width: 100%; max-width: 1000px; min-height: 100vh; padding: 20px; box-sizing: border-box; }
-        .beta-tag { font-size: 10px; color: #f0f; border: 1px solid #f0f; padding: 2px 4px; border-radius: 4px; margin-left: 5px; vertical-align: middle; }
         .login-view { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh; }
         .title { color: #0f0; font-size: 32px; font-weight: bold; margin-bottom: 40px; }
         .input-group { width: 220px; display: flex; flex-direction: column; gap: 15px; }
@@ -24,33 +23,24 @@
         .copy-icon { width: 18px; height: 18px; vertical-align: middle; margin-left: 8px; cursor: pointer; opacity: 0.7; }
         .copy-icon:hover { opacity: 1; }
         .btn-next { background: #050; color: #0f0; border: 1px solid #0f0; font-size: 11px; padding: 3px 10px; border-radius: 4px; margin-left: 10px; cursor: pointer; display: inline-block; vertical-align: middle; }
+        .btn-next:active { background: #0f0; color: #000; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .room-id { color: #0f0; font-size: 20px; font-weight: bold; }
-        
-        /* 💡 語音控制介面：音量On/Off顏色強化與拉條修正 */
         .vol-group { display: flex; align-items: center; gap: 8px; background: #111; padding: 6px 14px; border-radius: 20px; border: 1px solid #333; }
         .vol-icon { background: none; color: #0f0; padding: 0; font-size: 16px; transition: color 0.2s; }
-        /* 音量關閉時，圖示變紅 */
         .vol-icon.muted { color: #f44; }
-        
-        /* 💡 音量拉條 CSS 修正，確保Full Range滑動 */
         .vol-range { -webkit-appearance: none; width: 70px; height: 6px; background: #333; border-radius: 3px; outline: none; transition: background 0.2s; margin: 0; padding: 0; }
-        .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #0f0; border-radius: 50%; cursor: pointer; border: 2px solid #111; transition: background 0.2s, transform 0.1s; margin-top: -4px; /* 對齊軌道 */ }
+        .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #0f0; border-radius: 50%; cursor: pointer; border: 2px solid #111; margin-top: -4px; }
         .vol-range::-webkit-slider-runnable-track { width: 100%; height: 6px; border-radius: 3px; cursor: pointer; }
-        /* FF */
-        .vol-range::-moz-range-thumb { width: 14px; height: 14px; background: #0f0; border: 2px solid #111; border-radius: 50%; cursor: pointer; }
-        .vol-range::-moz-range-track { background: #333; height: 6px; border-radius: 3px; }
-        
-        /* 💡 音量關閉時，拉條與滑塊變灰色 */
+        .vol-range.muted { background: #222 !important; }
         .vol-range.muted::-webkit-slider-thumb { background: #555; }
-        .vol-range.muted { background: #222 !important; /* 確保軌道也變暗 */ }
-
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; border-radius: 0; margin-bottom: 20px; }
         .sort-row { margin-bottom: 15px; display: flex; gap: 8px; flex-wrap: wrap; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
+        .card h3:hover { color: #fff; border-bottom-color: #0f0; }
         .timer { font-size: 20px; font-weight: bold; margin-top: 8px; font-family: monospace; }
         .del { position: absolute; top: 5px; right: 10px; color: #444; background: none; border: none; font-size: 20px; cursor: pointer; z-index: 10; }
         .idle-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; text-align: center; }
@@ -58,8 +48,14 @@
 </head>
 <body>
     <div id="app">
+        <div id="idleOverlay" class="idle-overlay" style="display:none;">
+            <h2 style="color:#0f0">TOS M FB TIME</h2>
+            <p>連線已斷開（已達 24 小時自動保護限制）</p>
+            <button class="btn-solid" onclick="location.reload()" style="width:200px">重新連接</button>
+        </div>
+
         <div id="loginView" class="login-view">
-            <div class="title">TOS M FB TIME <span class="beta-tag" style="font-size:16px">BETA</span></div>
+            <div class="title">TOS M FB TIME</div>
             <div class="input-group">
                 <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
                 <input type="text" id="roomInput" placeholder="輸入房號" maxlength="6">
@@ -74,7 +70,7 @@
                     <svg class="copy-icon" onclick="copyRoomID()" viewBox="0 0 24 24" fill="none" stroke="#0f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                     
                     <div class="vol-group">
-                        <button id="volBtn" class="vol-icon" onclick="toggleAudio()">🔊</button>
+                        <button id="volBtn" class="vol-icon muted" onclick="toggleAudio()">🔈</button>
                         <input type="range" id="volRange" class="vol-range muted" min="0" max="1" step="0.05" value="0.5">
                     </div>
                     
@@ -106,14 +102,11 @@
         
         let currentRoom = '', timers = {}, isAudioEnabled = false, playedAlerts = new Set(), currentSort = 'time';
 
-        // 統一語音播放，確保音量設定絕對一致
         function speak(text) {
-            // 💡 如果語音未開啟，就算調了滑桿，報時也不會出聲
             if (!isAudioEnabled) return; 
-            
             window.speechSynthesis.cancel(); 
             const msg = new SpeechSynthesisUtterance(text);
-            msg.volume = parseFloat(document.getElementById('volRange').value); // 精確獲取當前滑桿值
+            msg.volume = parseFloat(document.getElementById('volRange').value);
             msg.lang = 'zh-TW';
             msg.rate = 1.1;
             window.speechSynthesis.speak(msg);
@@ -121,26 +114,18 @@
 
         function toggleAudio() {
             isAudioEnabled = !isAudioEnabled;
-            
-            // 💡 視覺強化邏輯
             const volBtn = document.getElementById('volBtn');
             const volRange = document.getElementById('volRange');
-            
             if (isAudioEnabled) {
-                volBtn.innerText = '🔊';
-                volBtn.classList.remove('muted');
-                volRange.classList.remove('muted');
-                volRange.style.background = `linear-gradient(to right, #0f0 0%, #0f0 ${volRange.value * 100}%, #333 ${volRange.value * 100}%, #333 100%)`; // 恢復綠色拉條
+                volBtn.innerText = '🔊'; volBtn.classList.remove('muted'); volRange.classList.remove('muted');
+                volRange.style.background = `linear-gradient(to right, #0f0 0%, #0f0 ${volRange.value * 100}%, #333 ${volRange.value * 100}%, #333 100%)`;
                 speak("語音功能已開啟");
             } else {
-                volBtn.innerText = '🔈';
-                volBtn.classList.add('muted');
-                volRange.classList.add('muted');
-                volRange.style.background = '#222'; // 灰色拉條
+                volBtn.innerText = '🔈'; volBtn.classList.add('muted'); volRange.classList.add('muted');
+                volRange.style.background = '#222';
             }
         }
         
-        // 💡 監聽滑桿，實時更新綠色拉條長度，即便語音關閉也更新（但保持灰色視覺）
         document.getElementById('volRange').addEventListener('input', function() {
             if (isAudioEnabled) {
                 this.style.background = `linear-gradient(to right, #0f0 0%, #0f0 ${this.value * 100}%, #333 ${this.value * 100}%, #333 100%)`;
@@ -177,15 +162,14 @@
             document.getElementById('displayID').innerText = id;
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
             db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
-            
             db.ref(`rooms/${currentRoom}`).on('value', s => {
                 const data = s.val();
                 if (!data) { alert("房間已不存在"); exitRoom(); return; }
                 window.currentData = data.bosses || {};
                 renderList();
             });
-            
             setInterval(checkRoomStatus, 60000);
+            resetIdleTimer();
         }
 
         function exitRoom() { location.reload(); }
@@ -202,6 +186,15 @@
                 }
             });
         }
+
+        function resetIdleTimer() {
+            clearTimeout(window.idleTimer);
+            window.idleTimer = setTimeout(() => {
+                db.goOffline();
+                document.getElementById('idleOverlay').style.display = 'flex';
+            }, 1440 * 60 * 1000); 
+        }
+        window.onmousemove = window.onmousedown = window.ontouchstart = window.onkeydown = resetIdleTimer;
 
         function addBoss() {
             const input = document.getElementById('bossInput');
@@ -320,12 +313,9 @@
         function deleteBoss(id) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
         function clearAllBosses() { if(confirm("確定一鍵清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
         
-        // 💡 初始化拉條背景顏色（開啟視覺與代碼的默認一致）
         window.onload = function() {
             const volRange = document.getElementById('volRange');
-            // 因為預設 isAudioEnabled 為 false，所以預設為灰色拉條
             volRange.style.background = '#222';
-            // 房號輸入框自動聚焦
             if(document.getElementById('roomInput')) document.getElementById('roomInput').focus();
         };
     </script>
