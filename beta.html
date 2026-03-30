@@ -25,6 +25,9 @@
         .copy-icon { width: 18px; height: 18px; vertical-align: middle; margin-left: 8px; cursor: pointer; opacity: 0.7; }
         .copy-icon:hover { opacity: 1; }
 
+        .btn-next { background: #050; color: #0f0; border: 1px solid #0f0; font-size: 11px; padding: 2px 8px; border-radius: 4px; margin-left: 10px; cursor: pointer; position: relative; z-index: 20; }
+        .btn-next:hover { background: #0a0; }
+
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .room-id { color: #0f0; font-size: 20px; font-weight: bold; }
@@ -32,13 +35,9 @@
         .sort-row { margin-bottom: 15px; display: flex; gap: 10px; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; cursor: pointer; }
-        .card:hover { border-color: #555; background: #1a1a1a; }
-        
-        /* 地圖與分流樣式保持強化版 */
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; pointer-events: none; }
-        
         .timer { font-size: 24px; font-weight: bold; margin-top: 8px; font-family: monospace; pointer-events: none; }
-        .del { position: absolute; top: 5px; right: 10px; color: #444; background: none; border: none; font-size: 20px; cursor: pointer; z-index: 10; }
+        .del { position: absolute; top: 5px; right: 10px; color: #444; background: none; border: none; font-size: 20px; cursor: pointer; z-index: 30; }
         .idle-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; text-align: center; }
     </style>
 </head>
@@ -46,7 +45,6 @@
     <div id="app">
         <div id="idleOverlay" class="idle-overlay" style="display:none;">
             <h2 style="color:#0f0">TOS M FB TIME <span class="beta-tag">BETA</span></h2>
-            <p>連線已斷開（已達 24 小時自動保護限制）</p>
             <button class="btn-solid" onclick="location.reload()" style="width:200px">重新連接</button>
         </div>
 
@@ -148,7 +146,6 @@
             resetIdleTimer();
         }
 
-        // 💡 斷線時間修改為 24 小時 (1440 分鐘)
         function resetIdleTimer() {
             clearTimeout(idleTimer);
             idleTimer = setTimeout(() => {
@@ -177,11 +174,12 @@
         }
 
         function saveBoss(map, ch, val) {
-            const stageMap = { "001": "階段1", "002": "階段2", "003": "階段3", "004": "階段4" };
-            let displayValue = stageMap[val] || val;
+            let displayValue = val;
             let targetTime = 0;
 
-            if (stageMap[val]) {
+            if (val.startsWith("00")) {
+                const stageNum = val.substring(2); 
+                displayValue = "階段" + (stageNum.length > 1 ? stageNum.split('').join('.') : stageNum);
                 targetTime = 0;
             } else {
                 const totalMins = parseTimeInput(val);
@@ -193,6 +191,19 @@
             });
             db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
         }
+
+        // 💡 邏輯修正：只要點 NEXT，就取第一個數字 +1，後面全部丟棄
+        window.triggerNext = function(event, map, ch, last) {
+            event.stopPropagation(); 
+            if (last.startsWith("00")) {
+                let firstDigit = last.substring(2, 3); // 取得 00 後的第一個數字
+                if (!isNaN(firstDigit)) {
+                    let nextMainNum = parseInt(firstDigit) + 1;
+                    let nextInput = "00" + nextMainNum; // 重新拼湊，丟棄細分數字 (如 12 變 2)
+                    saveBoss(map, ch, nextInput);
+                }
+            }
+        };
 
         function renderList() {
             const list = document.getElementById('bossList');
@@ -212,9 +223,12 @@
                 card.className = 'card';
                 card.onclick = (e) => { doEdit(boss); };
                 
-                let content = (boss.targetTime === 0) 
-                    ? `<div class="timer" style="color:#0f0;">${boss.displayValue}</div>`
-                    : `<div class="timer" id="t_${id}">--:--</div>`;
+                let content = '';
+                if (boss.targetTime === 0) {
+                    content = `<div class="timer" style="color:#0f0;">${boss.displayValue} <button class="btn-next" onclick="triggerNext(event, '${boss.map}','${boss.ch}','${boss.lastInput}')">NEXT</button></div>`;
+                } else {
+                    content = `<div class="timer" id="t_${id}">--:--</div>`;
+                }
 
                 card.innerHTML = `<button class="del" onclick="event.stopPropagation(); deleteBoss('${id}')">×</button><h3>${boss.map} - ${boss.ch}線</h3>${content}`;
                 list.appendChild(card);
