@@ -3,181 +3,104 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M 戰情室</title>
+    <title>TOS M 戰情室 - 穩定版</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/react-native-web@0.19.10/dist/bundle.js"></script>
+    <style>
+        body { margin: 0; background-color: #000; color: #fff; font-family: sans-serif; overflow-x: hidden; }
+        .container { padding: 20px; display: flex; flexDirection: column; min-height: 100vh; box-sizing: border-box; }
+        .login-box { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; padding: 40px; }
+        .btn { padding: 12px; border-radius: 8px; border: 1px solid #0f0; background: none; color: #0f0; cursor: pointer; width: 100%; font-weight: bold; margin-bottom: 20px; }
+        .btn-solid { background: #0f0; color: #000; border: none; }
+        input { background: none; border: none; border-bottom: 2px solid #333; color: #fff; padding: 10px; font-size: 20px; text-align: center; width: 100%; outline: none; margin-bottom: 20px; }
+        .item { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #222; padding: 10px 0; }
+        .timer { font-family: monospace; font-size: 18px; font-weight: bold; }
+    </style>
 </head>
-<body style="margin:0; padding:0; background-color:#000; color:#fff;">
+<body>
     <div id="root"></div>
 
-    <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
-        const { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity } = ReactNativeWeb;
+    <script>
+        // 使用純 JS 寫法，不依賴 Babel
+        const e = React.createElement;
+        const { useState, useEffect } = React;
 
         const firebaseConfig = {
-          apiKey: "AIzaSyAff__U1cLBr92gYmtbWpm80zO4rHvObUI",
-          authDomain: "tos-m-fb.firebaseapp.com",
-          databaseURL: "https://tos-m-fb-default-rtdb.asia-southeast1.firebasedatabase.app",
-          projectId: "tos-m-fb",
-          storageBucket: "tos-m-fb.firebasestorage.app",
-          messagingSenderId: "182442840060",
-          appId: "1:182442840060:web:8163505d26c96837c6ac79"
+            apiKey: "AIzaSyAff__U1cLBr92gYmtbWpm80zO4rHvObUI",
+            authDomain: "tos-m-fb.firebaseapp.com",
+            databaseURL: "https://tos-m-fb-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "tos-m-fb",
+            storageBucket: "tos-m-fb.firebasestorage.app",
+            messagingSenderId: "182442840060",
+            appId: "1:182442840060:web:8163505d26c96837c6ac79"
         };
 
-        // 立即初始化
-        if (!window.firebase.apps.length) {
-            window.firebase.initializeApp(firebaseConfig);
-        }
-        const database = window.firebase.database();
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
 
         function App() {
-          const [roomID, setRoomID] = useState('');
-          const [tempRoomID, setTempRoomID] = useState('');
-          const [inputText, setInputText] = useState('');
-          const [bossData, setBossData] = useState({});
-          const [isMini, setIsMini] = useState(false);
-          const [tick, setTick] = useState(0);
-          const inputRef = useRef(null);
+            const [roomID, setRoomID] = useState('');
+            const [tempID, setTempID] = useState('');
+            const [bossData, setBossData] = useState({});
+            const [tick, setTick] = useState(0);
 
-          useEffect(() => {
-            const timer = setInterval(() => setTick(t => t + 1), 1000);
-            return () => clearInterval(timer);
-          }, []);
+            useEffect(() => {
+                const timer = setInterval(() => setTick(t => t + 1), 1000);
+                return () => clearInterval(timer);
+            }, []);
 
-          useEffect(() => {
-            if (!roomID) return;
-            const bossRef = database.ref(`rooms/${roomID}/bosses`);
-            const handleValue = (snapshot) => {
-                setBossData(snapshot.val() || {});
-            };
-            bossRef.on('value', handleValue);
-            return () => bossRef.off('value', handleValue);
-          }, [roomID]);
+            useEffect(() => {
+                if (!roomID) return;
+                const ref = db.ref('rooms/' + roomID + '/bosses');
+                ref.on('value', s => setBossData(s.val() || {}));
+                return () => ref.off();
+            }, [roomID]);
 
-          const generateRoom = () => {
-            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-            let result = '';
-            for (let i = 0; i < 6; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
-            setRoomID(result);
-          };
-
-          const handleUpdate = () => {
-            if (!roomID || !inputText.trim()) return;
-            const parts = inputText.trim().split(/\s+/);
-            if (parts.length < 3) return;
-            const [map, ch, status] = parts;
-            const bossId = `${map}_${ch}`;
-            let updateObj = { map, ch, updatedAt: Date.now() };
-            
-            if (status.toUpperCase().includes('R')) {
-              updateObj.type = 'STAGE';
-              updateObj.val = status.toUpperCase();
-            } else if (status.toLowerCase() === 'on') {
-              updateObj.type = 'ON';
-              updateObj.val = 'ON';
-            } else {
-              const mins = parseInt(status);
-              if (!isNaN(mins)) {
-                updateObj.type = 'TIMER';
-                updateObj.targetTime = Date.now() + mins * 60000;
-                updateObj.initialMins = mins;
-              }
+            if (!roomID) {
+                return e('div', { className: 'login-box' },
+                    e('h1', { style: { color: '#0f0' } }, 'TOS M 戰情室'),
+                    e('button', { className: 'btn', onClick: () => setRoomID(Math.random().toString(36).substring(2, 8).toUpperCase()) }, '＋ 創建房間'),
+                    e('input', { placeholder: '輸入代碼', value: tempID, onChange: v => setTempID(v.target.value.toUpperCase()) }),
+                    e('button', { className: 'btn btn-solid', onClick: () => setRoomID(tempID) }, '加入房間')
+                );
             }
-            database.ref(`rooms/${roomID}/bosses/${bossId}`).set(updateObj);
-            setInputText('');
-          };
 
-          const deleteBoss = (id) => { if (roomID) database.ref(`rooms/${roomID}/bosses/${id}`).remove(); };
-          const clearAllInRoom = () => { if (window.confirm("確定要清除所有紀錄嗎？")) database.ref(`rooms/${roomID}/bosses`).remove(); };
-
-          const handleEdit = (boss) => {
-            let currentStatus = boss.type === 'TIMER' ? (boss.initialMins || "0") : boss.val;
-            const prefix = `${boss.map} ${boss.ch} `;
-            const fullText = prefix + currentStatus;
-            setInputText(fullText);
-            setTimeout(() => {
-              if (inputRef.current) {
-                inputRef.current.focus();
-                // 修正手機端 focus 問題
-              }
-            }, 50);
-          };
-
-          const renderStatus = (boss) => {
-            if (boss.type === 'STAGE' || boss.type === 'ON') return { text: boss.val, color: '#0f0' };
-            if (boss.type === 'TIMER') {
-              const diff = Math.floor((boss.targetTime - Date.now()) / 1000);
-              const isOver = diff <= 0;
-              const absDiff = Math.abs(diff);
-              const h = Math.floor(absDiff / 3600), m = Math.floor((absDiff % 3600) / 60), s = absDiff % 60;
-              const timeStr = `${h > 0 ? h + ':' : ''}${m < 10 ? '0' : ''}${m}:${s < 10 ? '0' : ''}${s}`;
-              return !isOver ? { text: timeStr, color: '#0f0' } : { text: `-${timeStr}`, color: '#ff4444' };
-            }
-            return { text: "---", color: "#aaa" };
-          };
-
-          if (!roomID) {
-            return (
-              <div style={s.loginContainer}>
-                <h1 style={s.loginTitle}>TOS M 戰情室</h1>
-                <button style={s.createBtn} onClick={generateRoom}>＋ 創建新房間</button>
-                <input style={s.loginInput} placeholder="輸入代碼加入" value={tempRoomID} onChange={e => setTempRoomID(e.target.value.toUpperCase())}/>
-                <button style={s.loginBtn} onClick={() => setRoomID(tempRoomID)}>加入房間</button>
-              </div>
-            );
-          }
-
-          return (
-            <div style={isMini ? s.miniContainer : s.container}>
-              <div style={s.topRow}>
-                <button onClick={() => setIsMini(!isMini)} style={s.miniBtn}>{isMini ? '▣ 展開' : '▢ 懸浮'}</button>
-                <span style={{fontWeight:'bold'}}>{roomID}</span>
-                {!isMini && <button onClick={clearAllInRoom} style={{color:'#f44', background:'none', border:'none'}}>清除</button>}
-                <button onClick={() => setRoomID('')} style={{color:'#666', background:'none', border:'none'}}>退出</button>
-              </div>
-              <input ref={inputRef} style={s.input} placeholder="地圖 分流 分鐘 (例: 123 3 180)" value={inputText} onChange={e => setInputText(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleUpdate()}/>
-              <div style={isMini ? s.miniListScroll : s.listScroll}>
-                  {Object.entries(bossData).map(([id, boss]) => {
-                    const status = renderStatus(boss);
-                    return (
-                      <div key={id} style={s.itemContainer}>
-                        <button style={s.deleteBtn} onClick={() => deleteBoss(id)}>×</button>
-                        <div style={s.itemMain} onClick={() => handleEdit(boss)}>
-                          <span style={{color: '#666'}}>{boss.map}-{boss.ch}</span>
-                          <span style={{color: status.color, fontWeight: 'bold', fontFamily: 'monospace'}}>{status.text}</span>
-                        </div>
-                      </div>
+            return e('div', { className: 'container' },
+                e('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: '20px' } },
+                    e('span', {style:{color:'#0f0'}}, '房間: ' + roomID),
+                    e('button', { style: { background: 'none', color: '#666', border: 'none' }, onClick: () => setRoomID('') }, '退出')
+                ),
+                e('p', { style: { fontSize: '12px', color: '#444' } }, '請在下方輸入: 地圖 分流 分鐘 (例: 123 3 180)'),
+                e('input', { 
+                    placeholder: '格式: 123 3 180', 
+                    onKeyDown: ev => {
+                        if (ev.key === 'Enter') {
+                            const p = ev.target.value.split(' ');
+                            if (p.length < 3) return;
+                            db.ref('rooms/' + roomID + '/bosses/' + p[0] + '_' + p[1]).set({
+                                map: p[0], ch: p[1], targetTime: Date.now() + parseInt(p[2]) * 60000
+                            });
+                            ev.target.value = '';
+                        }
+                    }
+                }),
+                Object.entries(bossData).map(([id, b]) => {
+                    const diff = Math.floor((b.targetTime - Date.now()) / 1000);
+                    const isOver = diff <= 0;
+                    const timeStr = (isOver ? '-' : '') + new Date(Math.abs(diff) * 1000).toISOString().substr(11, 8);
+                    return e('div', { key: id, className: 'item' },
+                        e('span', null, b.map + '-' + b.ch),
+                        e('span', { className: 'timer', style: { color: isOver ? '#f44' : '#0f0' } }, timeStr),
+                        e('button', { style:{background:'none', border:'none', color:'#444'}, onClick: () => db.ref('rooms/' + roomID + '/bosses/' + id).remove() }, '×')
                     );
-                  })}
-              </div>
-            </div>
-          );
+                })
+            );
         }
 
-        const s = {
-          container: { display:'flex', flexDirection:'column', height:'100vh', padding: '20px', boxSizing:'border-box' },
-          miniContainer: { display:'flex', flexDirection:'column', padding: '10px' },
-          loginContainer: { display:'flex', flexDirection:'column', justifyContent: 'center', alignItems: 'center', height:'100vh', padding: '40px' },
-          loginTitle: { color: '#0f0', fontSize: '32px', marginBottom: '40px' },
-          createBtn: { background:'none', border:'1px solid #0f0', color:'#0f0', padding:'15px', width:'100%', borderRadius:'8px', marginBottom:'20px', cursor:'pointer' },
-          loginInput: { background:'none', border:'none', borderBottom:'2px solid #333', color:'#fff', width:'100%', padding:'10px', fontSize:'20px', textAlign:'center', marginBottom:'20px', outline:'none' },
-          loginBtn: { backgroundColor: '#0f0', border:'none', padding:'12px', width:'100%', borderRadius:'8px', fontWeight:'bold', cursor:'pointer' },
-          topRow: { display:'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' },
-          miniBtn: { background:'none', border:'1px solid #0f0', color:'#0f0', padding:'4px', borderRadius:'4px', fontSize:'12px' },
-          input: { backgroundColor: '#111', border:'none', borderBottom:'1px solid #0f0', color: '#fff', padding: '10px', fontSize: '16px', marginBottom: '10px', outline:'none' },
-          listScroll: { flex: 1, overflowY: 'auto' },
-          miniListScroll: { maxHeight: '200px', overflowY: 'auto' },
-          itemContainer: { display:'flex', alignItems: 'center', borderBottom: '1px solid #222', padding:'5px 0' },
-          deleteBtn: { background:'none', border:'none', color:'#444', fontSize:'20px', padding:'0 15px', cursor:'pointer' },
-          itemMain: { flex: 1, display:'flex', justifyContent: 'space-between', alignItems: 'center', padding:'10px 0', cursor:'pointer' }
-        };
-
         const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        root.render(e(App));
     </script>
 </body>
 </html>
