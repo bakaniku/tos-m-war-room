@@ -77,13 +77,12 @@
         let timers = {};
         let idleTimer;
 
-        // 閒置控制：門檻改為 3 小時
         function resetIdleTimer() {
             clearTimeout(idleTimer);
             idleTimer = setTimeout(() => {
                 db.goOffline();
                 document.getElementById('idleOverlay').style.display = 'flex';
-            }, 3 * 60 * 60 * 1000); // 3小時
+            }, 180 * 60 * 1000); 
         }
         window.onload = window.onmousemove = window.onmousedown = window.ontouchstart = window.onkeydown = resetIdleTimer;
 
@@ -119,8 +118,8 @@
             let targetTime = 0;
             let displayValue = rawVal;
 
-            // 00X 階段轉換邏輯
-            const stageMap = { "001": "第一階段", "002": "第二階段", "003": "第三階段", "004": "第四階段" };
+            // 改為「階段」顯示
+            const stageMap = { "001": "階段1", "002": "階段2", "003": "階段3", "004": "階段4" };
             
             if (stageMap[rawVal]) {
                 displayValue = stageMap[rawVal];
@@ -171,7 +170,8 @@
                     
                     let timerHtml = '';
                     if (boss.targetTime === 0) {
-                        timerHtml = `<div class="timer" style="color:#aaa; font-size:18px;">${boss.displayValue}</div>`;
+                        // 階段也使用綠色 (#0f0)
+                        timerHtml = `<div class="timer" style="color:#0f0;">${boss.displayValue}</div>`;
                     } else {
                         timerHtml = `<div class="timer" id="t_${id}">--:--</div>`;
                     }
@@ -193,7 +193,11 @@
                 const abs = Math.abs(diff);
                 const m = Math.floor(abs / 60);
                 const s = (abs % 60).toString().padStart(2, '0');
-                if (el) { el.innerText = (isOver ? '-' : '') + m + ':' + s; el.style.color = isOver ? '#f44' : '#0f0'; }
+                if (el) { 
+                    // 移除負號，超時依然顯示時間
+                    el.innerText = m + ':' + s; 
+                    el.style.color = isOver ? '#f44' : '#0f0'; 
+                }
             };
             update();
             timers[id] = setInterval(update, 1000);
