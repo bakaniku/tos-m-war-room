@@ -23,7 +23,6 @@
         .copy-icon { width: 18px; height: 18px; vertical-align: middle; margin-left: 8px; cursor: pointer; opacity: 0.7; }
         .copy-icon:hover { opacity: 1; }
         .btn-next { background: #050; color: #0f0; border: 1px solid #0f0; font-size: 11px; padding: 3px 10px; border-radius: 4px; margin-left: 10px; cursor: pointer; display: inline-block; vertical-align: middle; }
-        .btn-next:active { background: #0f0; color: #000; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .room-id { color: #0f0; font-size: 20px; font-weight: bold; }
@@ -32,7 +31,6 @@
         .vol-icon.muted { color: #f44; }
         .vol-range { -webkit-appearance: none; width: 70px; height: 6px; background: #333; border-radius: 3px; outline: none; transition: background 0.2s; margin: 0; padding: 0; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #0f0; border-radius: 50%; cursor: pointer; border: 2px solid #111; margin-top: -4px; }
-        .vol-range::-webkit-slider-runnable-track { width: 100%; height: 6px; border-radius: 3px; cursor: pointer; }
         .vol-range.muted { background: #222 !important; }
         .vol-range.muted::-webkit-slider-thumb { background: #555; }
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; border-radius: 0; margin-bottom: 20px; }
@@ -40,7 +38,6 @@
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
-        .card h3:hover { color: #fff; border-bottom-color: #0f0; }
         .timer { font-size: 20px; font-weight: bold; margin-top: 8px; font-family: monospace; }
         .del { position: absolute; top: 5px; right: 10px; color: #444; background: none; border: none; font-size: 20px; cursor: pointer; z-index: 10; }
         .idle-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; text-align: center; }
@@ -248,15 +245,14 @@
         // 💡 取得排序分數的核心邏輯
         function getBossScore(boss) {
             const now = Date.now();
-            // 優先順序分數 (越小越前面)
             if (boss.targetTime > now) return 10; // 計時中
             if (boss.targetTime > 0 && boss.targetTime <= now) return 20; // 已超時
             
             if (boss.lastInput.startsWith("00")) {
-                // 💡 階段排序修正：004 排最前，001 排最後
-                // 使用 30 減去第一個數字，讓 4 變成 26，1 變成 29 (數值越小越前面)
-                let stageDigit = parseInt(boss.lastInput.substring(2, 3)) || 0;
-                return 35 - stageDigit; 
+                // 💡 階段排序強化：將 00X.Y 轉為浮點數
+                // 例如 004.2 會變成 35 - 4.2 = 30.8，比 004.1 (30.9) 更靠前
+                let stageVal = parseFloat(boss.lastInput.substring(2)) || 0;
+                return 35 - stageVal; 
             }
             
             return 40; // ON 排最後
@@ -274,22 +270,24 @@
                     const scoreA = getBossScore(a[1]);
                     const scoreB = getBossScore(b[1]);
                     if (scoreA !== scoreB) return scoreA - scoreB;
-                    // 同分時 (如同為計時中)，按時間排
                     return a[1].targetTime - b[1].targetTime || parseInt(a[1].map) - parseInt(b[1].map);
                 });
             } else if (currentSort === 'map') {
-                sorted.sort((a, b) => parseInt(a[1].map) - parseInt(b[1].map));
+                // 💡 等級排序：嚴格以等級為先，分流為後
+                sorted.sort((a, b) => {
+                    const mapA = parseInt(a[1].map) || 0;
+                    const mapB = parseInt(b[1].map) || 0;
+                    if (mapA !== mapB) return mapA - mapB; // 地圖編號小到大
+                    
+                    const chA = parseInt(a[1].ch) || 0;
+                    const chB = parseInt(b[1].ch) || 0;
+                    return chA - chB; // 同地圖時，分流小到大
+                });
             } else {
-                // 💡 時間排序：計時卡優先按時間，無計時卡按 4 > 3 > 2 > 1
                 sorted.sort((a, b) => {
                     const scoreA = getBossScore(a[1]);
                     const scoreB = getBossScore(b[1]);
-                    
-                    // 如果兩者都是計時卡，按時間排
-                    if (scoreA <= 20 && scoreB <= 20) {
-                        return a[1].targetTime - b[1].targetTime;
-                    }
-                    // 否則按類別分數排 (包含階段 4>3>2>1 邏輯)
+                    if (scoreA <= 20 && scoreB <= 20) return a[1].targetTime - b[1].targetTime;
                     return scoreA - scoreB;
                 });
             }
