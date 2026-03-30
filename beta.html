@@ -25,8 +25,9 @@
         .copy-icon { width: 18px; height: 18px; vertical-align: middle; margin-left: 8px; cursor: pointer; opacity: 0.7; }
         .copy-icon:hover { opacity: 1; }
 
-        .btn-next { background: #050; color: #0f0; border: 1px solid #0f0; font-size: 11px; padding: 2px 8px; border-radius: 4px; margin-left: 10px; cursor: pointer; position: relative; z-index: 20; }
-        .btn-next:hover { background: #0a0; }
+        /* NEXT 按鈕：增加點擊感與層級 */
+        .btn-next { background: #050; color: #0f0; border: 1px solid #0f0; font-size: 11px; padding: 3px 10px; border-radius: 4px; margin-left: 10px; cursor: pointer; display: inline-block; }
+        .btn-next:active { background: #0f0; color: #000; }
 
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -34,10 +35,16 @@
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; border-radius: 0; margin-bottom: 20px; }
         .sort-row { margin-bottom: 15px; display: flex; gap: 10px; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
-        .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; cursor: pointer; }
-        .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; pointer-events: none; }
-        .timer { font-size: 24px; font-weight: bold; margin-top: 8px; font-family: monospace; pointer-events: none; }
-        .del { position: absolute; top: 5px; right: 10px; color: #444; background: none; border: none; font-size: 20px; cursor: pointer; z-index: 30; }
+        
+        /* 卡片不再綁定全局點擊 */
+        .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
+        
+        /* 💡 編輯功能改為綁定在文字上，並增加底線提示可點擊 */
+        .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
+        .card h3:hover { color: #fff; border-bottom-color: #0f0; }
+        
+        .timer { font-size: 24px; font-weight: bold; margin-top: 8px; font-family: monospace; }
+        .del { position: absolute; top: 5px; right: 10px; color: #444; background: none; border: none; font-size: 20px; cursor: pointer; z-index: 10; }
         .idle-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; text-align: center; }
     </style>
 </head>
@@ -192,15 +199,13 @@
             db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
         }
 
-        // 💡 邏輯修正：只要點 NEXT，就取第一個數字 +1，後面全部丟棄
-        window.triggerNext = function(event, map, ch, last) {
-            event.stopPropagation(); 
+        // 💡 修正後 NEXT 邏輯
+        window.triggerNext = function(map, ch, last) {
             if (last.startsWith("00")) {
-                let firstDigit = last.substring(2, 3); // 取得 00 後的第一個數字
+                let firstDigit = last.substring(2, 3);
                 if (!isNaN(firstDigit)) {
                     let nextMainNum = parseInt(firstDigit) + 1;
-                    let nextInput = "00" + nextMainNum; // 重新拼湊，丟棄細分數字 (如 12 變 2)
-                    saveBoss(map, ch, nextInput);
+                    saveBoss(map, ch, "00" + nextMainNum);
                 }
             }
         };
@@ -221,25 +226,31 @@
             sorted.forEach(([id, boss]) => {
                 const card = document.createElement('div');
                 card.className = 'card';
-                card.onclick = (e) => { doEdit(boss); };
                 
                 let content = '';
                 if (boss.targetTime === 0) {
-                    content = `<div class="timer" style="color:#0f0;">${boss.displayValue} <button class="btn-next" onclick="triggerNext(event, '${boss.map}','${boss.ch}','${boss.lastInput}')">NEXT</button></div>`;
+                    // NEXT 按鈕：獨立元件，不再被 card.onclick 影響
+                    content = `<div class="timer" style="color:#0f0;">${boss.displayValue} <button class="btn-next" onclick="triggerNext('${boss.map}','${boss.ch}','${boss.lastInput}')">NEXT</button></div>`;
                 } else {
-                    content = `<div class="timer" id="t_${id}">--:--</div>`;
+                    // 計時文字：點擊觸發編輯
+                    content = `<div class="timer" style="cursor:pointer" onclick="doEdit('${boss.map}','${boss.ch}','${boss.lastInput}')" id="t_${id}">--:--</div>`;
                 }
 
-                card.innerHTML = `<button class="del" onclick="event.stopPropagation(); deleteBoss('${id}')">×</button><h3>${boss.map} - ${boss.ch}線</h3>${content}`;
+                // 💡 只有 H3 文字點擊會觸發 doEdit
+                card.innerHTML = `
+                    <button class="del" onclick="deleteBoss('${id}')">×</button>
+                    <h3 onclick="doEdit('${boss.map}','${boss.ch}','${boss.lastInput}')">${boss.map} - ${boss.ch}線</h3>
+                    ${content}
+                `;
                 list.appendChild(card);
                 if (boss.targetTime !== 0) startTimer(id, boss.targetTime);
             });
         }
 
-        function doEdit(boss) {
+        function doEdit(map, ch, lastInput) {
             const input = document.getElementById('bossInput');
-            const prefix = `${boss.map} ${boss.ch} `;
-            input.value = prefix + boss.lastInput;
+            const prefix = `${map} ${ch} `;
+            input.value = prefix + lastInput;
             input.focus();
             input.setSelectionRange(prefix.length, input.value.length);
         }
