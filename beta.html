@@ -180,6 +180,11 @@
         function saveBoss(map, ch, val) {
             let displayValue = val;
             let targetTime = 0;
+            const bossID = `${map}_${ch}`;
+
+            // 💡 修正點：更新資料時，清除該 BOSS 的報時紀錄，讓它可以再次報時
+            playedAlerts.delete(bossID);
+
             if (val.toUpperCase() === "ON") {
                 displayValue = "ON"; targetTime = 0;
             } else if (val.startsWith("00")) {
@@ -190,7 +195,7 @@
                 const totalMins = parseTimeInput(val);
                 targetTime = Date.now() + (totalMins * 60000);
             }
-            db.ref(`rooms/${currentRoom}/bosses/${map}_${ch}`).set({ map, ch, targetTime, lastInput: val, displayValue });
+            db.ref(`rooms/${currentRoom}/bosses/${bossID}`).set({ map, ch, targetTime, lastInput: val, displayValue });
             db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
         }
 
@@ -236,8 +241,6 @@
                 let content = (boss.targetTime === 0) 
                     ? `<div class="timer" style="color:#0f0;">${boss.displayValue} <button class="btn-next" onclick="triggerNext('${boss.map}','${boss.ch}','${boss.lastInput}')">NEXT</button></div>`
                     : `<div class="timer" style="cursor:pointer" onclick="doEdit('${boss.map}','${boss.ch}','${boss.lastInput}')" id="t_${id}">--:--:--</div>`;
-                
-                // 💡 修改點：將「線」改成「分流」並加上語音報時內容
                 card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button><h3 onclick="doEdit('${boss.map}','${boss.ch}','${boss.lastInput}')">${boss.map} - 分流${boss.ch}</h3>${content}`;
                 list.appendChild(card);
                 if (boss.targetTime !== 0) startTimer(id, boss.targetTime, boss.map, boss.ch);
@@ -261,8 +264,8 @@
                     el.innerText = `${h>0?h+':':''}${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
                     el.style.color = diff <= 0 ? '#f44' : '#0f0';
                 }
+                // 💡 只要差值為 0 且沒報時過，就報時
                 if (diff === 0 && !playedAlerts.has(id)) { 
-                    // 💡 語音報時同步修改為「分流」
                     speak(`${map}, 分流 ${ch}, 已重生`); 
                     playedAlerts.add(id); 
                 }
