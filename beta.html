@@ -245,8 +245,11 @@
             }
         };
 
-        function getStageScore(input) {
-            return parseFloat(input.substring(2)) || 0;
+        // 💡 取得階段內部的數字
+        function getStageInternalValue(display) {
+            // 從「階段4.2」提取出 4.2
+            const match = display.match(/[\d.]+/);
+            return match ? parseFloat(match[0]) : 0;
         }
 
         function renderList() {
@@ -258,43 +261,43 @@
             const now = Date.now();
 
             if (currentSort === 'countdown') {
+                // 倒數排序：倒數中 > 已超時 > 階段 > ON
                 sorted.sort((a, b) => {
                     const getCat = (boss) => {
                         if (boss.targetTime > now) return 1;
                         if (boss.targetTime > 0) return 2;
-                        if (boss.lastInput.startsWith("00")) return 3;
+                        if (boss.displayValue.includes("階段")) return 3;
                         return 4;
                     };
                     const catA = getCat(a[1]), catB = getCat(b[1]);
                     if (catA !== catB) return catA - catB;
                     if (catA === 1 || catA === 2) return a[1].targetTime - b[1].targetTime;
-                    if (catA === 3) return getStageScore(b[1].lastInput) - getStageScore(a[1].lastInput);
-                    return (parseInt(b[1].map) || 0) - (parseInt(a[1].map) || 0); // 倒數排序內部地圖也高等在前
+                    if (catA === 3) return getStageInternalValue(b[1].displayValue) - getStageInternalValue(a[1].displayValue);
+                    return (parseInt(b[1].map) || 0) - (parseInt(a[1].map) || 0);
                 });
             } else if (currentSort === 'map') {
-                // 💡 地圖排序：等級高等在前，分流編號小在前
+                // 地圖排序：等級高等在前，分流編號小在前
                 sorted.sort((a, b) => {
                     const mapA = parseInt(a[1].map) || 0;
                     const mapB = parseInt(b[1].map) || 0;
-                    if (mapA !== mapB) return mapB - mapA; // 地圖大到小
-                    
-                    const chA = parseInt(a[1].ch) || 0;
-                    const chB = parseInt(b[1].ch) || 0;
-                    return chA - chB; // 分流小到大
+                    if (mapA !== mapB) return mapB - mapA; 
+                    return (parseInt(a[1].ch) || 0) - (parseInt(b[1].ch) || 0);
                 });
             } else {
+                // 時間排序：階段 > 倒數中 > 已超時 > ON
                 sorted.sort((a, b) => {
                     const getCat = (boss) => {
-                        if (boss.lastInput.startsWith("00")) return 1;
-                        if (boss.targetTime > now) return 2;
-                        if (boss.targetTime > 0) return 3;
-                        return 4;
+                        if (boss.displayValue.includes("階段")) return 1; // 階段最先
+                        if (boss.targetTime > now) return 2; // 倒數中
+                        if (boss.targetTime > 0) return 3; // 已超時
+                        return 4; // ON
                     };
                     const catA = getCat(a[1]), catB = getCat(b[1]);
                     if (catA !== catB) return catA - catB;
-                    if (catA === 1) return getStageScore(b[1].lastInput) - getStageScore(a[1].lastInput);
+                    
+                    if (catA === 1) return getStageInternalValue(b[1].displayValue) - getStageInternalValue(a[1].displayValue);
                     if (catA === 2 || catA === 3) return a[1].targetTime - b[1].targetTime;
-                    return (parseInt(b[1].map) || 0) - (parseInt(a[1].map) || 0); // 時間排序內部地圖也高等在前
+                    return (parseInt(b[1].map) || 0) - (parseInt(a[1].map) || 0);
                 });
             }
 
