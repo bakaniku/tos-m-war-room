@@ -135,7 +135,7 @@
         });
 
         function copyRoomID() {
-            navigator.clipboard.writeText(currentRoom).then(() => alert('房號 ' + currentRoom + ' 已複製！'));
+            navigator.clipboard.Text(currentRoom).then(() => alert('房號 ' + currentRoom + ' 已複製！'));
         }
 
         function setSort(type) {
@@ -161,13 +161,17 @@
             document.getElementById('mainView').style.display = 'block';
             document.getElementById('displayID').innerText = id;
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
-            db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
+            
+            // 💡 僅在創建或進入時建立一次基準時間，但不持續自動更新
+            db.ref(`rooms/${currentRoom}/lastActive`).transaction((current) => current || Date.now());
+            
             db.ref(`rooms/${currentRoom}`).on('value', s => {
                 const data = s.val();
-                if (!data) { alert("房間已不存在"); exitRoom(); return; }
+                if (!data) { exitRoom(); return; }
                 window.currentData = data.bosses || {};
                 renderList();
             });
+            
             setInterval(checkRoomStatus, 60000);
             resetIdleTimer();
         }
@@ -179,10 +183,19 @@
             db.ref(`rooms/${currentRoom}`).once('value', s => {
                 const d = s.val();
                 if (!d) return;
+
                 const bossCount = d.bosses ? Object.keys(d.bosses).length : 0;
                 const idleTime = Date.now() - (d.lastActive || 0);
-                if (idleTime > 24 * 60 * 60 * 1000 || (bossCount === 0 && idleTime > 60 * 60 * 1000)) {
-                    db.ref(`rooms/${currentRoom}`).remove(); exitRoom();
+
+                // 💡 邏輯修正：只要卡片是空的，超過 30 分鐘沒新增卡片動作就刪除
+                if (bossCount === 0 && idleTime > 30 * 60 * 1000) {
+                    db.ref(`rooms/${currentRoom}`).remove();
+                    return;
+                }
+
+                // 💡 無論有無卡片，24 小時沒人動過就強制回收
+                if (idleTime > 24 * 60 * 60 * 1000) {
+                    db.ref(`rooms/${currentRoom}`).remove();
                 }
             });
         }
@@ -194,7 +207,6 @@
                 document.getElementById('idleOverlay').style.display = 'flex';
             }, 1440 * 60 * 1000); 
         }
-        window.onmousemove = window.onmousedown = window.ontouchstart = window.onkeydown = resetIdleTimer;
 
         function addBoss() {
             const input = document.getElementById('bossInput');
@@ -233,6 +245,7 @@
                 targetTime = Date.now() + (totalMins * 60000);
             }
             db.ref(`rooms/${currentRoom}/bosses/${bossID}`).set({ map, ch, targetTime, lastInput: val, displayValue });
+            // 💡 只有實質的操作（存檔）才會更新 lastActive
             db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
         }
 
@@ -245,9 +258,7 @@
             }
         };
 
-        // 💡 取得階段內部的數字
         function getStageInternalValue(display) {
-            // 從「階段4.2」提取出 4.2
             const match = display.match(/[\d.]+/);
             return match ? parseFloat(match[0]) : 0;
         }
@@ -261,7 +272,6 @@
             const now = Date.now();
 
             if (currentSort === 'countdown') {
-                // 倒數排序：倒數中 > 已超時 > 階段 > ON
                 sorted.sort((a, b) => {
                     const getCat = (boss) => {
                         if (boss.targetTime > now) return 1;
@@ -276,7 +286,6 @@
                     return (parseInt(b[1].map) || 0) - (parseInt(a[1].map) || 0);
                 });
             } else if (currentSort === 'map') {
-                // 地圖排序：等級高等在前，分流編號小在前
                 sorted.sort((a, b) => {
                     const mapA = parseInt(a[1].map) || 0;
                     const mapB = parseInt(b[1].map) || 0;
@@ -284,17 +293,15 @@
                     return (parseInt(a[1].ch) || 0) - (parseInt(b[1].ch) || 0);
                 });
             } else {
-                // 時間排序：階段 > 倒數中 > 已超時 > ON
                 sorted.sort((a, b) => {
                     const getCat = (boss) => {
-                        if (boss.displayValue.includes("階段")) return 1; // 階段最先
-                        if (boss.targetTime > now) return 2; // 倒數中
-                        if (boss.targetTime > 0) return 3; // 已超時
-                        return 4; // ON
+                        if (boss.displayValue.includes("階段")) return 1;
+                        if (boss.targetTime > now) return 2;
+                        if (boss.targetTime > 0) return 3;
+                        return 4;
                     };
                     const catA = getCat(a[1]), catB = getCat(b[1]);
                     if (catA !== catB) return catA - catB;
-                    
                     if (catA === 1) return getStageInternalValue(b[1].displayValue) - getStageInternalValue(a[1].displayValue);
                     if (catA === 2 || catA === 3) return a[1].targetTime - b[1].targetTime;
                     return (parseInt(b[1].map) || 0) - (parseInt(a[1].map) || 0);
@@ -339,8 +346,17 @@
             timers[id] = setInterval(update, 1000);
         }
 
-        function deleteBoss(id) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
-        function clearAllBosses() { if(confirm("確定一鍵清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
+        function deleteBoss(id) { 
+            db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); 
+            db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
+        }
+        
+        function clearAllBosses() { 
+            if(confirm("確定一鍵清除？")) {
+                db.ref(`rooms/${currentRoom}/bosses`).remove();
+                db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
+            }
+        }
         
         window.onload = function() {
             const volRange = document.getElementById('volRange');
