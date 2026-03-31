@@ -245,21 +245,7 @@
             }
         };
 
-        // 💡 修正後的排序核心邏輯 (使用類別大區間隔離)
-        function getBossCategoryScore(boss) {
-            const now = Date.now();
-            // 1. 倒數計時中 (綠字)
-            if (boss.targetTime > now) return 100;
-            // 2. 已超時 (紅字)
-            if (boss.targetTime > 0 && boss.targetTime <= now) return 200;
-            // 3. 階段系列 (00X.Y)
-            if (boss.lastInput.startsWith("00")) return 300;
-            // 4. ON 系列
-            return 400;
-        }
-
-        function getStageInternalScore(input) {
-            // 解析 004.2 變成 4.2
+        function getStageScore(input) {
             return parseFloat(input.substring(2)) || 0;
         }
 
@@ -269,46 +255,46 @@
             Object.values(timers).forEach(clearInterval);
             timers = {};
             let sorted = Object.entries(window.currentData || {});
-            
+            const now = Date.now();
+
             if (currentSort === 'countdown') {
-                // 倒數排序：倒數中(100) > 已超時(200) > 階段(300) > ON(400)
                 sorted.sort((a, b) => {
-                    const scoreA = getBossCategoryScore(a[1]);
-                    const scoreB = getBossCategoryScore(b[1]);
-                    
-                    if (scoreA !== scoreB) return scoreA - scoreB;
-                    
-                    // 同類別時：
-                    if (scoreA === 100) return a[1].targetTime - b[1].targetTime; // 倒數中：快出的在前
-                    if (scoreA === 200) return a[1].targetTime - b[1].targetTime; // 已超時：超時久的在前 (時間戳更小)
-                    if (scoreA === 300) return getStageInternalScore(b[1].lastInput) - getStageInternalScore(a[1].lastInput); // 階段：4.2 > 4.1 > 3
-                    return parseInt(a[1].map) - parseInt(b[1].map); // ON: 按地圖
+                    const getCat = (boss) => {
+                        if (boss.targetTime > now) return 1;
+                        if (boss.targetTime > 0) return 2;
+                        if (boss.lastInput.startsWith("00")) return 3;
+                        return 4;
+                    };
+                    const catA = getCat(a[1]), catB = getCat(b[1]);
+                    if (catA !== catB) return catA - catB;
+                    if (catA === 1 || catA === 2) return a[1].targetTime - b[1].targetTime;
+                    if (catA === 3) return getStageScore(b[1].lastInput) - getStageScore(a[1].lastInput);
+                    return (parseInt(b[1].map) || 0) - (parseInt(a[1].map) || 0); // 倒數排序內部地圖也高等在前
                 });
             } else if (currentSort === 'map') {
-                // 等級排序：地圖 > 分流 (不分狀態)
+                // 💡 地圖排序：等級高等在前，分流編號小在前
                 sorted.sort((a, b) => {
                     const mapA = parseInt(a[1].map) || 0;
                     const mapB = parseInt(b[1].map) || 0;
-                    if (mapA !== mapB) return mapA - mapB;
-                    return (parseInt(a[1].ch) || 0) - (parseInt(b[1].ch) || 0);
+                    if (mapA !== mapB) return mapB - mapA; // 地圖大到小
+                    
+                    const chA = parseInt(a[1].ch) || 0;
+                    const chB = parseInt(b[1].ch) || 0;
+                    return chA - chB; // 分流小到大
                 });
             } else {
-                // 時間排序：(計時中與已超時) 合併排序 > 階段 > ON
                 sorted.sort((a, b) => {
-                    const scoreA = getBossCategoryScore(a[1]);
-                    const scoreB = getBossCategoryScore(b[1]);
-                    
-                    const isTimedA = scoreA <= 200;
-                    const isTimedB = scoreB <= 200;
-                    
-                    if (isTimedA && isTimedB) return a[1].targetTime - b[1].targetTime; // 倒數+超時合併按時間排
-                    if (isTimedA && !isTimedB) return -1; // 計時卡排在階段卡前面
-                    if (!isTimedA && isTimedB) return 1;
-                    
-                    // 剩下的階段跟 ON 排序
-                    if (scoreA !== scoreB) return scoreA - scoreB;
-                    if (scoreA === 300) return getStageInternalScore(b[1].lastInput) - getStageInternalScore(a[1].lastInput);
-                    return parseInt(a[1].map) - parseInt(b[1].map);
+                    const getCat = (boss) => {
+                        if (boss.lastInput.startsWith("00")) return 1;
+                        if (boss.targetTime > now) return 2;
+                        if (boss.targetTime > 0) return 3;
+                        return 4;
+                    };
+                    const catA = getCat(a[1]), catB = getCat(b[1]);
+                    if (catA !== catB) return catA - catB;
+                    if (catA === 1) return getStageScore(b[1].lastInput) - getStageScore(a[1].lastInput);
+                    if (catA === 2 || catA === 3) return a[1].targetTime - b[1].targetTime;
+                    return (parseInt(b[1].map) || 0) - (parseInt(a[1].map) || 0); // 時間排序內部地圖也高等在前
                 });
             }
 
