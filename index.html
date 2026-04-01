@@ -21,28 +21,29 @@
         .btn-toggle { background: #222; color: #888; font-size: 12px; padding: 5px 10px; border: 1px solid #444; }
         .btn-toggle.active { background: #050; color: #0f0; border-color: #0f0; }
         
-        /* 💡 複製鍵尺寸固定 */
-        .copy-icon { width: 18px; height: 18px; min-width: 18px; min-height: 18px; vertical-align: middle; cursor: pointer; opacity: 0.7; transition: 0.2s; }
-        .copy-icon:hover { opacity: 1; }
-        
-        .btn-next { background: #050; color: #0f0; border: 1px solid #0f0; font-size: 11px; padding: 3px 10px; border-radius: 4px; cursor: pointer; display: inline-block; margin-top: 8px; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
+        .copy-icon { width: 18px; height: 18px; min-width: 18px; min-height: 18px; vertical-align: middle; cursor: pointer; opacity: 0.7; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 15px; }
         .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .room-id { color: #0f0; font-size: 20px; font-weight: bold; line-height: 1; }
         
+        .user-list-bar { font-size: 12px; color: #666; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #222; }
+        .online-count { color: #0f0; font-weight: bold; margin-left: 5px; }
+
         .vol-group { display: flex; align-items: center; gap: 8px; background: #111; padding: 6px 14px; border-radius: 20px; border: 1px solid #333; height: 32px; box-sizing: border-box; }
         .vol-icon { background: none; color: #0f0; padding: 0; font-size: 16px; transition: color 0.2s; cursor: pointer; }
         .vol-icon.muted { color: #777; }
+        
         .vol-range { -webkit-appearance: none; width: 70px; height: 6px; background: #333; border-radius: 3px; outline: none; transition: background 0.2s; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #0f0; border-radius: 50%; cursor: pointer; border: 2px solid #111; transition: background 0.2s; }
-        .vol-range.muted::-webkit-slider-thumb { background: #555; }
+        /* 靜音時拉桿圓點變灰 */
+        .vol-range.muted::-webkit-slider-thumb { background: #555 !important; }
         
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; border-radius: 0; margin-bottom: 5px; font-size: 16px; color: #fff; padding: 8px 0; }
         .duplicate-alert { color: #f44; font-size: 12px; height: 18px; margin-bottom: 10px; }
         .sort-row { margin-bottom: 15px; display: flex; gap: 8px; flex-wrap: wrap; }
         
         .grid-section { margin-bottom: 30px; }
-        .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
         .section-label { color: #555; font-size: 11px; border-left: 2px solid #333; padding-left: 8px; text-transform: uppercase; letter-spacing: 1px; }
         .btn-switch { background: #222; color: #0f0; font-size: 10px; padding: 2px 8px; border: 1px solid #444; border-radius: 4px; cursor: pointer; }
 
@@ -50,16 +51,35 @@
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
         
-        /* 💡 修正 ON 與 階段 的字體大小一致性 */
         .timer { font-size: 20px; font-weight: bold; margin-top: 8px; font-family: monospace; }
-        .timer-label { font-size: 20px; } /* 強制 ON 或 階段 文字大小相同 */
-        .timer-sub { font-size: 16px; margin-left: 4px; opacity: 0.8; } /* 括號內的計時稍微小一點點 */
+        .timer-label { font-size: 20px; } 
+        .timer-sub { font-size: 16px; margin-left: 4px; opacity: 0.8; } 
+        
+        .warning-icon { 
+            display: inline-block; 
+            margin-left: 8px; 
+            font-size: 18px; 
+            animation: warn-flash 0.8s infinite;
+        }
+        @keyframes warn-flash { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.2); } }
+
+        .btn-next { 
+            background: #000; 
+            font-size: 12px; 
+            font-weight: bold;
+            padding: 4px 12px; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            display: inline-block; 
+            margin-top: 8px;
+            transition: 0.2s;
+            border: 2px solid; 
+        }
 
         .timer-container { display: flex; flex-direction: column; align-items: flex-start; }
         .del { position: absolute; top: 5px; right: 10px; color: #444; background: none; border: none; font-size: 20px; cursor: pointer; }
-        .warning-yellow { color: #ff0 !important; }
         
-        @keyframes flash { 0%, 100% { opacity: 1; color: #0f0; } 50% { opacity: 0.3; color: #fff; } }
+        @keyframes flash { 0%, 100% { opacity: 1; color: #fff; } 50% { opacity: 0.3; } }
         .flash-anim { animation: flash 0.5s step-end 10; }
         .idle-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
     </style>
@@ -74,6 +94,7 @@
         <div id="loginView" class="login-view">
             <div class="title">TOS M FB TIME</div>
             <div class="input-group">
+                <input type="text" id="userNameInput" placeholder="你的稱呼 (選填)" maxlength="10">
                 <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
                 <input type="text" id="roomInput" placeholder="輸入房號" maxlength="6">
                 <button class="btn-solid" onclick="joinRoom()">進入房間</button>
@@ -92,6 +113,11 @@
                     <button class="btn-danger" onclick="clearAllBosses()">一鍵清除</button>
                 </div>
                 <button style="background:none; color:#444;" onclick="exitRoom()">退出</button>
+            </div>
+
+            <div class="user-list-bar">
+                目前在線:<span class="online-count" id="onlineCount">0</span>人
+                <div id="onlineUsers" style="margin-top:5px; color:#444;">名單載入中...</div>
             </div>
 
             <div class="sort-row">
@@ -117,7 +143,8 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
         let currentRoom = '', timers = {}, isAudioEnabled = false, playedAlerts = new Set(), currentSort = 'group';
-        let timerPriority = 'overtime'; 
+        let timerPriority = 'overtime', myName = '無名戰友', colorMode = 1; 
+        let showWarningIcon = true; // 警告符號開關
 
         function speak(text) {
             if (!isAudioEnabled) return;
@@ -133,7 +160,7 @@
             const btn = document.getElementById('volBtn'), range = document.getElementById('volRange');
             if (isAudioEnabled) {
                 btn.innerText = '🔊'; btn.classList.remove('muted'); range.classList.remove('muted');
-                updateRangeBg(range); speak("語音已開啟");
+                updateRangeBg(range); speak("語音功能已開啟");
             } else {
                 btn.innerText = '🔈'; btn.classList.add('muted'); range.classList.add('muted'); 
                 range.style.background = '#222';
@@ -144,6 +171,8 @@
             if (isAudioEnabled) {
                 const val = range.value * 100;
                 range.style.background = `linear-gradient(to right, #0f0 0%, #0f0 ${val}%, #333 ${val}%, #333 100%)`;
+            } else {
+                range.style.background = '#222';
             }
         }
         document.getElementById('volRange').addEventListener('input', function() { updateRangeBg(this); });
@@ -162,6 +191,16 @@
             renderList();
         }
 
+        function toggleColorMode() {
+            colorMode = (colorMode === 1) ? 2 : 1;
+            renderList();
+        }
+
+        function toggleWarning() {
+            showWarningIcon = !showWarningIcon;
+            renderList();
+        }
+
         function toggleTimerPriority() {
             timerPriority = (timerPriority === 'overtime') ? 'countdown' : 'overtime';
             renderList();
@@ -169,11 +208,25 @@
 
         function startSession(id) {
             currentRoom = id;
+            const inputName = document.getElementById('userNameInput').value.trim();
+            if (inputName) myName = inputName;
             document.getElementById('loginView').style.display = 'none';
             document.getElementById('mainView').style.display = 'block';
             document.getElementById('displayID').innerText = id;
             document.getElementById('bossInput').addEventListener('input', checkDuplicate);
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
+            
+            const myPresenceRef = db.ref(`rooms/${currentRoom}/users`).push();
+            myPresenceRef.set({ name: myName });
+            myPresenceRef.onDisconnect().remove();
+
+            db.ref(`rooms/${currentRoom}/users`).on('value', s => {
+                const users = s.val() || {};
+                const userNames = Object.values(users).map(u => u.name);
+                document.getElementById('onlineCount').innerText = userNames.length;
+                document.getElementById('onlineUsers').innerText = "在線名單: " + userNames.join(', ');
+            });
+
             db.ref(`rooms/${currentRoom}/lastActive`).transaction((c) => c || Date.now());
             db.ref(`rooms/${currentRoom}`).on('value', s => {
                 const data = s.val(); if (!data) { location.reload(); return; }
@@ -209,16 +262,9 @@
             if (p.length < 3) return; saveBoss(p[0], p[1], p[2]); input.value = '';
         }
 
-        function parseTime(val) {
-            val = val.toLowerCase(); if (val.endsWith('s')) return parseFloat(val) / 60;
-            const p = val.split(/[:.：]/);
-            if (p.length === 3) return (parseInt(p[0])*60) + parseInt(p[1]) + (parseInt(p[2])/60);
-            if (p.length === 2) return (parseInt(p[0])*60) + parseInt(p[1]);
-            return parseFloat(val) || 0;
-        }
-
         function saveBoss(map, ch, val) {
             const id = `${map}_${ch}`;
+            const old = window.currentData ? window.currentData[id] : null;
             let dv = val, tt = 0, flash = false;
             playedAlerts.delete(id);
 
@@ -227,7 +273,6 @@
             } else if (val.startsWith("00")) {
                 const n = val.substring(2); 
                 dv = "階段" + (n.length > 1 ? n.split('').join('.') : n);
-                const old = window.currentData ? window.currentData[id] : null;
                 if (old && old.lastInput.startsWith("003") && val.startsWith("004")) flash = true;
             } else {
                 tt = Date.now() + (parseTime(val) * 60000);
@@ -237,6 +282,18 @@
                 map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash
             });
             db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
+
+            setTimeout(() => {
+                db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false);
+            }, 5000);
+        }
+
+        function parseTime(val) {
+            val = val.toLowerCase(); if (val.endsWith('s')) return parseFloat(val) / 60;
+            const p = val.split(/[:.：]/);
+            if (p.length === 3) return (parseInt(p[0])*60) + parseInt(p[1]) + (parseInt(p[2])/60);
+            if (p.length === 2) return (parseInt(p[0])*60) + parseInt(p[1]);
+            return parseFloat(val) || 0;
         }
 
         function renderList() {
@@ -244,7 +301,6 @@
             container.innerHTML = '';
             Object.values(timers).forEach(clearInterval); timers = {};
             const all = Object.entries(window.currentData || {}), now = Date.now();
-
             const getStageNum = (v) => {
                 if (v.displayValue === "ON") return 999; 
                 const match = v.displayValue.match(/[\d.]+/);
@@ -259,19 +315,12 @@
                 return list.sort((a,b) => {
                     const getC = (v) => v.targetTime > now ? 1 : (v.targetTime > 0 ? 2 : (v.displayValue === "ON" ? 3 : (v.displayValue.includes("階段") ? 4 : 5)));
                     const cA = getC(a[1]), cB = getC(b[1]);
-
-                    if (!isTimerSection && (cA === 3 || cA === 4) && (cB === 3 || cB === 4)) {
-                        return getStageNum(b[1]) - getStageNum(a[1]);
-                    }
-
+                    if (!isTimerSection && (cA >= 3 && cB >= 3)) return getStageNum(b[1]) - getStageNum(a[1]);
                     if (isTimerSection && (currentSort === 'group' || currentSort === 'countdown')) {
                         if (timerPriority === 'overtime') { if (cA !== cB) return cB - cA; }
                         else { if (cA !== cB) return cA - cB; }
-                        return a[1].targetTime - b[1].targetTime;
                     }
-                    if (cA !== cB) return cA - cB;
-                    if (cA <= 2) return a[1].targetTime - b[1].targetTime;
-                    return parseInt(b[1].map) - parseInt(a[1].map);
+                    return a[1].targetTime - b[1].targetTime || parseInt(b[1].map) - parseInt(a[1].map);
                 });
             };
 
@@ -279,17 +328,28 @@
                 if (items.length === 0) return;
                 const sec = document.createElement('div');
                 sec.className = 'grid-section';
-                let switchBtn = isTimer && (currentSort === 'group' || currentSort === 'countdown') ? `<button class="btn-switch" onclick="toggleTimerPriority()">${timerPriority === 'overtime' ? '已超時優先' : '計時中優先'}</button>` : '';
-                sec.innerHTML = `<div class="section-header"><div class="section-label">${label}</div>${switchBtn}</div><div class="grid"></div>`;
+                
+                let controls = '';
+                if (!isTimer && currentSort === 'group') {
+                    controls = `
+                        <button class="btn-switch" onclick="toggleColorMode()">${colorMode === 1 ? '漸層模式' : '模式2 (分段)'}</button>
+                        <button class="btn-switch" onclick="toggleWarning()">${showWarningIcon ? '警告：開啟' : '警告：關閉'}</button>
+                    `;
+                } else if (isTimer && (currentSort === 'group' || currentSort === 'countdown')) {
+                    controls = `<button class="btn-switch" onclick="toggleTimerPriority()">${timerPriority === 'overtime' ? '已超時優先' : '計時中優先'}</button>`;
+                }
+
+                sec.innerHTML = `<div class="section-header"><div class="section-label">${label}</div>${controls}</div><div class="grid"></div>`;
                 container.appendChild(sec);
                 const grid = sec.querySelector('.grid');
+                
                 sortFunc(items, isTimer).forEach(([id, b]) => {
                     const card = document.createElement('div');
                     card.className = 'card';
                     card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button>
                         <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - 分流${b.ch}</h3>
                         <div class="timer-container"><div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}">...</div>
-                        ${b.targetTime === 0 ? `<button class="btn-next" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>` : ''}</div>`;
+                        ${b.targetTime === 0 ? `<button class="btn-next" id="btn_${id}" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>` : ''}</div>`;
                     grid.appendChild(card); startTimer(id, b);
                 });
             };
@@ -299,27 +359,47 @@
         }
 
         function startTimer(id, boss) {
-            const el = document.getElementById(`t_${id}`); if (!el) return;
+            const el = document.getElementById(`t_${id}`), nextBtn = document.getElementById(`btn_${id}`);
             const up = () => {
                 const now = Date.now();
                 if (boss.targetTime > 0) {
                     const d = Math.floor((boss.targetTime - now) / 1000), a = Math.abs(d);
                     const h = Math.floor(a/3600), m = Math.floor((a%3600)/60), s = a%60;
                     el.innerText = `${h>0?h+':':''}${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
-                    el.style.color = d <= 0 ? '#f44' : '#0f0';
-                    if (d === 0 && !playedAlerts.has(id)) { speak(`${boss.map}, 分流 ${boss.ch}, 已重生`); playedAlerts.add(id); }
+                    el.style.color = d <= 0 ? '#ff3300' : '#0f0';
                 } else {
                     const sec = Math.floor((now - boss.startTime) / 1000), m = Math.floor(sec/60), s = sec%60;
-                    // 💡 渲染邏輯拆分：標籤(ON/階段) 與 計時分離
                     const label = boss.displayValue;
                     const sub = `(${m}:${s.toString().padStart(2,'0')})`;
-                    el.innerHTML = `<span class="timer-label">${label}</span><span class="timer-sub">${sub}</span>`;
                     
-                    el.classList.remove('warning-yellow');
-                    if (boss.displayValue.includes("階段")) {
-                        const lv = parseFloat(boss.lastInput.substring(2));
-                        if ((lv < 2 && m >= 10) || (lv < 3 && lv >= 2 && m >= 7) || (lv < 4 && lv >= 3 && m >= 5) || (lv >= 4 && m >= 3)) el.classList.add('warning-yellow');
+                    let isWarn = false;
+                    const lvStr = boss.lastInput.substring(2);
+                    const lv = boss.displayValue === "ON" ? 99 : parseFloat(lvStr);
+                    
+                    // 💡 階段 1 改為 12 分鐘警告
+                    if ((lv < 2 && m >= 12) || (lv < 3 && lv >= 2 && m >= 7) || (lv < 4 && lv >= 3 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3)) {
+                        isWarn = true;
                     }
+
+                    el.innerHTML = `<span class="timer-label">${label}</span><span class="timer-sub">${sub}</span>${(showWarningIcon && isWarn) ? '<span class="warning-icon">⚠️</span>' : ''}`;
+                    
+                    let color = '#fff';
+                    if (colorMode === 1) {
+                        if (label === "ON") color = '#ff0000';
+                        else {
+                            if (lv < 2) color = '#00ff00';      
+                            else if (lv < 3) color = '#adff2f'; 
+                            else if (lv < 4) color = '#ffff00'; 
+                            else color = '#ff9900';             
+                        }
+                    } else {
+                        if (label === "ON") color = '#ff0000';
+                        else if (lv >= 4) color = '#ff9900';
+                        else color = '#ffff00';
+                    }
+                    
+                    el.style.color = color;
+                    if (nextBtn) { nextBtn.style.color = color; nextBtn.style.borderColor = color; }
                 }
             };
             up(); timers[id] = setInterval(up, 1000);
