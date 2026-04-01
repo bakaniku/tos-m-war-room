@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME</title>
+    <title>TOS M FB TIME - 穩定修復版</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -65,11 +65,12 @@
     <div id="app">
         <div id="modalOverlay" class="modal-overlay" onclick="toggleManual()"></div>
         <div id="manualModal" class="modal">
-            <h3 style="color:#0f0; margin-top:0;">📜 邏輯修正版</h3>
+            <h3 style="color:#0f0; margin-top:0;">📜 格式分流說明</h3>
             <div style="font-size:13px; line-height:1.5; color:#ccc; white-space: pre-wrap;">
-1. 優先權修正：輸入時間(如 30 或 12:00) 絕對不會被誤判為階段。
-2. NEXT 跳階：1.x 點擊必跳 002，2.x 必跳 003，不再直跳 ON。
-3. 閃爍控制：僅 004 與 ON 會閃爍，其餘小數階段保持靜止。
+1. 階段：**必須**以 00 開頭（例：001, 001.2）。
+2. 時間：純數字或冒號（例：30, 12:50）一律視為計時。
+3. NEXT：1.x 點擊必跳 002，以此類推。
+4. 閃爍：只有 004 或 ON 會閃爍與叮聲。
             </div>
             <button class="btn-solid" style="width:100%; margin-top:10px; padding:10px;" onclick="toggleManual()">確認</button>
         </div>
@@ -107,7 +108,7 @@
                 在線:<span id="onlineCount" style="color:#0f0;">0</span> | <span id="onlineUsers">載入中...</span>
             </div>
 
-            <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 分鐘/00X/XX數字">
+            <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 00X(階段) / 分鐘(計時)">
             <div id="duplicateWarn"></div>
 
             <div class="sort-row">
@@ -136,7 +137,6 @@
         let currentRoom = '', timers = {}, currentSort = 'group';
         let isVoiceEnabled = false, isSfxEnabled = false;
         let myName = '無名戰友', colorMode = 1, showWarningIcon = true, audioCtx = null, playedAlerts = new Set();
-        let timerPriority = 'overtime';
         window.currentData = {};
 
         function unlockAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); }
@@ -152,12 +152,10 @@
 
         document.getElementById('bossInput').addEventListener('input', function(e) {
             const p = e.target.value.trim().split(/\s+/);
-            const warnEl = document.getElementById('duplicateWarn');
             if (p.length >= 2 && window.currentData) {
                 const id = `${p[0]}_${p[1]}`;
-                if (window.currentData[id]) { warnEl.innerText = `⚠️ 警告：${p[0]} 分流 ${p[1]} 已存在資料`; return; }
+                document.getElementById('duplicateWarn').innerText = window.currentData[id] ? `⚠️ 警告：${p[0]} 分流 ${p[1]} 已存在資料` : '';
             }
-            warnEl.innerText = '';
         });
 
         function startSession(id) {
@@ -167,17 +165,17 @@
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
             document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
             
-            const myPresenceRef = db.ref(`rooms/${currentRoom}/users`).push(); myPresenceRef.set({ name: myName }); myPresenceRef.onDisconnect().remove();
+            db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
+                const newData = s.val() || {};
+                Object.keys(newData).forEach(key => { if (newData[key].isFlash && (!window.currentData[key] || !window.currentData[key].isFlash)) playDing(); });
+                window.currentData = newData; renderList(); 
+            });
+
+            db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
             db.ref(`rooms/${currentRoom}/users`).on('value', s => { 
                 const users = Object.values(s.val() || {}); 
                 document.getElementById('onlineCount').innerText = users.length; 
                 document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', '); 
-            });
-
-            db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
-                const newData = s.val() || {};
-                Object.keys(newData).forEach(key => { if (newData[key].isFlash && (!window.currentData || !window.currentData[key] || !window.currentData[key].isFlash)) playDing(); });
-                window.currentData = newData; renderList(); 
             });
 
             db.ref(`rooms/${currentRoom}/messages`).limitToLast(15).on('value', s => {
@@ -187,29 +185,26 @@
             });
         }
 
-        // 💡 修正 saveBoss：優先判斷時間格式
+        // 💡 關鍵：嚴格區分「計時」與「階段」
         function saveBoss(map, ch, val) {
             const id = `${map}_${ch}`;
-            let dv = val, tt = 0, flash = false; playedAlerts.delete(id);
+            let dv = val, tt = 0, flash = false;
             const raw = String(val).toUpperCase().trim();
             
-            // 1. 先判定是否為時間格式 (包含冒號、或大於 10 的純數字，通常階段不會報到 10 以上)
-            const isTimeFormat = raw.includes(':') || raw.includes('.') && raw.length > 4 || (!isNaN(parseFloat(raw)) && parseFloat(raw) > 9);
-
-            if (isTimeFormat && !raw.startsWith("00")) {
-                tt = Date.now() + (parseTime(val) * 60000);
-            } 
-            // 2. 再判定是否為階段
-            else if (raw.startsWith("XX")) { 
-                dv = "階段" + (val.substring(2) || "1"); 
-            } else if (raw === "ON") { 
-                dv = "ON"; flash = true; 
-            } else if (raw.startsWith("00") || !isNaN(parseFloat(raw))) { 
-                const nStr = raw.startsWith("00") ? raw.substring(2) : raw;
-                dv = "階段" + (nStr.length > 1 && !nStr.includes('.') ? nStr.split('').join('.') : nStr); 
-                // 💡 閃爍判定：不含小數點 且 數字等於 4
-                if (!nStr.includes('.') && (nStr === "4" || parseFloat(nStr) >= 4)) flash = true;
+            // 優先判定：必須以 00 開頭才是階段，或者是 XX 開頭
+            if (raw.startsWith("00") || raw === "ON") {
+                if (raw === "ON") {
+                    dv = "ON"; flash = true;
+                } else {
+                    const nStr = raw.substring(2);
+                    dv = "階段" + (nStr.includes('.') ? nStr : nStr.split('').join('.'));
+                    // 只有純 004 會閃爍
+                    if (nStr === "4") flash = true;
+                }
+            } else if (raw.startsWith("XX")) {
+                dv = "階段" + (raw.substring(2) || "1");
             } else {
+                // 純數字或時間格式一律視為計時
                 tt = Date.now() + (parseTime(val) * 60000);
             }
             
@@ -243,24 +238,20 @@
                 container.appendChild(sec); const grid = sec.querySelector('.grid');
                 
                 items.sort((a,b) => {
-                    if (currentSort === 'map') {
-                        const getLvl = (n) => parseInt(n.match(/\d+/)) || 0;
-                        return getLvl(b[1].map) - getLvl(a[1].map) || a[1].ch - b[1].ch;
-                    }
+                    if (currentSort === 'map') return (parseInt(b[1].map.match(/\d+/)) || 0) - (parseInt(a[1].map.match(/\d+/)) || 0);
                     if (type === 'timers') return a[1].targetTime - b[1].targetTime;
                     return getWeight(b[1]) - getWeight(a[1]);
                 }).forEach(([id, b]) => {
                     const card = document.createElement('div'); card.className = `card ${type === 'idle' ? 'idle-card' : ''}`;
                     card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button><h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - 分流${b.ch}</h3>
                         <div class="timer-container"><div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}">...</div>
-                        ${(b.targetTime === 0 && type !== 'idle') ? `<button class="btn-next" id="btn_${id}" onclick="triggerNext('${id}')">NEXT</button>` : ''}</div>`;
+                        ${(b.targetTime === 0 && type !== 'idle') ? `<button class="btn-next" onclick="triggerNext('${id}')">NEXT</button>` : ''}</div>`;
                     grid.appendChild(card);
                     
                     const up = () => {
                         const el = card.querySelector('.timer'); if (!el) return;
-                        const btnNext = card.querySelector('.btn-next');
                         if (b.targetTime > 0) {
-                            const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
+                            const d = Math.floor((b.targetTime - Date.now()) / 1000), a = Math.abs(d);
                             el.innerText = `${Math.floor(a/3600)}:${Math.floor((a%3600)/60).toString().padStart(2,'0')}:${(a%60).toString().padStart(2,'0')}`;
                             if (type !== 'idle') el.style.color = d <= 0 ? '#ff3300' : '#0f0';
                         } else {
@@ -276,7 +267,6 @@
                                     if (w >= 99) c = '#ff0000'; else if (w >= 4) c = '#ff9900'; else c = '#ffff00';
                                 }
                                 el.style.color = c;
-                                if (btnNext) { btnNext.style.borderColor = c; btnNext.style.color = c; }
                             }
                         }
                     }; timers[id] = setInterval(up, 1000); up();
@@ -287,29 +277,25 @@
             render(idleList, "超時閒置區", 'idle');
         }
 
-        function parseTime(v) { const p = String(v).split(/[:.：]/); if (p.length === 3) return parseInt(p[0])*60 + parseInt(p[1]) + parseInt(p[2])/60; if (p.length === 2) return parseInt(p[0])*60 + parseInt(p[1]); return parseFloat(v) || 0; }
+        function parseTime(v) { const p = String(v).split(/[:.：]/); if (p.length === 2) return parseInt(p[0])*60 + parseInt(p[1]); return parseFloat(v) || 0; }
         function addBoss() { const i = document.getElementById('bossInput'), p = i.value.trim().split(/\s+/); if (p.length >= 3) saveBoss(p[0], p[1], p[2]); i.value = ''; unlockAudio(); }
         
-        // 💡 修正後的 NEXT 邏輯：嚴格區分大階
+        // 💡 修正後的 NEXT：確保小數點正確進位
         function triggerNext(id) { 
             const b = window.currentData[id]; if (!b) return;
             const l = String(b.lastInput).toUpperCase().trim(); 
-            
             if (l === "ON" || l === "") {
                 saveBoss(b.map, b.ch, "001");
-                unlockAudio(); return;
-            }
-
-            const match = l.match(/(\d+(\.\d+)?)(?!.*\d)/);
-            if (!match) {
-                saveBoss(b.map, b.ch, "ON");
             } else {
-                const val = parseFloat(match[0]);
-                // 💡 修正點：如果是 1.x ~ 1.99 -> 跳 002； 2.x ~ 2.99 -> 跳 003
-                if (val >= 1 && val < 1.99) saveBoss(b.map, b.ch, "002");
-                else if (val >= 2 && val < 2.99) saveBoss(b.map, b.ch, "003");
-                else if (val >= 3 && val < 3.99) saveBoss(b.map, b.ch, "004");
-                else saveBoss(b.map, b.ch, "ON");
+                const match = l.match(/[\d.]+/);
+                if (!match) { saveBoss(b.map, b.ch, "ON"); } 
+                else {
+                    const val = parseFloat(match[0]);
+                    if (val < 1.99) saveBoss(b.map, b.ch, "002");
+                    else if (val < 2.99) saveBoss(b.map, b.ch, "003");
+                    else if (val < 3.99) saveBoss(b.map, b.ch, "004");
+                    else saveBoss(b.map, b.ch, "ON");
+                }
             }
             unlockAudio(); 
         }
