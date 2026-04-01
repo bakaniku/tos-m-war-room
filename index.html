@@ -77,10 +77,10 @@
         <div id="manualModal" class="modal">
             <h3 style="color:#0f0; margin-top:0;">📜 使用說明</h3>
             <div style="font-size:13px; line-height:1.5; color:#ccc; white-space: pre-wrap;">
-1. NEXT：1.x -> 2, 2.x -> 3, 3.x -> 4, 4.x -> ON。
-2. 色彩：依據大階段顯示，3.2 與 3 統一為黃色。
-3. 重複：輸入重複的地圖分流會紅字提醒。
-4. 留言板：點擊標題列按鈕開啟/關閉。
+1. NEXT：1.x 進位到 2，2.x 到 3，3.x 到 4，4.x 到 ON。
+2. 閃爍提醒：只有進入 階段 4 或 ON 時會閃爍並叮一聲。
+3. 漸層切換：隨時切換 漸層/簡易 顯示模式。
+4. 重複警告：地圖分流重複時會顯示紅字。
             </div>
             <button class="btn-solid" style="width:100%; margin-top:10px; padding:10px;" onclick="toggleManual()">確認</button>
         </div>
@@ -153,7 +153,7 @@
         function speak(text) { if (isVoiceEnabled) { window.speechSynthesis.cancel(); const msg = new SpeechSynthesisUtterance(text); msg.volume = parseFloat(document.getElementById('volRange').value); msg.lang = 'zh-TW'; msg.rate = 1.1; window.speechSynthesis.speak(msg); } }
         function playDing() { if (isSfxEnabled) { unlockAudio(); const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'sine'; osc.frequency.setValueAtTime(880, audioCtx.currentTime); osc.connect(gain); gain.connect(audioCtx.destination); gain.gain.setValueAtTime(0, audioCtx.currentTime); gain.gain.linearRampToValueAtTime(0.3 * parseFloat(document.getElementById('volRange').value), audioCtx.currentTime + 0.01); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3); osc.start(); osc.stop(audioCtx.currentTime + 0.3); } }
 
-        function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); if (isVoiceEnabled) { unlockAudio(); speak("語音功能已開啟"); } else window.speechSynthesis.cancel(); }
+        function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); if (isVoiceEnabled) { unlockAudio(); speak("語音已開啟"); } else window.speechSynthesis.cancel(); }
         function toggleSfx() { isSfxEnabled = !isSfxEnabled; document.getElementById('sfxBtn').classList.toggle('active', isSfxEnabled); if (isSfxEnabled) { unlockAudio(); playDing(); } }
         function toggleColorMode() { colorMode = (colorMode === 1 ? 2 : 1); renderList(); }
         function toggleWarning() { showWarningIcon = !showWarningIcon; renderList(); }
@@ -202,12 +202,17 @@
             const id = `${map}_${ch}`;
             let dv = val, tt = 0, flash = false; playedAlerts.delete(id);
             const raw = String(val).toUpperCase();
-            if (raw.startsWith("XX")) { const num = val.substring(2); dv = "階段" + (num ? num : "1"); tt = 0; }
-            else if (raw === "ON") { dv = "ON"; flash = true; }
-            else if (raw.startsWith("00")) { 
+            
+            if (raw.startsWith("XX")) { 
+                const num = val.substring(2); dv = "階段" + (num ? num : "1"); tt = 0; 
+            } else if (raw === "ON") { 
+                dv = "ON"; flash = true; 
+            } else if (raw.startsWith("00")) { 
                 const n = raw.substring(2); dv = "階段" + (n.length > 1 ? n.split('').join('.') : n); 
-                if (parseFloat(n) >= 4) flash = true;
+                // 💡 只有當大階確定進入 4 時才閃爍
+                if (Math.floor(parseFloat(n)) >= 4) flash = true;
             } else tt = Date.now() + (parseTime(val) * 60000);
+            
             db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash });
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 5000);
         }
@@ -227,6 +232,7 @@
             });
 
             const getWeight = (v) => v.displayValue === "ON" ? 100 : (parseFloat(v.displayValue.match(/[\d.]+/)) || 0);
+            const getMapLvl = (name) => { const m = name.match(/\d+/); return m ? parseInt(m[0]) : 0; };
 
             const render = (items, label, type) => {
                 if (items.length === 0 && type !== 'stages') return;
@@ -239,7 +245,7 @@
                 container.appendChild(sec); const grid = sec.querySelector('.grid');
                 
                 items.sort((a,b) => {
-                    if (currentSort === 'map') { const lA = (a[1].map.match(/\d+/) || [0])[0], lB = (b[1].map.match(/\d+/) || [0])[0]; return lB - lA; }
+                    if (currentSort === 'map') { const lA = getMapLvl(a[1].map), lB = getMapLvl(b[1].map); return lB - lA; }
                     if (type === 'timers') { 
                         const cA = a[1].targetTime > now ? (timerPriority === 'overtime' ? 2 : 1) : (timerPriority === 'overtime' ? 1 : 2);
                         const cB = b[1].targetTime > now ? (timerPriority === 'overtime' ? 2 : 1) : (timerPriority === 'overtime' ? 1 : 2);
@@ -292,30 +298,25 @@
         function parseTime(v) { const p = v.split(/[:.：]/); if (p.length === 3) return parseInt(p[0])*60 + parseInt(p[1]) + parseInt(p[2])/60; if (p.length === 2) return parseInt(p[0])*60 + parseInt(p[1]); return parseFloat(v) || 0; }
         function addBoss() { const i = document.getElementById('bossInput'), p = i.value.trim().split(/\s+/); if (p.length >= 3) saveBoss(p[0], p[1], p[2]); i.value = ''; unlockAudio(); }
         
-        // 💡 修正後的 NEXT 跳階邏輯
+        // 💡 徹底修正後的 NEXT 跳階邏輯 (1.x -> 2, 2.x -> 3, 3.x -> 4, 4.x -> ON)
         function triggerNext(m, c) { 
             db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => { 
                 const b = s.val(); if (!b) return;
                 const l = String(b.lastInput).toUpperCase(); 
                 if (l === "ON" || l === "") {
                     saveBoss(m, c, "001"); 
-                } else if (l.startsWith("00")) {
+                } else {
                     const numMatch = l.match(/[\d.]+/);
                     if (numMatch) {
                         const cur = parseFloat(numMatch[0]);
-                        // 如果是整數且小於 4，進到下一整數；若是 3.x 或 4，直接進 ON
-                        if (cur < 4) {
-                            const next = Math.floor(cur) + 1;
-                            saveBoss(m, c, "00" + next);
-                        } else {
-                            saveBoss(m, c, "ON");
-                        }
+                        // 1.0~1.9 -> 2 | 2.0~2.9 -> 3 | 3.0~3.9 -> 4 | 4.0以上 -> ON
+                        if (cur < 1.99) saveBoss(m, c, "002");
+                        else if (cur < 2.99) saveBoss(m, c, "003");
+                        else if (cur < 3.99) saveBoss(m, c, "004");
+                        else saveBoss(m, c, "ON");
                     } else {
                         saveBoss(m, c, "ON");
                     }
-                } else {
-                    // 若是 3.2 這種小數且非 00 開頭，點擊 NEXT 視為該階完成進 ON
-                    saveBoss(m, c, "ON");
                 }
             }); unlockAudio(); 
         }
@@ -327,6 +328,7 @@
         function joinRoom() { const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
         function createRoom() { const i = Math.random().toString(36).substring(2, 8).toUpperCase(); startSession(i); }
         function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); i.setSelectionRange(m.length + c.length + 2, i.value.length); }
+        function toggleManual() { const m = document.getElementById('manualModal'), o = document.getElementById('modalOverlay'); m.style.display = (m.style.display === 'block' ? 'none' : 'block'); o.style.display = (o.style.display === 'block' ? 'none' : 'block'); }
     </script>
 </body>
 </html>
