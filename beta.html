@@ -51,7 +51,6 @@
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
         .card.idle-card h3 { color: #444; border-bottom: 1px dashed #222; }
         .card.idle-card .timer { color: #555 !important; }
-        .card.idle-card .btn-next { border-color: #333 !important; color: #333 !important; }
 
         .del { position: absolute; top: 6px; right: 10px; color: #444; background: none; border: none; font-size: 14px; cursor: pointer; padding: 2px; }
 
@@ -81,8 +80,8 @@
             <div style="font-size:13px; line-height:1.5; color:#ccc; white-space: pre-wrap;">
 1. 排序：ON > 4 > 3 > 2 > 1。
 2. 提醒：進入 階段 4 或 ON 時會閃爍並發出「叮」聲。
-3. 語音：重生倒數歸零時會報時，請確保語音已開啟。
-4. 快速編輯：點擊標題的地圖-分流即可修改。
+3. 語音：重生倒數歸零時會自動語音報時。
+4. 測試：點擊語音開關開啟時會播報測試，方便調整音量。
 5. XX數字：代碼可將項目送入閒置區。
             </div>
             <button class="btn-solid" style="width:100%; margin-top:10px; padding:10px;" onclick="toggleManual()">確認</button>
@@ -146,23 +145,21 @@
         const db = firebase.database();
         let currentRoom = '', timers = {}, isAudioEnabled = false, currentSort = 'group';
         let timerPriority = 'overtime', myName = '無名戰友', colorMode = 1, showWarningIcon = true;
-        let audioCtx = null;
+        let audioCtx = null, playedAlerts = new Set();
 
-        // 💡 語音報時加強版
+        function unlockAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
         function speak(text) {
             if (!isAudioEnabled) return;
-            window.speechSynthesis.cancel(); // 停止目前語音
+            window.speechSynthesis.cancel();
             const msg = new SpeechSynthesisUtterance(text);
             msg.volume = parseFloat(document.getElementById('volRange').value);
             msg.lang = 'zh-TW';
             msg.rate = 1.1;
             window.speechSynthesis.speak(msg);
-        }
-
-        // 💡 解鎖 AudioContext (解決瀏覽器政策問題)
-        function unlockAudio() {
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') audioCtx.resume();
         }
 
         function playDing() {
@@ -187,21 +184,27 @@
             if (isAudioEnabled) {
                 unlockAudio();
                 btn.innerText = '🔊'; btn.classList.remove('muted'); range.classList.remove('muted');
-                updateRangeBg(range); speak("語音已開啟");
+                updateRangeBg(range); 
+                // 💡 開啟時觸發叮聲與測試語音
+                playDing();
+                setTimeout(() => speak("語音功能已開啟"), 400);
             } else {
                 btn.innerText = '🔈'; btn.classList.add('muted'); range.classList.add('muted'); range.style.background = '#222';
+                window.speechSynthesis.cancel();
             }
         }
         function updateRangeBg(r) { if (isAudioEnabled) { const v = r.value * 100; r.style.background = `linear-gradient(to right, #0f0 0%, #0f0 ${v}%, #333 ${v}%, #333 100%)`; } }
         document.getElementById('volRange').addEventListener('input', function() { updateRangeBg(this); });
 
         function startSession(id) {
-            unlockAudio();
             currentRoom = id; myName = document.getElementById('userNameInput').value.trim() || '無名戰友';
             document.getElementById('loginView').style.display = 'none'; document.getElementById('mainView').style.display = 'block';
             document.getElementById('displayID').innerText = id;
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
             document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+            
+            document.body.addEventListener('click', unlockAudio, { once: true });
+
             const myPresenceRef = db.ref(`rooms/${currentRoom}/users`).push(); myPresenceRef.set({ name: myName }); myPresenceRef.onDisconnect().remove();
             db.ref(`rooms/${currentRoom}/users`).on('value', s => { const users = Object.values(s.val() || {}); document.getElementById('onlineCount').innerText = users.length; document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', '); });
             
@@ -219,12 +222,20 @@
             db.ref(`rooms/${currentRoom}/messages`).limitToLast(15).on('value', s => { const chatBox = document.getElementById('chatBox'); chatBox.innerHTML = ''; const msgs = s.val() || {}; Object.values(msgs).forEach(m => { chatBox.innerHTML += `<div><span class="msg-name">${m.user}</span>: ${m.text}</div>`; }); chatBox.scrollTop = chatBox.scrollHeight; });
         }
 
-        function sendMessage() { const input = document.getElementById('chatInput'); const text = input.value.trim(); if (!text) return; db.ref(`rooms/${currentRoom}/messages`).push({ user: myName, text: text, time: Date.now() }); input.value = ''; unlockAudio(); }
+        function sendMessage() { 
+            const input = document.getElementById('chatInput'); 
+            const text = input.value.trim(); 
+            if (!text) return; 
+            db.ref(`rooms/${currentRoom}/messages`).push({ user: myName, text: text, time: Date.now() }); 
+            input.value = ''; 
+            unlockAudio();
+        }
         
         function saveBoss(map, ch, val) {
             const id = `${map}_${ch}`, old = window.currentData ? window.currentData[id] : null;
             let dv = val, tt = 0, flash = false;
-            
+            playedAlerts.delete(id);
+
             if (val.toUpperCase().startsWith("XX")) {
                 const num = val.substring(2); dv = "階段" + (num ? num : "1"); tt = 0;
             } else if (val.toUpperCase() === "ON") { 
@@ -293,11 +304,9 @@
                     const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
                     el.innerText = `${Math.floor(a/3600)}:${Math.floor((a%3600)/60).toString().padStart(2,'0')}:${(a%60).toString().padStart(2,'0')}`;
                     if (!isIdle) el.style.color = d <= 0 ? '#ff3300' : '#0f0';
-                    
-                    // 💡 重生語音報時
                     if (d === 0 && !playedAlerts.has(id)) {
-                        speak(`${b.map}, 分流 ${b.ch}, 已重生`);
                         playedAlerts.add(id);
+                        speak(`${b.map}, 分流 ${b.ch}, 已重生`);
                     }
                 } else {
                     const m = Math.floor((now - b.startTime) / 60000), s = Math.floor(((now - b.startTime) % 60000) / 1000);
@@ -330,6 +339,8 @@
             const start = m.length + c.length + 2;
             i.setSelectionRange(start, i.value.length);
         }
+        function toggleChat() { const c = document.getElementById('chatSection'); c.style.display = c.style.display === 'block' ? 'none' : 'block'; }
+        function toggleManual() { const m = document.getElementById('manualModal'); const o = document.getElementById('modalOverlay'); const isShow = m.style.display === 'block'; m.style.display = isShow ? 'none' : 'block'; o.style.display = isShow ? 'none' : 'block'; }
     </script>
 </body>
 </html>
