@@ -20,50 +20,40 @@
         .btn-danger { background: #422; color: #f66; font-size: 11px; padding: 5px 10px; border-radius: 6px; }
         .btn-toggle { background: #222; color: #888; font-size: 12px; padding: 5px 10px; border: 1px solid #444; }
         .btn-toggle.active { background: #050; color: #0f0; border-color: #0f0; }
-        
         .copy-icon { width: 18px; height: 18px; min-width: 18px; vertical-align: middle; cursor: pointer; opacity: 0.7; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px; }
         .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .room-id { color: #0f0; font-size: 20px; font-weight: bold; line-height: 1; }
-        
         .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #111; border: 2px solid #0f0; padding: 15px; border-radius: 12px; z-index: 2000; width: 85%; max-width: 450px; max-height: 55vh; overflow-y: auto; display: none; }
         .modal-overlay { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.85); z-index: 1999; display: none; }
-
         .audio-controls { display: flex; align-items: center; gap: 5px; background: #111; padding: 4px 10px; border-radius: 20px; border: 1px solid #333; height: 32px; box-sizing: border-box; }
         .audio-btn { background: none; color: #0f0; padding: 0; font-size: 14px; cursor: pointer; border: none; opacity: 0.3; transition: 0.2s; }
         .audio-btn.active { opacity: 1; }
         .vol-range { -webkit-appearance: none; width: 50px; height: 4px; background: #0f0; border-radius: 2px; outline: none; margin: 0 5px; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: #0f0; border-radius: 50%; border: 2px solid #111; cursor: pointer; }
-        
         .user-list-bar { font-size: 12px; color: #555; margin-bottom: 12px; border-bottom: 1px solid #222; padding-bottom: 8px; }
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; font-size: 16px; color: #fff; padding: 8px 0; margin-bottom: 2px; }
         #duplicateWarn { color: #f44; font-size: 12px; height: 18px; margin-bottom: 8px; font-weight: bold; }
-
         .sort-row { margin-bottom: 15px; display: flex; gap: 8px; flex-wrap: wrap; }
         .grid-section { margin-bottom: 30px; }
         .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
         .section-label { color: #555; font-size: 11px; border-left: 2px solid #333; padding-left: 8px; text-transform: uppercase; }
-        
         .btn-switch { background: #222; color: #0f0; font-size: 10px; padding: 2px 8px; border: 1px solid #444; border-radius: 4px; cursor: pointer; }
         .btn-switch.active { background: #050; color: #0f0; border-color: #0f0; }
-
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
         .card.idle-card h3 { color: #444; border-bottom: 1px dashed #222; }
         .card.idle-card .timer { color: #555 !important; }
         .del { position: absolute; top: 6px; right: 10px; color: #444; background: none; border: none; font-size: 14px; cursor: pointer; }
-
         .timer { font-size: 18px; font-weight: bold; margin-top: 8px; font-family: monospace; display: flex; align-items: center; flex-wrap: nowrap; overflow: hidden; }
         .timer-label { font-size: 18px; white-space: nowrap; }
         .timer-sub { font-size: 14px; margin-left: 4px; opacity: 0.8; white-space: nowrap; }
         .warning-icon { display: inline-block; margin-left: 6px; font-size: 16px; animation: warn-flash 0.8s infinite; flex-shrink: 0; }
-        
         @keyframes warn-flash { 0%, 100% { opacity: 1; scale: 1; } 50% { opacity: 0.5; scale: 1.1; } }
         @keyframes flash { 0%, 100% { opacity: 1; color: #fff; } 50% { opacity: 0.3; } }
         .flash-anim { animation: flash 0.5s step-end 10; }
         .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-block; margin-top: 8px; border: 2px solid; color: inherit; }
-
         .chat-section { margin-top: 40px; border-top: 2px solid #222; padding-top: 20px; display: none; }
         .chat-box { background: #080808; height: 120px; overflow-y: auto; padding: 10px; border-radius: 8px; font-size: 13px; margin-bottom: 10px; border: 1px solid #111; }
         .msg-name { color: #0f0; font-weight: bold; }
@@ -79,8 +69,8 @@
             <div style="font-size:13px; line-height:1.5; color:#ccc; white-space: pre-wrap;">
 1. NEXT：1.x -> 2, 2.x -> 3, 3.x -> 4, 4.x -> ON。
 2. 閃爍：僅在大階段進入 4 或 ON 時觸發閃爍與叮聲。
-3. 警告(⚠️)：依階段設定超時顯示。
-4. 留言板：標題列右側按鈕開啟。
+3. 留言板：標題列右側按鈕開啟。
+4. 重複：地圖分流重複時會顯示紅字提示。
             </div>
             <button class="btn-solid" style="width:100%; margin-top:10px; padding:10px;" onclick="toggleManual()">確認</button>
         </div>
@@ -153,12 +143,13 @@
         function speak(text) { if (isVoiceEnabled) { window.speechSynthesis.cancel(); const msg = new SpeechSynthesisUtterance(text); msg.volume = parseFloat(document.getElementById('volRange').value); msg.lang = 'zh-TW'; msg.rate = 1.1; window.speechSynthesis.speak(msg); } }
         function playDing() { if (isSfxEnabled) { unlockAudio(); const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'sine'; osc.frequency.setValueAtTime(880, audioCtx.currentTime); osc.connect(gain); gain.connect(audioCtx.destination); gain.gain.setValueAtTime(0, audioCtx.currentTime); gain.gain.linearRampToValueAtTime(0.3 * parseFloat(document.getElementById('volRange').value), audioCtx.currentTime + 0.01); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3); osc.start(); osc.stop(audioCtx.currentTime + 0.3); } }
 
-        function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); if (isVoiceEnabled) { unlockAudio(); speak("語音已開啟"); } else window.speechSynthesis.cancel(); }
+        function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); if (isVoiceEnabled) { unlockAudio(); speak("語音功能已開啟"); } else window.speechSynthesis.cancel(); }
         function toggleSfx() { isSfxEnabled = !isSfxEnabled; document.getElementById('sfxBtn').classList.toggle('active', isSfxEnabled); if (isSfxEnabled) { unlockAudio(); playDing(); } }
         function toggleColorMode() { colorMode = (colorMode === 1 ? 2 : 1); renderList(); }
         function toggleWarning() { showWarningIcon = !showWarningIcon; renderList(); }
         function toggleChat() { const c = document.getElementById('chatSection'); c.style.display = (c.style.display === 'block' ? 'none' : 'block'); }
         function setSort(t) { currentSort = t; document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id === `sort${t.charAt(0).toUpperCase()+t.slice(1)}Btn`)); renderList(); }
+        function setTimerPriority() { timerPriority = (timerPriority === 'overtime' ? 'countdown' : 'overtime'); renderList(); }
 
         document.getElementById('bossInput').addEventListener('input', function(e) {
             const p = e.target.value.trim().split(/\s+/);
@@ -197,7 +188,6 @@
             });
         }
 
-        // 💡 修改存檔邏輯，過濾小數點閃爍
         function saveBoss(map, ch, val) {
             const id = `${map}_${ch}`;
             let dv = val, tt = 0, flash = false; playedAlerts.delete(id);
@@ -294,24 +284,29 @@
         function parseTime(v) { const p = String(v).split(/[:.：]/); if (p.length === 3) return parseInt(p[0])*60 + parseInt(p[1]) + parseInt(p[2])/60; if (p.length === 2) return parseInt(p[0])*60 + parseInt(p[1]); return parseFloat(v) || 0; }
         function addBoss() { const i = document.getElementById('bossInput'), p = i.value.trim().split(/\s+/); if (p.length >= 3) saveBoss(p[0], p[1], p[2]); i.value = ''; unlockAudio(); }
         
-        // 💡 終極 NEXT 跳階算法 (1.x -> 2, 2.x -> 3, 3.x -> 4, 4.x -> ON)
+        // 💡 原始邏輯回歸：使用顯式字串判定
         function triggerNext(id) { 
             const b = window.currentData[id]; if (!b) return;
             const l = String(b.lastInput).toUpperCase(); 
-            if (l === "ON" || l === "") {
-                saveBoss(b.map, b.ch, "001"); 
+            
+            if (l === "ON") {
+                saveBoss(b.map, b.ch, "001");
+            } else if (l.includes(".")) {
+                // 只要有小數點（如 1.1, 2.5, 3.2），一律判定完成該大階，進 ON (或者你可以改成進下一整數)
+                // 根據你的需求：1.1 -> 2, 2.x -> 3... 
+                const cur = parseFloat(l.replace(/[^\d.]/g, ""));
+                if (cur < 1.99) saveBoss(b.map, b.ch, "002");
+                else if (cur < 2.99) saveBoss(b.map, b.ch, "003");
+                else if (cur < 3.99) saveBoss(b.map, b.ch, "004");
+                else saveBoss(b.map, b.ch, "ON");
+            } else if (l.startsWith("00")) {
+                // 針對 001, 002, 003, 004
+                if (l === "001") saveBoss(b.map, b.ch, "002");
+                else if (l === "002") saveBoss(b.map, b.ch, "003");
+                else if (l === "003") saveBoss(b.map, b.ch, "004");
+                else saveBoss(b.map, b.ch, "ON");
             } else {
-                // 提取純數字，包含小數
-                const numStr = l.replace(/[^\d.]/g, "");
-                const cur = parseFloat(numStr) || 0;
-                
-                let nextVal = "";
-                if (cur < 1.999) nextVal = "002";
-                else if (cur < 2.999) nextVal = "003";
-                else if (cur < 3.999) nextVal = "004";
-                else nextVal = "ON";
-                
-                saveBoss(b.map, b.ch, nextVal);
+                saveBoss(b.map, b.ch, "ON");
             }
             unlockAudio(); 
         }
