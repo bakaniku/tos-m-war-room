@@ -23,7 +23,6 @@
         .copy-icon { width: 18px; height: 18px; vertical-align: middle; margin-left: 8px; cursor: pointer; opacity: 0.7; }
         .copy-icon:hover { opacity: 1; }
         .btn-next { background: #050; color: #0f0; border: 1px solid #0f0; font-size: 11px; padding: 3px 10px; border-radius: 4px; margin-left: 10px; cursor: pointer; display: inline-block; vertical-align: middle; }
-        .btn-next:active { background: #0f0; color: #000; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .room-id { color: #0f0; font-size: 20px; font-weight: bold; }
@@ -32,18 +31,23 @@
         .vol-icon.muted { color: #f44; }
         .vol-range { -webkit-appearance: none; width: 70px; height: 6px; background: #333; border-radius: 3px; outline: none; transition: background 0.2s; margin: 0; padding: 0; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #0f0; border-radius: 50%; cursor: pointer; border: 2px solid #111; margin-top: -4px; }
-        .vol-range::-webkit-slider-runnable-track { width: 100%; height: 6px; border-radius: 3px; cursor: pointer; }
-        .vol-range.muted { background: #222 !important; }
-        .vol-range.muted::-webkit-slider-thumb { background: #555; }
-        .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; border-radius: 0; margin-bottom: 20px; }
+        .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; border-radius: 0; margin-bottom: 5px; }
+        .duplicate-alert { color: #f44; font-size: 12px; height: 18px; margin-bottom: 10px; }
         .sort-row { margin-bottom: 15px; display: flex; gap: 8px; flex-wrap: wrap; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
-        .card h3:hover { color: #fff; border-bottom-color: #0f0; }
-        .timer { font-size: 20px; font-weight: bold; margin-top: 8px; font-family: monospace; }
+        .timer { font-size: 20px; font-weight: bold; margin-top: 8px; font-family: monospace; transition: 0.3s; }
         .del { position: absolute; top: 5px; right: 10px; color: #444; background: none; border: none; font-size: 20px; cursor: pointer; z-index: 10; }
         .idle-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; text-align: center; }
+        
+        /* 閃爍效果 */
+        @keyframes flash {
+            0%, 100% { opacity: 1; color: #0f0; }
+            50% { opacity: 0.3; color: #fff; }
+        }
+        .flash-anim { animation: flash 0.5s step-end 10; }
+        .warning-yellow { color: #ff0 !important; }
     </style>
 </head>
 <body>
@@ -73,7 +77,6 @@
                         <button id="volBtn" class="vol-icon muted" onclick="toggleAudio()">🔈</button>
                         <input type="range" id="volRange" class="vol-range muted" min="0" max="1" step="0.05" value="0.5">
                     </div>
-                    
                     <button class="btn-danger" onclick="clearAllBosses()">一鍵清除</button>
                 </div>
                 <button style="background:none; color:#444;" onclick="exitRoom()">退出</button>
@@ -86,6 +89,7 @@
             </div>
 
             <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 分鐘/00X/時:分:秒">
+            <div id="duplicateAlert" class="duplicate-alert"></div>
             <div class="grid" id="bossList"></div>
         </div>
     </div>
@@ -126,16 +130,14 @@
             }
         }
         
-        document.getElementById('volRange').addEventListener('input', function() {
-            if (isAudioEnabled) {
-                this.style.background = `linear-gradient(to right, #0f0 0%, #0f0 ${this.value * 100}%, #333 ${this.value * 100}%, #333 100%)`;
-            } else {
-                this.style.background = '#222';
-            }
-        });
-
         function copyRoomID() {
-            navigator.clipboard.writeText(currentRoom).then(() => alert('房號 ' + currentRoom + ' 已複製！'));
+            const el = document.createElement('textarea');
+            el.value = currentRoom;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+            alert('房號 ' + currentRoom + ' 已複製！');
         }
 
         function setSort(type) {
@@ -160,60 +162,45 @@
             document.getElementById('loginView').style.display = 'none';
             document.getElementById('mainView').style.display = 'block';
             document.getElementById('displayID').innerText = id;
+            document.getElementById('bossInput').addEventListener('input', checkDuplicate);
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
-            
-            // 初始活動紀錄
-            db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
-            
+            db.ref(`rooms/${currentRoom}/lastActive`).transaction((c) => c || Date.now());
             db.ref(`rooms/${currentRoom}`).on('value', s => {
                 const data = s.val();
-                if (!data) { 
-                    exitRoom(); 
-                    return; 
-                }
+                if (!data) { exitRoom(); return; }
                 window.currentData = data.bosses || {};
                 renderList();
             });
-            
-            // 每分鐘檢查一次房間狀態
             setInterval(checkRoomStatus, 60000);
-            resetIdleTimer();
         }
 
         function exitRoom() { location.reload(); }
 
-        // 💡 優化後的房間清理機制
         function checkRoomStatus() {
             if (!currentRoom) return;
             db.ref(`rooms/${currentRoom}`).once('value', s => {
                 const d = s.val();
                 if (!d) return;
-
                 const bossCount = d.bosses ? Object.keys(d.bosses).length : 0;
                 const idleTime = Date.now() - (d.lastActive || 0);
-
-                // 1. 30分鐘內沒有任何地圖資訊 (bossCount === 0) 則刪除房間
-                if (bossCount === 0 && idleTime > 30 * 60 * 1000) {
+                if ((bossCount === 0 && idleTime > 30 * 60 * 1000) || idleTime > 24 * 60 * 60 * 1000) {
                     db.ref(`rooms/${currentRoom}`).remove();
-                    return;
-                }
-
-                // 2. 超過 24 小時沒有任何動靜，強制刪除
-                if (idleTime > 24 * 60 * 60 * 1000) {
-                    db.ref(`rooms/${currentRoom}`).remove();
-                    return;
                 }
             });
         }
 
-        function resetIdleTimer() {
-            clearTimeout(window.idleTimer);
-            window.idleTimer = setTimeout(() => {
-                db.goOffline();
-                document.getElementById('idleOverlay').style.display = 'flex';
-            }, 1440 * 60 * 1000); 
+        function checkDuplicate() {
+            const input = document.getElementById('bossInput').value.trim().split(/\s+/);
+            const alertEl = document.getElementById('duplicateAlert');
+            if (input.length >= 2) {
+                const id = `${input[0]}_${input[1]}`;
+                if (window.currentData && window.currentData[id]) {
+                    alertEl.innerText = `⚠️ 注意：${input[0]} - 分流 ${input[1]} 已存在，輸入將覆蓋舊資料`;
+                    return;
+                }
+            }
+            alertEl.innerText = "";
         }
-        window.onmousemove = window.onmousedown = window.ontouchstart = window.onkeydown = resetIdleTimer;
 
         function addBoss() {
             const input = document.getElementById('bossInput');
@@ -225,49 +212,41 @@
 
         function parseTimeInput(val) {
             val = val.toLowerCase();
-            if (val.endsWith('s')) { return parseFloat(val) / 60; }
-            const timeParts = val.split(/[:.：]/);
-            if (timeParts.length === 3) {
-                return (parseInt(timeParts[0])*60) + parseInt(timeParts[1]) + (parseInt(timeParts[2])/60);
-            }
-            if (timeParts.length === 2) {
-                return (parseInt(timeParts[0])*60) + parseInt(timeParts[1]);
-            }
+            if (val.endsWith('s')) return parseFloat(val) / 60;
+            const p = val.split(/[:.：]/);
+            if (p.length === 3) return (parseInt(p[0])*60) + parseInt(p[1]) + (parseInt(p[2])/60);
+            if (p.length === 2) return (parseInt(p[0])*60) + parseInt(p[1]);
             return parseFloat(val) || 0;
         }
 
         function saveBoss(map, ch, val) {
+            const bossID = `${map}_${ch}`;
+            const oldData = window.currentData ? window.currentData[bossID] : null;
             let displayValue = val;
             let targetTime = 0;
-            const bossID = `${map}_${ch}`;
+            let isFlash = false;
+
             playedAlerts.delete(bossID);
+
             if (val.toUpperCase() === "ON") {
-                displayValue = "ON"; targetTime = 0;
+                displayValue = "ON";
             } else if (val.startsWith("00")) {
-                const stageNum = val.substring(2); 
+                const stageNum = val.substring(2);
                 displayValue = "階段" + (stageNum.length > 1 ? stageNum.split('').join('.') : stageNum);
-                targetTime = 0;
+                // 檢查是否從階段3進入階段4
+                if (oldData && oldData.lastInput.startsWith("003") && val.startsWith("004")) {
+                    isFlash = true;
+                }
             } else {
-                const totalMins = parseTimeInput(val);
-                targetTime = Date.now() + (totalMins * 60000);
+                targetTime = Date.now() + (parseTimeInput(val) * 60000);
             }
-            db.ref(`rooms/${currentRoom}/bosses/${bossID}`).set({ map, ch, targetTime, lastInput: val, displayValue });
-            // 更新最後活動時間
+
+            db.ref(`rooms/${currentRoom}/bosses/${bossID}`).set({
+                map, ch, targetTime, lastInput: val, displayValue,
+                startTime: Date.now(),
+                isFlash: isFlash
+            });
             db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
-        }
-
-        window.triggerNext = function(map, ch, last) {
-            if (last.toUpperCase() === "ON") { doEdit(map, ch, ""); }
-            else if (last.startsWith("00")) {
-                let firstDigit = parseInt(last.substring(2, 3));
-                if (firstDigit >= 4) saveBoss(map, ch, "ON");
-                else saveBoss(map, ch, "00" + (firstDigit + 1));
-            }
-        };
-
-        function getStageInternalValue(display) {
-            const match = display.match(/[\d.]+/);
-            return match ? parseFloat(match[0]) : 0;
         }
 
         function renderList() {
@@ -278,84 +257,92 @@
             let sorted = Object.entries(window.currentData || {});
             const now = Date.now();
 
+            const getStageVal = (v) => parseFloat(v.match(/[\d.]+/)[0]);
+
             if (currentSort === 'countdown') {
                 sorted.sort((a, b) => {
-                    const getCat = (boss) => {
-                        if (boss.targetTime > now) return 1;
-                        if (boss.targetTime > 0) return 2;
-                        if (boss.displayValue.includes("階段")) return 3;
-                        return 4;
-                    };
+                    const getCat = (v) => v.targetTime > now ? 1 : (v.targetTime > 0 ? 2 : (v.displayValue.includes("階段") ? 3 : 4));
                     const catA = getCat(a[1]), catB = getCat(b[1]);
                     if (catA !== catB) return catA - catB;
-                    if (catA === 1 || catA === 2) return a[1].targetTime - b[1].targetTime;
-                    if (catA === 3) return getStageInternalValue(b[1].displayValue) - getStageInternalValue(a[1].displayValue);
-                    return (parseInt(b[1].map) || 0) - (parseInt(a[1].map) || 0);
+                    if (catA <= 2) return a[1].targetTime - b[1].targetTime;
+                    if (catA === 3) return getStageVal(b[1].displayValue) - getStageVal(a[1].displayValue);
+                    return parseInt(b[1].map) - parseInt(a[1].map);
                 });
             } else if (currentSort === 'map') {
-                sorted.sort((a, b) => {
-                    const mapA = parseInt(a[1].map) || 0;
-                    const mapB = parseInt(b[1].map) || 0;
-                    if (mapA !== mapB) return mapB - mapA; 
-                    return (parseInt(a[1].ch) || 0) - (parseInt(b[1].ch) || 0);
-                });
+                sorted.sort((a, b) => parseInt(b[1].map) - parseInt(a[1].map) || parseInt(a[1].ch) - parseInt(b[1].ch));
             } else {
                 sorted.sort((a, b) => {
-                    const getCat = (boss) => {
-                        if (boss.displayValue.includes("階段")) return 1;
-                        if (boss.targetTime > now) return 2;
-                        if (boss.targetTime > 0) return 3;
-                        return 4;
-                    };
+                    const getCat = (v) => v.displayValue.includes("階段") ? 1 : (v.targetTime > now ? 2 : (v.targetTime > 0 ? 3 : 4));
                     const catA = getCat(a[1]), catB = getCat(b[1]);
                     if (catA !== catB) return catA - catB;
-                    if (catA === 1) return getStageInternalValue(b[1].displayValue) - getStageInternalValue(a[1].displayValue);
-                    if (catA === 2 || catA === 3) return a[1].targetTime - b[1].targetTime;
-                    return (parseInt(b[1].map) || 0) - (parseInt(a[1].map) || 0);
+                    if (catA === 1) return getStageVal(b[1].displayValue) - getStageVal(a[1].displayValue);
+                    return a[1].targetTime - b[1].targetTime || parseInt(b[1].map) - parseInt(a[1].map);
                 });
             }
 
             sorted.forEach(([id, boss]) => {
                 const card = document.createElement('div');
                 card.className = 'card';
-                let content = (boss.targetTime === 0) 
-                    ? `<div class="timer" style="color:#0f0;">${boss.displayValue} <button class="btn-next" onclick="triggerNext('${boss.map}','${boss.ch}','${boss.lastInput}')">NEXT</button></div>`
-                    : `<div class="timer" style="cursor:pointer" onclick="doEdit('${boss.map}','${boss.ch}','${boss.lastInput}')" id="t_${id}">--:--:--</div>`;
-                card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button><h3 onclick="doEdit('${boss.map}','${boss.ch}','${boss.lastInput}')">${boss.map} - 分流${boss.ch}</h3>${content}`;
+                const timerId = `t_${id}`;
+                card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button>
+                    <h3 onclick="doEdit('${boss.map}','${boss.ch}','${boss.lastInput}')">${boss.map} - 分流${boss.ch}</h3>
+                    <div class="timer ${boss.isFlash ? 'flash-anim' : ''}" id="${timerId}">載入中...</div>
+                    ${boss.targetTime === 0 ? `<button class="btn-next" onclick="triggerNext('${boss.map}','${boss.ch}','${boss.lastInput}')">NEXT</button>` : ''}`;
                 list.appendChild(card);
-                if (boss.targetTime !== 0) startTimer(id, boss.targetTime, boss.map, boss.ch);
+                startTimer(id, boss);
             });
         }
 
-        function doEdit(map, ch, lastInput) {
-            const input = document.getElementById('bossInput');
-            input.value = `${map} ${ch} ${lastInput}`;
-            input.focus();
-            input.setSelectionRange(input.value.length - lastInput.length, input.value.length);
-        }
-
-        function startTimer(id, target, map, ch) {
-            const el = document.getElementById('t_' + id);
+        function startTimer(id, boss) {
+            const el = document.getElementById(`t_${id}`);
             const update = () => {
-                const diff = Math.floor((target - Date.now()) / 1000);
-                const abs = Math.abs(diff);
-                const h = Math.floor(abs / 3600), m = Math.floor((abs % 3600) / 60), s = abs % 60;
-                if (el) {
+                const now = Date.now();
+                if (boss.targetTime > 0) {
+                    const diff = Math.floor((boss.targetTime - now) / 1000);
+                    const abs = Math.abs(diff);
+                    const h = Math.floor(abs/3600), m = Math.floor((abs%3600)/60), s = abs%60;
                     el.innerText = `${h>0?h+':':''}${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
                     el.style.color = diff <= 0 ? '#f44' : '#0f0';
-                }
-                if (diff === 0 && !playedAlerts.has(id)) { 
-                    speak(`${map}, 分流 ${ch}, 已重生`); 
-                    playedAlerts.add(id); 
+                    if (diff === 0 && !playedAlerts.has(id)) {
+                        speak(`${boss.map}, 分流 ${boss.ch}, 已重生`);
+                        playedAlerts.add(id);
+                    }
+                } else {
+                    const passedSec = Math.floor((now - boss.startTime) / 1000);
+                    const m = Math.floor(passedSec / 60), s = passedSec % 60;
+                    el.innerText = `${boss.displayValue} (${m}:${s.toString().padStart(2,'0')})`;
+                    
+                    // 預警顏色邏輯
+                    el.classList.remove('warning-yellow');
+                    if (boss.displayValue.includes("階段")) {
+                        const lv = parseFloat(boss.lastInput.substring(2));
+                        if ((lv < 2 && m >= 10) || (lv < 3 && lv >= 2 && m >= 7) || (lv < 4 && lv >= 3 && m >= 5) || (lv >= 4 && m >= 3)) {
+                            el.classList.add('warning-yellow');
+                        }
+                    }
                 }
             };
             update();
             timers[id] = setInterval(update, 1000);
         }
 
+        function doEdit(m, c, l) {
+            const i = document.getElementById('bossInput');
+            i.value = `${m} ${c} ${l}`; i.focus();
+            i.setSelectionRange(i.value.length - l.length, i.value.length);
+        }
+
+        function triggerNext(map, ch, last) {
+            if (last.toUpperCase() === "ON") saveBoss(map, ch, "");
+            else if (last.startsWith("00")) {
+                let v = parseInt(last.substring(2, 3));
+                if (v >= 4) saveBoss(map, ch, "ON");
+                else saveBoss(map, ch, "00" + (v + 1));
+            }
+        }
+
         function deleteBoss(id) { 
             db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); 
-            // 刪除卡片也算一次活動，更新時間防止被判定為閒置房
             db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
         }
         
@@ -365,12 +352,6 @@
                 db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
             }
         }
-        
-        window.onload = function() {
-            const volRange = document.getElementById('volRange');
-            volRange.style.background = '#222';
-            if(document.getElementById('roomInput')) document.getElementById('roomInput').focus();
-        };
     </script>
 </body>
 </html>
