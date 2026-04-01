@@ -35,6 +35,7 @@
         .vol-range { -webkit-appearance: none; width: 50px; height: 4px; background: #0f0; border-radius: 2px; outline: none; margin: 0 5px; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: #0f0; border-radius: 50%; border: 2px solid #111; cursor: pointer; }
         
+        .user-list-bar { font-size: 12px; color: #555; margin-bottom: 12px; border-bottom: 1px solid #222; padding-bottom: 8px; }
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; font-size: 16px; color: #fff; padding: 8px 0; margin-bottom: 2px; }
         #duplicateWarn { color: #f44; font-size: 12px; height: 18px; margin-bottom: 8px; font-weight: bold; }
 
@@ -44,8 +45,6 @@
         .section-label { color: #555; font-size: 11px; border-left: 2px solid #333; padding-left: 8px; text-transform: uppercase; }
         
         .btn-switch { background: #222; color: #0f0; font-size: 10px; padding: 2px 8px; border: 1px solid #444; border-radius: 4px; cursor: pointer; }
-        .btn-switch.muted-btn { color: #555; border-color: #333; }
-
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
@@ -62,6 +61,12 @@
         @keyframes flash { 0%, 100% { opacity: 1; color: #fff; } 50% { opacity: 0.3; } }
         .flash-anim { animation: flash 0.5s step-end 10; }
         .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-block; margin-top: 8px; border: 2px solid; }
+
+        .chat-section { margin-top: 40px; border-top: 2px solid #222; padding-top: 20px; display: none; }
+        .chat-box { background: #080808; height: 120px; overflow-y: auto; padding: 10px; border-radius: 8px; font-size: 13px; margin-bottom: 10px; border: 1px solid #111; }
+        .msg-name { color: #0f0; font-weight: bold; }
+        .chat-input-group { display: flex; gap: 10px; }
+        .chat-input { flex: 1; background: #111; border: 1px solid #333; color: #fff; padding: 8px; border-radius: 4px; }
     </style>
 </head>
 <body>
@@ -70,10 +75,11 @@
         <div id="manualModal" class="modal">
             <h3 style="color:#0f0; margin-top:0;">📜 使用說明</h3>
             <div style="font-size:13px; line-height:1.5; color:#ccc; white-space: pre-wrap;">
-1. 漸層色彩：1(綠) > 2(青) > 3(黃) > 4(橙) > ON(紅)。
-2. NEXT 按鈕：點擊可自動切換至下一大階段。
-3. 重複提醒：輸入框下方會顯示紅字警告。
-4. 排序邏輯：重生計時區可切換 [已超時優先/計時中優先]。
+1. NEXT：所有階段追蹤卡片皆會顯示。
+2. 留言板：點擊標題列按鈕開啟。
+3. 人員：標題列下方顯示目前在線人數與名稱。
+4. 色彩：依據大階段顯示漸層，小階段不影響色系判定。
+5. 重複提醒：輸入重複 BOSS 會出現紅字警告。
             </div>
             <button class="btn-solid" style="width:100%; margin-top:10px; padding:10px;" onclick="toggleManual()">確認</button>
         </div>
@@ -99,11 +105,16 @@
                         <input type="range" id="volRange" class="vol-range" min="0" max="1" step="0.05" value="0.5">
                         <button id="sfxBtn" class="audio-btn" onclick="toggleSfx()">🔔</button>
                     </div>
+                    <button class="btn-toggle" style="font-size:10px;" onclick="toggleChat()">[留言板]</button>
                 </div>
                 <div class="room-info">
                     <button class="btn-danger" onclick="clearAllBosses()">一鍵清除</button>
                     <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
+            </div>
+
+            <div class="user-list-bar">
+                在線:<span id="onlineCount" style="color:#0f0;">0</span> | <span id="onlineUsers">載入中...</span>
             </div>
 
             <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 分鐘/00X/XX數字">
@@ -117,6 +128,14 @@
             </div>
 
             <div id="sectionsContainer"></div>
+
+            <div id="chatSection" class="chat-section">
+                <div id="chatBox" class="chat-box"></div>
+                <div class="chat-input-group">
+                    <input type="text" id="chatInput" class="chat-input" placeholder="留個言吧...">
+                    <button class="btn-solid" style="padding:0 15px;" onclick="sendMessage()">發送</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -138,6 +157,8 @@
         function setSort(t) { currentSort = t; document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id === `sort${t.charAt(0).toUpperCase()+t.slice(1)}Btn`)); renderList(); }
         function setTimerPriority() { timerPriority = (timerPriority === 'overtime' ? 'countdown' : 'overtime'); renderList(); }
         function toggleMapOrder() { mapOrder = (mapOrder === 'desc' ? 'asc' : 'desc'); renderList(); }
+        function toggleChat() { const c = document.getElementById('chatSection'); c.style.display = c.style.display === 'block' ? 'none' : 'block'; }
+        function toggleManual() { const m = document.getElementById('manualModal'), o = document.getElementById('modalOverlay'); m.style.display = m.style.display === 'block' ? 'none' : 'block'; o.style.display = o.style.display === 'block' ? 'none' : 'block'; }
 
         document.getElementById('bossInput').addEventListener('input', function(e) {
             const p = e.target.value.trim().split(/\s+/);
@@ -154,10 +175,28 @@
             document.getElementById('loginView').style.display = 'none'; document.getElementById('mainView').style.display = 'block';
             document.getElementById('displayID').innerText = id;
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
+            document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+            
+            // 人員監聽
+            const myPresenceRef = db.ref(`rooms/${currentRoom}/users`).push(); myPresenceRef.set({ name: myName }); myPresenceRef.onDisconnect().remove();
+            db.ref(`rooms/${currentRoom}/users`).on('value', s => { 
+                const users = Object.values(s.val() || {}); 
+                document.getElementById('onlineCount').innerText = users.length; 
+                document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', '); 
+            });
+
+            // BOSS 監聽
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
                 const newData = s.val() || {};
                 Object.keys(newData).forEach(key => { if (newData[key].isFlash && (!window.currentData || !window.currentData[key] || !window.currentData[key].isFlash)) playDing(); });
                 window.currentData = newData; renderList(); 
+            });
+
+            // 留言板監聽
+            db.ref(`rooms/${currentRoom}/messages`).limitToLast(15).on('value', s => {
+                const chatBox = document.getElementById('chatBox'); chatBox.innerHTML = '';
+                Object.values(s.val() || {}).forEach(m => { chatBox.innerHTML += `<div><span class="msg-name">${m.user}</span>: ${m.text}</div>`; });
+                chatBox.scrollTop = chatBox.scrollHeight;
             });
         }
 
@@ -227,15 +266,10 @@
                         } else {
                             const m = Math.floor((Date.now() - b.startTime) / 60000), s = Math.floor(((Date.now() - b.startTime) % 60000) / 1000);
                             const w = getWeight(b);
-                            el.innerHTML = `<span class="timer-label">${b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && !type !== 'idle') ? '<span class="warning-icon">⚠️</span>' : ''}`;
+                            el.innerHTML = `<span class="timer-label">${b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && type !== 'idle') ? '<span class="warning-icon">⚠️</span>' : ''}`;
                             if (type !== 'idle') {
-                                // 💡 漸層色彩邏輯
                                 let c = '#fff';
-                                if (w >= 99) c = '#ff0000'; // ON (紅)
-                                else if (w >= 4) c = '#ff6600'; // 階段 4 (橘紅)
-                                else if (w >= 3) c = '#ffcc00'; // 階段 3 (深黃)
-                                else if (w >= 2) c = '#ffff00'; // 階段 2 (亮黃)
-                                else if (w >= 1) c = '#adff2f'; // 階段 1 (黃綠)
+                                if (w >= 99) c = '#ff0000'; else if (w >= 4) c = '#ff6600'; else if (w >= 3) c = '#ffcc00'; else if (w >= 2) c = '#ffff00'; else if (w >= 1) c = '#adff2f';
                                 el.style.color = c;
                             }
                         }
@@ -248,13 +282,25 @@
 
         function parseTime(v) { const p = v.split(/[:.：]/); if (p.length === 3) return parseInt(p[0])*60 + parseInt(p[1]) + parseInt(p[2])/60; if (p.length === 2) return parseInt(p[0])*60 + parseInt(p[1]); return parseFloat(v) || 0; }
         function addBoss() { const i = document.getElementById('bossInput'), p = i.value.trim().split(/\s+/); if (p.length >= 3) saveBoss(p[0], p[1], p[2]); i.value = ''; unlockAudio(); }
-        function triggerNext(m, c) { db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => { const l = s.val().lastInput; if (l.toUpperCase()==="ON") saveBoss(m,c,""); else if (l.startsWith("00")) { let v = parseFloat(l.substring(2)); saveBoss(m,c,v>=4?"ON":"00"+(Math.floor(v)+1)); } }); unlockAudio(); }
+        function triggerNext(m, c) { 
+            db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => { 
+                const b = s.val(); if (!b) return;
+                const l = b.lastInput; 
+                if (l.toUpperCase()==="ON") saveBoss(m,c,""); 
+                else if (l.startsWith("00")) { 
+                    const cur = parseFloat(l.substring(2)); 
+                    const next = Math.floor(cur) + 1;
+                    saveBoss(m,c, next >= 5 ? "ON" : "00"+next); 
+                } 
+            }); 
+            unlockAudio(); 
+        }
+        function sendMessage() { const i = document.getElementById('chatInput'); if (!i.value.trim()) return; db.ref(`rooms/${currentRoom}/messages`).push({ user: myName, text: i.value.trim(), time: Date.now() }); i.value = ''; unlockAudio(); }
         function deleteBoss(id) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
         function clearAllBosses() { if(confirm("確定一鍵清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
         function copyRoomID() { const t = document.createElement('textarea'); t.value = currentRoom; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); alert('房號已複製'); }
         function joinRoom() { const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
         function createRoom() { const i = Math.random().toString(36).substring(2, 8).toUpperCase(); startSession(i); }
-        function toggleManual() { const m = document.getElementById('manualModal'), o = document.getElementById('modalOverlay'); m.style.display = m.style.display === 'block' ? 'none' : 'block'; o.style.display = o.style.display === 'block' ? 'none' : 'block'; }
         function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); i.setSelectionRange(m.length + c.length + 2, i.value.length); }
     </script>
 </body>
