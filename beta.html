@@ -20,26 +20,30 @@
         .btn-danger { background: #422; color: #f66; font-size: 12px; padding: 5px 10px; }
         .btn-toggle { background: #222; color: #888; font-size: 12px; padding: 5px 10px; border: 1px solid #444; }
         .btn-toggle.active { background: #050; color: #0f0; border-color: #0f0; }
-        .copy-icon { width: 18px; height: 18px; vertical-align: middle; margin-left: 8px; cursor: pointer; opacity: 0.7; }
         
         .btn-next { background: #050; color: #0f0; border: 1px solid #0f0; font-size: 11px; padding: 3px 10px; border-radius: 4px; cursor: pointer; display: inline-block; margin-top: 8px; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .room-id { color: #0f0; font-size: 20px; font-weight: bold; }
+        
         .vol-group { display: flex; align-items: center; gap: 8px; background: #111; padding: 6px 14px; border-radius: 20px; border: 1px solid #333; }
         .vol-icon { background: none; color: #0f0; padding: 0; font-size: 16px; }
+        .vol-icon.muted { color: #777; }
         .vol-range { -webkit-appearance: none; width: 70px; height: 6px; background: #333; border-radius: 3px; outline: none; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #0f0; border-radius: 50%; cursor: pointer; border: 2px solid #111; margin-top: -4px; }
+        .vol-range.muted::-webkit-slider-thumb { background: #555; }
         
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; border-radius: 0; margin-bottom: 5px; }
         .duplicate-alert { color: #f44; font-size: 12px; height: 18px; margin-bottom: 10px; }
         .sort-row { margin-bottom: 15px; display: flex; gap: 8px; flex-wrap: wrap; }
         
-        /* 💡 群組分層關鍵樣式 */
         .grid-section { margin-bottom: 30px; }
-        .section-label { color: #555; font-size: 12px; margin-bottom: 8px; border-left: 3px solid #333; padding-left: 8px; }
+        .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .section-label { color: #555; font-size: 11px; border-left: 2px solid #333; padding-left: 8px; text-transform: uppercase; letter-spacing: 1px; }
+        .btn-switch { background: #222; color: #0f0; font-size: 10px; padding: 2px 8px; border: 1px solid #444; border-radius: 4px; cursor: pointer; }
+        .btn-switch:hover { background: #333; }
+
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
-        
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
         .timer { font-size: 20px; font-weight: bold; margin-top: 8px; font-family: monospace; }
@@ -55,7 +59,7 @@
     <div id="app">
         <div id="idleOverlay" class="idle-overlay" style="display:none;">
             <h2 style="color:#0f0">TOS M FB TIME</h2>
-            <button class="btn-solid" onclick="location.reload()">重新連接</button>
+            <button class="btn-solid" onclick="location.reload()" style="padding:15px 30px;">重新連接</button>
         </div>
 
         <div id="loginView" class="login-view">
@@ -90,9 +94,7 @@
 
             <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 分鐘/00X/時:分:秒">
             <div id="duplicateAlert" class="duplicate-alert"></div>
-            
-            <div id="sectionsContainer">
-                </div>
+            <div id="sectionsContainer"></div>
         </div>
     </div>
 
@@ -106,6 +108,7 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
         let currentRoom = '', timers = {}, isAudioEnabled = false, playedAlerts = new Set(), currentSort = 'group';
+        let timerPriority = 'overtime'; // 'overtime' 或 'countdown'
 
         function speak(text) {
             if (!isAudioEnabled) return;
@@ -121,13 +124,23 @@
             isAudioEnabled = !isAudioEnabled;
             const btn = document.getElementById('volBtn'), range = document.getElementById('volRange');
             if (isAudioEnabled) {
-                btn.innerText = '🔊'; btn.classList.remove('muted');
-                range.style.background = `linear-gradient(to right, #0f0 0%, #0f0 ${range.value * 100}%, #333 ${range.value * 100}%, #333 100%)`;
+                btn.innerText = '🔊'; btn.classList.remove('muted'); range.classList.remove('muted');
+                updateRangeBg(range);
                 speak("語音功能已開啟");
             } else {
-                btn.innerText = '🔈'; btn.classList.add('muted'); range.style.background = '#222';
+                btn.innerText = '🔈'; btn.classList.add('muted'); range.classList.add('muted'); 
+                range.style.background = '#222';
             }
         }
+
+        function updateRangeBg(range) {
+            if (isAudioEnabled) {
+                const val = range.value * 100;
+                range.style.background = `linear-gradient(to right, #0f0 0%, #0f0 ${val}%, #333 ${val}%, #333 100%)`;
+            }
+        }
+
+        document.getElementById('volRange').addEventListener('input', function() { updateRangeBg(this); });
 
         function copyRoomID() {
             const el = document.createElement('textarea');
@@ -140,6 +153,11 @@
             currentSort = type;
             document.querySelectorAll('.btn-toggle').forEach(b => b.classList.remove('active'));
             document.getElementById(`sort${type.charAt(0).toUpperCase() + type.slice(1)}Btn`).classList.add('active');
+            renderList();
+        }
+
+        function toggleTimerPriority() {
+            timerPriority = (timerPriority === 'overtime') ? 'countdown' : 'overtime';
             renderList();
         }
 
@@ -213,56 +231,65 @@
             const container = document.getElementById('sectionsContainer');
             container.innerHTML = '';
             Object.values(timers).forEach(clearInterval); timers = {};
-            
-            const allItems = Object.entries(window.currentData || {}), now = Date.now();
+            const all = Object.entries(window.currentData || {}), now = Date.now();
             const getStage = (v) => parseFloat(v.match(/[\d.]+/)[0]);
 
-            // 1. 分類
-            let stageItems = allItems.filter(([id, b]) => b.displayValue.includes("階段"));
-            let timerItems = allItems.filter(([id, b]) => b.targetTime > 0 || b.displayValue === "ON");
+            // 💡 邏輯修正：ON 屬於階段區
+            let stages = all.filter(([id, b]) => b.displayValue.includes("階段") || b.displayValue === "ON");
+            let timersList = all.filter(([id, b]) => b.targetTime > 0);
 
-            // 2. 排序邏輯
-            const sortLogic = (list) => {
-                if (currentSort === 'map') {
-                    return list.sort((a,b) => parseInt(b[1].map) - parseInt(a[1].map) || parseInt(a[1].ch) - parseInt(b[1].ch));
-                }
+            const sortFunc = (list, isTimerSection = false) => {
+                if (currentSort === 'map') return list.sort((a,b) => parseInt(b[1].map) - parseInt(a[1].map) || parseInt(a[1].ch) - parseInt(b[1].ch));
+                
                 return list.sort((a,b) => {
-                    const getCat = (v) => v.targetTime > now ? 1 : (v.targetTime > 0 ? 2 : (v.displayValue.includes("階段") ? 3 : 4));
-                    const cA = getCat(a[1]), cB = getCat(b[1]);
+                    const getC = (v) => v.targetTime > now ? 1 : (v.targetTime > 0 ? 2 : (v.displayValue.includes("階段") ? 3 : 4));
+                    const cA = getC(a[1]), cB = getC(b[1]);
+                    
+                    if (isTimerSection && (currentSort === 'group' || currentSort === 'countdown')) {
+                        // 💡 重生區專屬切換邏輯
+                        if (timerPriority === 'overtime') {
+                            // 已超時優先 (2 > 1)
+                            if (cA !== cB) return cB - cA; 
+                        } else {
+                            // 計時中優先 (1 > 2)
+                            if (cA !== cB) return cA - cB;
+                        }
+                        return a[1].targetTime - b[1].targetTime;
+                    }
+
                     if (cA !== cB) return cA - cB;
                     if (cA <= 2) return a[1].targetTime - b[1].targetTime;
                     if (cA === 3) return getStage(b[1].displayValue) - getStage(a[1].displayValue);
-                    return parseInt(b[1].map) - parseInt(a[1].map);
+                    return (parseInt(b[1].map) || 0) - (parseInt(a[1].map) || 0);
                 });
             };
 
-            const renderSection = (items, label) => {
+            const render = (items, label, isTimer = false) => {
                 if (items.length === 0) return;
-                const section = document.createElement('div');
-                section.className = 'grid-section';
-                section.innerHTML = `<div class="section-label">${label}</div><div class="grid" id="grid_${label}"></div>`;
-                container.appendChild(section);
-                const grid = section.querySelector('.grid');
+                const sec = document.createElement('div');
+                sec.className = 'grid-section';
                 
-                sortLogic(items).forEach(([id, boss]) => {
+                // 💡 標題與切換鍵
+                let switchBtn = isTimer ? `<button class="btn-switch" onclick="toggleTimerPriority()">${timerPriority === 'overtime' ? '目前：已超時優先' : '目前：計時中優先'}</button>` : '';
+                sec.innerHTML = `<div class="section-header"><div class="section-label">${label}</div>${switchBtn}</div><div class="grid"></div>`;
+                
+                container.appendChild(sec);
+                const grid = sec.querySelector('.grid');
+                sortFunc(items, isTimer).forEach(([id, b]) => {
                     const card = document.createElement('div');
                     card.className = 'card';
                     card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button>
-                        <h3 onclick="doEdit('${boss.map}','${boss.ch}','${boss.lastInput}')">${boss.map} - 分流${boss.ch}</h3>
-                        <div class="timer-container"><div class="timer ${boss.isFlash ? 'flash-anim' : ''}" id="t_${id}">...</div>
-                        ${boss.targetTime === 0 ? `<button class="btn-next" onclick="triggerNext('${boss.map}','${boss.ch}','${boss.lastInput}')">NEXT</button>` : ''}</div>`;
-                    grid.appendChild(card);
-                    startTimer(id, boss);
+                        <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - 分流${b.ch}</h3>
+                        <div class="timer-container"><div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}">...</div>
+                        ${b.targetTime === 0 ? `<button class="btn-next" onclick="triggerNext('${b.map}','${b.ch}','b.lastInput')">NEXT</button>` : ''}</div>`;
+                    grid.appendChild(card); startTimer(id, b);
                 });
             };
 
-            // 💡 執行群組分層渲染
-            if (currentSort === 'group' || currentSort === 'time' || currentSort === 'countdown') {
-                renderSection(stageItems, "階段追蹤");
-                renderSection(timerItems, "重生/計時區");
-            } else {
-                // 地圖排序則不分層
-                renderSection(allItems, "所有 BOSS");
+            if (currentSort === 'map') render(all, "所有 BOSS");
+            else { 
+                render(stages, "階段追蹤區 (含 ON)"); 
+                render(timersList, "重生計時區", true); 
             }
         }
 
@@ -295,16 +322,21 @@
         }
 
         function triggerNext(m, c, l) {
-            if (l.toUpperCase() === "ON") saveBoss(m, c, "");
-            else if (l.startsWith("00")) {
-                let v = parseInt(l.substring(2, 3));
-                if (v >= 4) saveBoss(m, c, "ON"); else saveBoss(m, c, "00" + (v + 1));
-            }
+            // 從 Firebase 重新抓取最新的 lastInput
+            db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => {
+                const d = s.val();
+                if (!d) return;
+                const last = d.lastInput;
+                if (last.toUpperCase() === "ON") saveBoss(m, c, "");
+                else if (last.startsWith("00")) {
+                    let v = parseInt(last.substring(2, 3));
+                    if (v >= 4) saveBoss(m, c, "ON"); else saveBoss(m, c, "00" + (v + 1));
+                }
+            });
         }
 
         function deleteBoss(id) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now()); }
         function clearAllBosses() { if(confirm("確定一鍵清除？")) { db.ref(`rooms/${currentRoom}/bosses`).remove(); db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now()); } }
-        window.onload = () => { document.getElementById('roomInput').focus(); };
     </script>
 </body>
 </html>
