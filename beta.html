@@ -17,19 +17,18 @@
         button { padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer; border: none; transition: 0.2s; }
         .btn-outline { background: none; border: 1px solid #0f0; color: #0f0; }
         .btn-solid { background: #0f0; color: #000; }
-        .btn-danger { background: #422; color: #f66; font-size: 11px; padding: 5px 10px; }
+        .btn-danger { background: #422; color: #f66; font-size: 11px; padding: 5px 10px; border-radius: 6px; }
         .btn-toggle { background: #222; color: #888; font-size: 12px; padding: 5px 10px; border: 1px solid #444; }
         .btn-toggle.active { background: #050; color: #0f0; border-color: #0f0; }
         
-        .copy-icon { width: 18px; height: 18px; min-width: 18px; min-height: 18px; vertical-align: middle; cursor: pointer; opacity: 0.7; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 15px; }
+        .copy-icon { width: 18px; height: 18px; min-width: 18px; vertical-align: middle; cursor: pointer; opacity: 0.7; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px; }
         .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .room-id { color: #0f0; font-size: 20px; font-weight: bold; line-height: 1; }
         
-        /* 💡 守則彈窗樣式 */
-        .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #111; border: 2px solid #0f0; padding: 20px; border-radius: 12px; z-index: 2000; width: 85%; max-width: 500px; max-height: 70vh; overflow-y: auto; display: none; }
-        .modal-overlay { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.8); z-index: 1999; display: none; }
-        .manual-btn { background: #222; color: #aaa; font-size: 11px; border: 1px solid #444; }
+        /* 💡 使用守則彈窗優化 */
+        .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #111; border: 2px solid #0f0; padding: 15px; border-radius: 12px; z-index: 2000; width: 85%; max-width: 450px; max-height: 60vh; overflow-y: auto; display: none; box-shadow: 0 0 20px rgba(0,255,0,0.2); }
+        .modal-overlay { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.85); z-index: 1999; display: none; }
 
         .vol-group { display: flex; align-items: center; gap: 8px; background: #111; padding: 6px 14px; border-radius: 20px; border: 1px solid #333; height: 32px; box-sizing: border-box; }
         .vol-icon { background: none; color: #0f0; padding: 0; font-size: 16px; transition: color 0.2s; cursor: pointer; }
@@ -40,6 +39,7 @@
         .user-list-bar { font-size: 12px; color: #555; margin-bottom: 20px; border-bottom: 1px solid #222; padding-bottom: 8px; }
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; margin-bottom: 5px; font-size: 16px; color: #fff; padding: 8px 0; }
         .sort-row { margin-bottom: 15px; display: flex; gap: 8px; flex-wrap: wrap; }
+        
         .grid-section { margin-bottom: 30px; }
         .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
         .section-label { color: #555; font-size: 11px; border-left: 2px solid #333; padding-left: 8px; text-transform: uppercase; }
@@ -47,17 +47,26 @@
 
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
+        .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
+        
+        /* 💡 閒置卡片無彩色 */
+        .card.idle-card h3 { color: #444; border-bottom: 1px dashed #222; }
+        .card.idle-card .timer { color: #555 !important; }
+        .card.idle-card .btn-next { border-color: #333 !important; color: #333 !important; }
+
+        /* 💡 回歸原始 X 鍵大小 */
+        .del { position: absolute; top: 6px; right: 10px; color: #444; background: none; border: none; font-size: 16px; cursor: pointer; padding: 2px; }
+        .del:hover { color: #888; }
+
         .timer { font-size: 20px; font-weight: bold; margin-top: 8px; font-family: monospace; }
         .warning-icon { display: inline-block; margin-left: 8px; font-size: 18px; animation: warn-flash 0.8s infinite; }
         @keyframes warn-flash { 0%, 100% { opacity: 1; scale: 1; } 50% { opacity: 0.5; scale: 1.2; } }
         .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-block; margin-top: 8px; border: 2px solid; }
 
-        /* 💡 留言板樣式 */
-        .chat-section { margin-top: 40px; border-top: 2px solid #222; padding-top: 20px; }
-        .chat-box { background: #080808; height: 150px; overflow-y: auto; padding: 10px; border-radius: 8px; font-size: 13px; margin-bottom: 10px; border: 1px solid #111; }
-        .msg { margin-bottom: 6px; }
+        /* 留言板 */
+        .chat-section { margin-top: 40px; border-top: 2px solid #222; padding-top: 20px; display: none; }
+        .chat-box { background: #080808; height: 120px; overflow-y: auto; padding: 10px; border-radius: 8px; font-size: 13px; margin-bottom: 10px; border: 1px solid #111; }
         .msg-name { color: #0f0; font-weight: bold; }
-        .msg-time { color: #444; font-size: 10px; margin-left: 5px; }
         .chat-input-group { display: flex; gap: 10px; }
         .chat-input { flex: 1; background: #111; border: 1px solid #333; color: #fff; padding: 8px; border-radius: 4px; }
     </style>
@@ -67,20 +76,20 @@
         <div id="modalOverlay" class="modal-overlay" onclick="toggleManual()"></div>
         <div id="manualModal" class="modal">
             <h3 style="color:#0f0; margin-top:0;">📜 使用守則</h3>
-            <div id="manualContent" style="font-size:14px; line-height:1.6; color:#ccc; white-space: pre-wrap;">
-1. 進入房間請先填寫稱呼。
-2. 階段輸入格式：[地圖] [分流] [00X]。
-3. 重生時間格式：[地圖] [分流] [分鐘]。
-4. 點擊 NEXT 可快速切換下一階段。
-5. ⚠️ 符號表示該階段停留時間異常，請確認。
+            <div id="manualContent" style="font-size:13px; line-height:1.5; color:#ccc; white-space: pre-wrap;">
+1. 階段追蹤：ON (紅色) > 階段 4 (橙) > 階段 123 (黃)。
+2. 超時偵測：當階段停留過久會出現 ⚠️。
+3. 閒置區：超過 1 小時或代碼 000 會移至底部。
+4. 語音：靜音狀態下拉桿會自動變灰。
+5. 數據同步：所有分流數據 24H 閒置後自動清理。
             </div>
-            <button class="btn-solid" style="width:100%; margin-top:15px;" onclick="toggleManual()">我明白了</button>
+            <button class="btn-solid" style="width:100%; margin-top:10px; padding:10px;" onclick="toggleManual()">確認</button>
         </div>
 
         <div id="loginView" class="login-view">
             <div class="title">TOS M FB TIME</div>
             <div class="input-group">
-                <input type="text" id="userNameInput" placeholder="你的稱呼 (選填)" maxlength="10">
+                <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10">
                 <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
                 <input type="text" id="roomInput" placeholder="輸入房號" maxlength="6">
                 <button class="btn-solid" onclick="joinRoom()">進入房間</button>
@@ -92,17 +101,21 @@
                 <div class="room-info">
                     <span class="room-id" id="displayID"></span>
                     <svg class="copy-icon" onclick="copyRoomID()" viewBox="0 0 24 24" fill="none" stroke="#0f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                    <button class="manual-btn" onclick="toggleManual()">[使用守則]</button>
+                    <button class="btn-toggle" style="font-size:10px;" onclick="toggleManual()">[守則]</button>
                     <div class="vol-group">
                         <button id="volBtn" class="vol-icon muted" onclick="toggleAudio()">🔈</button>
                         <input type="range" id="volRange" class="vol-range muted" min="0" max="1" step="0.05" value="0.5">
                     </div>
+                    <button class="btn-toggle" style="font-size:10px;" onclick="toggleChat()">[留言板]</button>
                 </div>
-                <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
+                <div class="room-info">
+                    <button class="btn-danger" onclick="clearAllBosses()">一鍵清除</button>
+                    <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
+                </div>
             </div>
 
             <div class="user-list-bar">
-                在線:<span id="onlineCount" style="color:#0f0;">0</span>人 | <span id="onlineUsers">載入中...</span>
+                在線:<span id="onlineCount" style="color:#0f0;">0</span> | <span id="onlineUsers">載入中...</span>
             </div>
 
             <div class="sort-row">
@@ -115,166 +128,100 @@
             <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 分鐘/00X/時:分:秒">
             <div id="sectionsContainer"></div>
 
-            <div class="chat-section">
-                <div class="section-label">戰友留言板</div>
+            <div id="chatSection" class="chat-section">
                 <div id="chatBox" class="chat-box"></div>
                 <div class="chat-input-group">
-                    <input type="text" id="chatInput" class="chat-input" placeholder="說點什麼..." maxlength="50">
-                    <button class="btn-solid" style="padding:0 20px;" onclick="sendMessage()">發送</button>
+                    <input type="text" id="chatInput" class="chat-input" placeholder="留個言吧...">
+                    <button class="btn-solid" style="padding:0 15px;" onclick="sendMessage()">發送</button>
                 </div>
-            </div>
-            
-            <div style="text-align:center; margin-top:40px;">
-                <button class="btn-danger" onclick="clearAllBosses()">一鍵清除所有 BOSS</button>
             </div>
         </div>
     </div>
 
     <script>
-        const firebaseConfig = {
-            apiKey: "AIzaSyAff__U1cLBr92gYmtbWpm80zO4rHvObUI",
-            authDomain: "tos-m-fb.firebaseapp.com",
-            databaseURL: "https://tos-m-fb-default-rtdb.asia-southeast1.firebasedatabase.app",
-            projectId: "tos-m-fb"
-        };
+        const firebaseConfig = { apiKey: "AIzaSyAff__U1cLBr92gYmtbWpm80zO4rHvObUI", authDomain: "tos-m-fb.firebaseapp.com", databaseURL: "https://tos-m-fb-default-rtdb.asia-southeast1.firebasedatabase.app", projectId: "tos-m-fb" };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
         let currentRoom = '', timers = {}, isAudioEnabled = false, currentSort = 'group';
         let timerPriority = 'overtime', myName = '無名戰友', colorMode = 1, showWarningIcon = true;
 
-        function toggleManual() {
-            const m = document.getElementById('manualModal');
-            const o = document.getElementById('modalOverlay');
-            const isShow = m.style.display === 'block';
-            m.style.display = isShow ? 'none' : 'block';
-            o.style.display = isShow ? 'none' : 'block';
-        }
-
-        function toggleAudio() {
-            isAudioEnabled = !isAudioEnabled;
-            const btn = document.getElementById('volBtn'), range = document.getElementById('volRange');
-            if (isAudioEnabled) {
-                btn.innerText = '🔊'; btn.classList.remove('muted'); range.classList.remove('muted');
-                updateRangeBg(range);
-            } else {
-                btn.innerText = '🔈'; btn.classList.add('muted'); range.classList.add('muted'); 
-                range.style.background = '#222';
-            }
-        }
+        function toggleManual() { const m = document.getElementById('manualModal'); const o = document.getElementById('modalOverlay'); const isShow = m.style.display === 'block'; m.style.display = isShow ? 'none' : 'block'; o.style.display = isShow ? 'none' : 'block'; }
+        function toggleChat() { const c = document.getElementById('chatSection'); c.style.display = c.style.display === 'block' ? 'none' : 'block'; }
+        function toggleAudio() { isAudioEnabled = !isAudioEnabled; const btn = document.getElementById('volBtn'), range = document.getElementById('volRange'); if (isAudioEnabled) { btn.innerText = '🔊'; btn.classList.remove('muted'); range.classList.remove('muted'); updateRangeBg(range); } else { btn.innerText = '🔈'; btn.classList.add('muted'); range.classList.add('muted'); range.style.background = '#222'; } }
         function updateRangeBg(r) { if (isAudioEnabled) { const v = r.value * 100; r.style.background = `linear-gradient(to right, #0f0 0%, #0f0 ${v}%, #333 ${v}%, #333 100%)`; } }
         document.getElementById('volRange').addEventListener('input', function() { updateRangeBg(this); });
 
         function startSession(id) {
-            currentRoom = id;
-            const inputName = document.getElementById('userNameInput').value.trim();
-            if (inputName) myName = inputName;
-            document.getElementById('loginView').style.display = 'none';
-            document.getElementById('mainView').style.display = 'block';
+            currentRoom = id; myName = document.getElementById('userNameInput').value.trim() || '無名戰友';
+            document.getElementById('loginView').style.display = 'none'; document.getElementById('mainView').style.display = 'block';
             document.getElementById('displayID').innerText = id;
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
             document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
-            
-            const myPresenceRef = db.ref(`rooms/${currentRoom}/users`).push();
-            myPresenceRef.set({ name: myName });
-            myPresenceRef.onDisconnect().remove();
-
-            db.ref(`rooms/${currentRoom}/users`).on('value', s => {
-                const users = Object.values(s.val() || {});
-                document.getElementById('onlineCount').innerText = users.length;
-                document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', ');
-            });
-
+            const myPresenceRef = db.ref(`rooms/${currentRoom}/users`).push(); myPresenceRef.set({ name: myName }); myPresenceRef.onDisconnect().remove();
+            db.ref(`rooms/${currentRoom}/users`).on('value', s => { const users = Object.values(s.val() || {}); document.getElementById('onlineCount').innerText = users.length; document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', '); });
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => { window.currentData = s.val() || {}; renderList(); });
-            
-            // 💡 監聽留言板 (只顯示最近 20 條)
-            db.ref(`rooms/${currentRoom}/messages`).limitToLast(20).on('value', s => {
-                const chatBox = document.getElementById('chatBox');
-                chatBox.innerHTML = '';
-                const msgs = s.val() || {};
-                Object.values(msgs).forEach(m => {
-                    const d = new Date(m.time);
-                    const timeStr = `${d.getHours()}:${d.getMinutes().toString().padStart(2,'0')}`;
-                    chatBox.innerHTML += `<div class="msg"><span class="msg-name">${m.user}</span><span class="msg-time">${timeStr}</span><br>${m.text}</div>`;
-                });
-                chatBox.scrollTop = chatBox.scrollHeight;
-            });
+            db.ref(`rooms/${currentRoom}/messages`).limitToLast(15).on('value', s => { const chatBox = document.getElementById('chatBox'); chatBox.innerHTML = ''; const msgs = s.val() || {}; Object.values(msgs).forEach(m => { const d = new Date(m.time); chatBox.innerHTML += `<div><span class="msg-name">${m.user}</span>: ${m.text}</div>`; }); chatBox.scrollTop = chatBox.scrollHeight; });
         }
 
-        function sendMessage() {
-            const input = document.getElementById('chatInput');
-            const text = input.value.trim();
-            if (!text) return;
-            db.ref(`rooms/${currentRoom}/messages`).push({
-                user: myName,
-                text: text,
-                time: Date.now()
-            });
-            input.value = '';
-        }
-
+        function sendMessage() { const input = document.getElementById('chatInput'); const text = input.value.trim(); if (!text) return; db.ref(`rooms/${currentRoom}/messages`).push({ user: myName, text: text, time: Date.now() }); input.value = ''; }
         function saveBoss(map, ch, val) {
             const id = `${map}_${ch}`, old = window.currentData ? window.currentData[id] : null;
             let dv = val, tt = 0, flash = false;
             if (val.toUpperCase() === "ON") { dv = "ON"; flash = true; }
-            else if (val.startsWith("00")) {
-                const n = val.substring(2); dv = "階段" + (n.length > 1 ? n.split('').join('.') : n);
-                if (old && old.lastInput.startsWith("003") && val.startsWith("004")) flash = true;
-            } else tt = Date.now() + (parseTime(val) * 60000);
+            else if (val.startsWith("00")) { const n = val.substring(2); dv = (val === "000" ? "000" : "階段" + (n.length > 1 ? n.split('').join('.') : n)); if (old && old.lastInput.startsWith("003") && val.startsWith("004")) flash = true; }
+            else tt = Date.now() + (parseTime(val) * 60000);
             db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash });
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 5000);
         }
 
         function renderList() {
-            const container = document.getElementById('sectionsContainer');
-            container.innerHTML = ''; Object.values(timers).forEach(clearInterval); timers = {};
+            const container = document.getElementById('sectionsContainer'); container.innerHTML = ''; Object.values(timers).forEach(clearInterval); timers = {};
             const all = Object.entries(window.currentData || {}), now = Date.now();
-            let stages = all.filter(([id, b]) => b.displayValue.includes("階段") || b.displayValue === "ON");
-            let timersList = all.filter(([id, b]) => b.targetTime > 0);
+            const oneHour = 3600000;
 
-            const render = (items, label, isTimer = false) => {
+            const stages = [], timersList = [], idleList = [];
+            all.forEach(([id, b]) => {
+                const elapsed = now - b.startTime;
+                const isOverdueOneHour = b.targetTime > 0 && (now - b.targetTime > oneHour);
+                const isStageOneHour = b.targetTime === 0 && (elapsed > oneHour);
+                if (b.lastInput === "000" || isOverdueOneHour || isStageOneHour) idleList.push([id, b]);
+                else if (b.targetTime > 0) timersList.push([id, b]);
+                else stages.push([id, b]);
+            });
+
+            const render = (items, label, isTimer = false, isIdle = false) => {
                 if (items.length === 0) return;
                 const sec = document.createElement('div'); sec.className = 'grid-section';
-                let controls = isTimer ? `<button class="btn-switch" onclick="toggleTimerPriority()">${timerPriority === 'overtime' ? '已超時優先' : '計時中優先'}</button>` : `
-                    <button class="btn-switch" onclick="toggleColorMode()">${colorMode === 1 ? '漸層' : '模式2'}</button>
-                    <button class="btn-switch" onclick="toggleWarning()">${showWarningIcon ? '⚠️開' : '⚠️關'}</button>`;
+                let controls = isTimer ? `<button class="btn-switch" onclick="toggleTimerPriority()">${timerPriority === 'overtime' ? '已超時優先' : '計時中優先'}</button>` : (isIdle ? '' : `<button class="btn-switch" onclick="toggleColorMode()">${colorMode === 1 ? '漸層' : '模式2'}</button><button class="btn-switch" onclick="toggleWarning()">${showWarningIcon ? '⚠️開' : '⚠️關'}</button>`);
                 sec.innerHTML = `<div class="section-header"><div class="section-label">${label}</div>${controls}</div><div class="grid"></div>`;
-                container.appendChild(sec);
-                const grid = sec.querySelector('.grid');
-                items.sort((a,b) => {
-                    const getC = (v) => v.targetTime > now ? 1 : (v.targetTime > 0 ? 2 : (v.displayValue === "ON" ? 3 : 4));
-                    return getC(a[1]) - getC(b[1]) || a[1].targetTime - b[1].targetTime;
-                }).forEach(([id, b]) => {
-                    const card = document.createElement('div'); card.className = 'card';
-                    card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button>
-                        <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - 分流${b.ch}</h3>
+                container.appendChild(sec); const grid = sec.querySelector('.grid');
+                items.sort((a,b) => { const getC = (v) => v.targetTime > now ? 1 : (v.targetTime > 0 ? 2 : (v.displayValue === "ON" ? 3 : 4)); return getC(a[1]) - getC(b[1]) || a[1].targetTime - b[1].targetTime; }).forEach(([id, b]) => {
+                    const card = document.createElement('div'); card.className = `card ${isIdle ? 'idle-card' : ''}`;
+                    card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button><h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - 分流${b.ch}</h3>
                         <div class="timer-container"><div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}">...</div>
-                        ${b.targetTime === 0 ? `<button class="btn-next" id="btn_${id}" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>` : ''}</div>`;
-                    grid.appendChild(card); startTimer(id, b);
+                        ${(b.targetTime === 0 && !isIdle) ? `<button class="btn-next" id="btn_${id}" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>` : ''}</div>`;
+                    grid.appendChild(card); startTimer(id, b, isIdle);
                 });
             };
-            if (currentSort === 'map') render(all, "所有 BOSS");
-            else { render(stages, "階段區", false); render(timersList, "重生區", true); }
+            if (currentSort === 'map') render(all, "所有 BOSS"); else { render(stages, "階段追蹤區"); render(timersList, "重生計時區", true); render(idleList, "超時閒置區", false, true); }
         }
 
-        function startTimer(id, b) {
+        function startTimer(id, b, isIdle) {
             const el = document.getElementById(`t_${id}`), btn = document.getElementById(`btn_${id}`);
             const up = () => {
                 const now = Date.now();
                 if (b.targetTime > 0) {
                     const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
                     el.innerText = `${Math.floor(a/3600)}:${Math.floor((a%3600)/60).toString().padStart(2,'0')}:${(a%60).toString().padStart(2,'0')}`;
-                    el.style.color = d <= 0 ? '#ff3300' : '#0f0';
+                    if (!isIdle) el.style.color = d <= 0 ? '#ff3300' : '#0f0';
                 } else {
-                    const m = Math.floor((now - b.startTime) / 60000);
-                    const s = Math.floor(((now - b.startTime) % 60000) / 1000);
+                    const m = Math.floor((now - b.startTime) / 60000), s = Math.floor(((now - b.startTime) % 60000) / 1000);
                     const lv = b.displayValue === "ON" ? 99 : parseFloat(b.lastInput.substring(2));
                     const isW = (lv < 2 && m >= 12) || (lv < 3 && lv >= 2 && m >= 7) || (lv < 4 && lv >= 3 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
-                    el.innerHTML = `${b.displayValue} (${m}:${s.toString().padStart(2,'0')})${(showWarningIcon && isW) ? '<span class="warning-icon">⚠️</span>' : ''}`;
-                    let c = (colorMode === 1) ? (lv < 2 ? '#0f0' : lv < 3 ? '#adff2f' : lv < 4 ? '#ff0' : lv < 5 ? '#f90' : '#f00') : (lv >= 99 ? '#f00' : lv >= 4 ? '#f90' : '#ff0');
-                    el.style.color = c; if (btn) { btn.style.color = c; btn.style.borderColor = c; }
+                    el.innerHTML = `${b.displayValue} (${m}:${s.toString().padStart(2,'0')})${(showWarningIcon && isW && !isIdle) ? '<span class="warning-icon">⚠️</span>' : ''}`;
+                    if (!isIdle) { let c = (colorMode === 1) ? (lv < 2 ? '#0f0' : lv < 3 ? '#adff2f' : lv < 4 ? '#ff0' : lv < 5 ? '#f90' : '#f00') : (lv >= 99 ? '#f00' : lv >= 4 ? '#f90' : '#ff0'); el.style.color = c; if (btn) { btn.style.color = c; btn.style.borderColor = c; } }
                 }
-            };
-            up(); timers[id] = setInterval(up, 1000);
+            }; up(); timers[id] = setInterval(up, 1000);
         }
 
         function parseTime(v) { v = v.toLowerCase(); const p = v.split(/[:.：]/); if (p.length === 3) return parseInt(p[0])*60 + parseInt(p[1]) + parseInt(p[2])/60; if (p.length === 2) return parseInt(p[0])*60 + parseInt(p[1]); return parseFloat(v) || 0; }
