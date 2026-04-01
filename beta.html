@@ -22,7 +22,22 @@
         .btn-toggle.active { background: #050; color: #0f0; border-color: #0f0; }
         .copy-icon { width: 18px; height: 18px; vertical-align: middle; margin-left: 8px; cursor: pointer; opacity: 0.7; }
         .copy-icon:hover { opacity: 1; }
-        .btn-next { background: #050; color: #0f0; border: 1px solid #0f0; font-size: 11px; padding: 3px 10px; border-radius: 4px; margin-left: 10px; cursor: pointer; display: inline-block; vertical-align: middle; }
+        
+        /* 💡 NEXT 按鈕 UI 調整 */
+        .btn-next { 
+            background: #050; 
+            color: #0f0; 
+            border: 1px solid #0f0; 
+            font-size: 11px; 
+            padding: 3px 10px; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            display: inline-block; 
+            margin-top: 8px; /* 這裡控制按鈕下來一點點 */
+            transition: 0.2s;
+        }
+        .btn-next:active { background: #0f0; color: #000; }
+        
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .room-id { color: #0f0; font-size: 20px; font-weight: bold; }
@@ -31,17 +46,21 @@
         .vol-icon.muted { color: #f44; }
         .vol-range { -webkit-appearance: none; width: 70px; height: 6px; background: #333; border-radius: 3px; outline: none; transition: background 0.2s; margin: 0; padding: 0; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #0f0; border-radius: 50%; cursor: pointer; border: 2px solid #111; margin-top: -4px; }
+        
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; border-radius: 0; margin-bottom: 5px; }
         .duplicate-alert { color: #f44; font-size: 12px; height: 18px; margin-bottom: 10px; }
         .sort-row { margin-bottom: 15px; display: flex; gap: 8px; flex-wrap: wrap; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
+        
         .timer { font-size: 20px; font-weight: bold; margin-top: 8px; font-family: monospace; transition: 0.3s; }
+        /* 讓 NEXT 按鈕與階段/時間區塊垂直排列 */
+        .timer-container { display: flex; flex-direction: column; align-items: flex-start; }
+
         .del { position: absolute; top: 5px; right: 10px; color: #444; background: none; border: none; font-size: 20px; cursor: pointer; z-index: 10; }
         .idle-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; text-align: center; }
         
-        /* 閃爍效果 */
         @keyframes flash {
             0%, 100% { opacity: 1; color: #0f0; }
             50% { opacity: 0.3; color: #fff; }
@@ -233,7 +252,6 @@
             } else if (val.startsWith("00")) {
                 const stageNum = val.substring(2);
                 displayValue = "階段" + (stageNum.length > 1 ? stageNum.split('').join('.') : stageNum);
-                // 檢查是否從階段3進入階段4
                 if (oldData && oldData.lastInput.startsWith("003") && val.startsWith("004")) {
                     isFlash = true;
                 }
@@ -286,8 +304,10 @@
                 const timerId = `t_${id}`;
                 card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button>
                     <h3 onclick="doEdit('${boss.map}','${boss.ch}','${boss.lastInput}')">${boss.map} - 分流${boss.ch}</h3>
-                    <div class="timer ${boss.isFlash ? 'flash-anim' : ''}" id="${timerId}">載入中...</div>
-                    ${boss.targetTime === 0 ? `<button class="btn-next" onclick="triggerNext('${boss.map}','${boss.ch}','${boss.lastInput}')">NEXT</button>` : ''}`;
+                    <div class="timer-container">
+                        <div class="timer ${boss.isFlash ? 'flash-anim' : ''}" id="${timerId}">...</div>
+                        ${boss.targetTime === 0 ? `<button class="btn-next" onclick="triggerNext('${boss.map}','${boss.ch}','${boss.lastInput}')">NEXT</button>` : ''}
+                    </div>`;
                 list.appendChild(card);
                 startTimer(id, boss);
             });
@@ -311,8 +331,6 @@
                     const passedSec = Math.floor((now - boss.startTime) / 1000);
                     const m = Math.floor(passedSec / 60), s = passedSec % 60;
                     el.innerText = `${boss.displayValue} (${m}:${s.toString().padStart(2,'0')})`;
-                    
-                    // 預警顏色邏輯
                     el.classList.remove('warning-yellow');
                     if (boss.displayValue.includes("階段")) {
                         const lv = parseFloat(boss.lastInput.substring(2));
