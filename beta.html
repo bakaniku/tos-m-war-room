@@ -32,7 +32,6 @@
         .audio-controls { display: flex; align-items: center; gap: 5px; background: #111; padding: 4px 10px; border-radius: 20px; border: 1px solid #333; height: 32px; box-sizing: border-box; }
         .audio-btn { background: none; color: #0f0; padding: 0; font-size: 14px; cursor: pointer; border: none; opacity: 0.3; transition: 0.2s; }
         .audio-btn.active { opacity: 1; }
-        
         .vol-range { -webkit-appearance: none; width: 50px; height: 4px; background: #0f0; border-radius: 2px; outline: none; margin: 0 5px; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: #0f0; border-radius: 50%; border: 2px solid #111; cursor: pointer; }
         
@@ -78,11 +77,11 @@
         <div id="manualModal" class="modal">
             <h3 style="color:#0f0; margin-top:0;">📜 使用說明</h3>
             <div style="font-size:13px; line-height:1.5; color:#ccc; white-space: pre-wrap;">
-1. 語音(🔊)：重生歸零報時。音效(🔔)：4/ON 叮聲。
-2. 排序：自動執行 ON > 4 > 3 > 2 > 1。
-3. 警告：停留過久出現 ⚠️。
-4. XX代碼：XX1, XX2 直接進入閒置區。
-5. 數據：房間 24H 閒置後自動銷毀。
+1. 排序：重生區、地圖區皆提供排序切換。
+2. 閒置區：依 [階段高低] > [超時時間] 排序。
+3. 地圖等級：自動識別地圖名稱中的數字進行排序。
+4. 叮聲提醒：進入 階段 4 或 ON 時會發聲。
+5. 數據清理：房間 24H 閒置後自動銷毀。
             </div>
             <button class="btn-solid" style="width:100%; margin-top:10px; padding:10px;" onclick="toggleManual()">確認</button>
         </div>
@@ -149,37 +148,21 @@
         let currentRoom = '', timers = {}, currentSort = 'group';
         let isVoiceEnabled = false, isSfxEnabled = false;
         let myName = '無名戰友', colorMode = 1, showWarningIcon = true, audioCtx = null, playedAlerts = new Set();
-        let timerPriority = 'overtime';
+        let timerPriority = 'overtime'; // overtime: 已超時優先, countdown: 計時中優先
+        let mapOrder = 'desc'; // desc: 大到小, asc: 小到大
 
         function unlockAudio() {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             if (audioCtx.state === 'suspended') audioCtx.resume();
         }
 
-        function speak(text) {
-            if (!isVoiceEnabled) return;
-            window.speechSynthesis.cancel();
-            const msg = new SpeechSynthesisUtterance(text);
-            msg.volume = parseFloat(document.getElementById('volRange').value);
-            msg.lang = 'zh-TW'; msg.rate = 1.1;
-            window.speechSynthesis.speak(msg);
-        }
-
-        function playDing() {
-            if (!isSfxEnabled) return;
-            unlockAudio();
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.type = 'sine'; osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-            osc.connect(gain); gain.connect(audioCtx.destination);
-            gain.gain.setValueAtTime(0, audioCtx.currentTime);
-            gain.gain.linearRampToValueAtTime(0.3 * parseFloat(document.getElementById('volRange').value), audioCtx.currentTime + 0.01);
-            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-            osc.start(); osc.stop(audioCtx.currentTime + 0.3);
-        }
+        function speak(text) { if (isVoiceEnabled) { window.speechSynthesis.cancel(); const msg = new SpeechSynthesisUtterance(text); msg.volume = parseFloat(document.getElementById('volRange').value); msg.lang = 'zh-TW'; msg.rate = 1.1; window.speechSynthesis.speak(msg); } }
+        function playDing() { if (isSfxEnabled) { unlockAudio(); const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'sine'; osc.frequency.setValueAtTime(880, audioCtx.currentTime); osc.connect(gain); gain.connect(audioCtx.destination); gain.gain.setValueAtTime(0, audioCtx.currentTime); gain.gain.linearRampToValueAtTime(0.3 * parseFloat(document.getElementById('volRange').value), audioCtx.currentTime + 0.01); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3); osc.start(); osc.stop(audioCtx.currentTime + 0.3); } }
 
         function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); if (isVoiceEnabled) { unlockAudio(); speak("語音功能已開啟"); } else window.speechSynthesis.cancel(); }
         function toggleSfx() { isSfxEnabled = !isSfxEnabled; document.getElementById('sfxBtn').classList.toggle('active', isSfxEnabled); if (isSfxEnabled) { unlockAudio(); playDing(); } }
+        function setTimerPriority() { timerPriority = (timerPriority === 'overtime' ? 'countdown' : 'overtime'); renderList(); }
+        function toggleMapOrder() { mapOrder = (mapOrder === 'desc' ? 'asc' : 'desc'); renderList(); }
 
         function startSession(id) {
             currentRoom = id; myName = document.getElementById('userNameInput').value.trim() || '無名戰友';
@@ -187,18 +170,14 @@
             document.getElementById('displayID').innerText = id;
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
             document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
-            
             const myPresenceRef = db.ref(`rooms/${currentRoom}/users`).push(); myPresenceRef.set({ name: myName }); myPresenceRef.onDisconnect().remove();
             db.ref(`rooms/${currentRoom}/users`).on('value', s => { const users = Object.values(s.val() || {}); document.getElementById('onlineCount').innerText = users.length; document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', '); });
             
-            // 💡 修正初始化監聽邏輯
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
                 const newData = s.val() || {};
-                Object.keys(newData).forEach(key => {
-                    if (newData[key].isFlash && (!window.currentData || !window.currentData[key] || !window.currentData[key].isFlash)) playDing();
-                });
+                Object.keys(newData).forEach(key => { if (newData[key].isFlash && (!window.currentData || !window.currentData[key] || !window.currentData[key].isFlash)) playDing(); });
                 window.currentData = newData; 
-                renderList(); // 💡 每次數據變動都執行完整分類渲染
+                renderList(); 
             });
             db.ref(`rooms/${currentRoom}/messages`).limitToLast(15).on('value', s => {
                 const chatBox = document.getElementById('chatBox'); chatBox.innerHTML = '';
@@ -232,19 +211,35 @@
             });
 
             const getSortWeight = (v) => v.displayValue === "ON" ? 100 : (parseFloat(v.displayValue.match(/[\d.]+/)) || 0);
+            const getMapLevel = (name) => { const m = name.match(/\d+/); return m ? parseInt(m[0]) : 0; };
 
             const render = (items, label, sectionType) => {
-                if (items.length === 0 && sectionType !== 'stages') return; // 除了階段區外，沒內容不顯示
+                if (items.length === 0 && sectionType !== 'stages') return;
                 const sec = document.createElement('div'); sec.className = 'grid-section';
                 let ctrls = '';
                 if (sectionType === 'timers') ctrls = `<button class="btn-switch" onclick="setTimerPriority()">${timerPriority === 'overtime' ? '已超時優先' : '計時中優先'}</button>`;
                 else if (sectionType === 'stages') ctrls = `<button class="btn-switch" onclick="toggleColorMode()">${colorMode === 1 ? '漸層' : '模式2'}</button><button class="btn-switch ${!showWarningIcon ? 'muted-btn' : ''}" onclick="toggleWarning()">${showWarningIcon ? '⚠️開' : '⚠️關'}</button>`;
+                else if (sectionType === 'all') ctrls = `<button class="btn-switch" onclick="toggleMapOrder()">等級：${mapOrder === 'desc' ? '大到小' : '小到大'}</button>`;
                 
                 sec.innerHTML = `<div class="section-header"><div class="section-label">${label}</div>${ctrls}</div><div class="grid"></div>`;
                 container.appendChild(sec); const grid = sec.querySelector('.grid');
                 
                 items.sort((a,b) => {
-                    if (sectionType === 'timers') return timerPriority === 'overtime' ? (a[1].targetTime - b[1].targetTime) : (a[1].targetTime - b[1].targetTime);
+                    if (sectionType === 'all') {
+                        const lvlA = getMapLevel(a[1].map), lvlB = getMapLevel(b[1].map);
+                        return mapOrder === 'desc' ? (lvlB - lvlA || a[1].ch - b[1].ch) : (lvlA - lvlB || a[1].ch - b[1].ch);
+                    }
+                    if (sectionType === 'timers') {
+                        const getC = (v) => v.targetTime > now ? (timerPriority === 'overtime' ? 2 : 1) : (timerPriority === 'overtime' ? 1 : 2);
+                        return getC(a[1]) - getC(b[1]) || a[1].targetTime - b[1].targetTime;
+                    }
+                    if (sectionType === 'idle') {
+                        const weightA = getSortWeight(a[1]), weightB = getSortWeight(b[1]);
+                        if (weightA !== weightB) return weightB - weightA;
+                        const overdueA = a[1].targetTime > 0 ? (now - a[1].targetTime) : (now - a[1].startTime);
+                        const overdueB = b[1].targetTime > 0 ? (now - b[1].targetTime) : (now - b[1].startTime);
+                        return overdueB - overdueA;
+                    }
                     return getSortWeight(b[1]) - getSortWeight(a[1]);
                 }).forEach(([id, b]) => {
                     const card = document.createElement('div'); card.className = `card ${sectionType === 'idle' ? 'idle-card' : ''}`;
@@ -255,12 +250,8 @@
                 });
             };
 
-            if (currentSort === 'map') render(all, "所有 BOSS", 'all');
-            else {
-                render(stages, "階段追蹤區", 'stages');
-                render(timersList, "重生計時區", 'timers');
-                render(idleList, "超時閒置區", 'idle');
-            }
+            if (currentSort === 'map') render(all, "所有 BOSS (地圖等級排序)", 'all');
+            else { render(stages, "階段追蹤區", 'stages'); render(timersList, "重生計時區", 'timers'); render(idleList, "超時閒置區", 'idle'); }
         }
 
         function startTimer(id, b, isIdle) {
@@ -274,8 +265,8 @@
                     if (d === 0 && !playedAlerts.has(id)) { playedAlerts.add(id); speak(`${b.map}, 分流 ${b.ch}, 已重生`); }
                 } else {
                     const m = Math.floor((now - b.startTime) / 60000), s = Math.floor(((now - b.startTime) % 60000) / 1000);
-                    const rawLv = b.lastInput.toUpperCase().startsWith("XX") ? b.lastInput.substring(2) : b.lastInput.substring(2);
-                    const lv = b.displayValue === "ON" ? 99 : (parseFloat(rawLv) || 0);
+                    const rawVal = b.lastInput.toUpperCase().startsWith("XX") ? b.lastInput.substring(2) : b.lastInput.substring(2);
+                    const lv = b.displayValue === "ON" ? 99 : (parseFloat(rawVal) || 0);
                     const isW = (lv < 2 && m >= 12) || (lv < 3 && lv >= 2 && m >= 7) || (lv < 4 && lv >= 3 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
                     el.innerHTML = `<span class="timer-label">${b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isIdle) ? '<span class="warning-icon">⚠️</span>' : ''}`;
                     if (!isIdle) { let c = (colorMode === 1) ? (lv < 2 ? '#0f0' : lv < 3 ? '#adff2f' : lv < 4 ? '#ff0' : lv < 5 ? '#f90' : '#f00') : (lv >= 99 ? '#f00' : lv >= 4 ? '#f90' : '#ff0'); el.style.color = c; if (btn) { btn.style.color = c; btn.style.borderColor = c; } }
@@ -287,14 +278,13 @@
         function addBoss() { const i = document.getElementById('bossInput'), p = i.value.trim().split(/\s+/); if (p.length >= 3) saveBoss(p[0], p[1], p[2]); i.value = ''; unlockAudio(); }
         function triggerNext(m, c) { db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => { const l = s.val().lastInput; if (l.toUpperCase()==="ON") saveBoss(m,c,""); else if (l.startsWith("00")) { let v = parseInt(l.substring(2,3)); saveBoss(m,c,v>=4?"ON":"00"+(v+1)); } }); unlockAudio(); }
         function deleteBoss(id) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
-        function clearAllBosses() { if(confirm("確定一鍵清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
+        function clearAllBosses() { if(confirm("確定清除此房間所有資料？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
         function copyRoomID() { const t = document.createElement('textarea'); t.value = currentRoom; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); alert('房號已複製'); }
         function joinRoom() { const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
         function createRoom() { const i = Math.random().toString(36).substring(2, 8).toUpperCase(); startSession(i); }
         function setSort(t) { currentSort = t; document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id === `sort${t.charAt(0).toUpperCase()+t.slice(1)}Btn`)); renderList(); }
         function toggleColorMode() { colorMode = colorMode === 1 ? 2 : 1; renderList(); }
         function toggleWarning() { showWarningIcon = !showWarningIcon; renderList(); }
-        function setTimerPriority() { timerPriority = timerPriority === 'overtime' ? 'countdown' : 'overtime'; renderList(); }
         function toggleManual() { const m = document.getElementById('manualModal'); const o = document.getElementById('modalOverlay'); const isShow = m.style.display === 'block'; m.style.display = isShow ? 'none' : 'block'; o.style.display = isShow ? 'none' : 'block'; }
         function toggleChat() { const c = document.getElementById('chatSection'); c.style.display = c.style.display === 'block' ? 'none' : 'block'; }
         function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); i.setSelectionRange(m.length + c.length + 2, i.value.length); }
