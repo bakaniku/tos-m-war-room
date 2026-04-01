@@ -44,8 +44,6 @@
         .section-label { color: #555; font-size: 11px; border-left: 2px solid #333; padding-left: 8px; text-transform: uppercase; }
         
         .btn-switch { background: #222; color: #0f0; font-size: 10px; padding: 2px 8px; border: 1px solid #444; border-radius: 4px; cursor: pointer; }
-        .btn-switch.muted-btn { color: #555; border-color: #333; }
-
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
@@ -77,11 +75,9 @@
         <div id="manualModal" class="modal">
             <h3 style="color:#0f0; margin-top:0;">📜 使用說明</h3>
             <div style="font-size:13px; line-height:1.5; color:#ccc; white-space: pre-wrap;">
-1. 排序：重生區、地圖區皆提供排序切換。
-2. 閒置區：依 [階段高低] > [超時時間] 排序。
-3. 地圖等級：自動識別地圖名稱中的數字進行排序。
-4. 叮聲提醒：進入 階段 4 或 ON 時會發聲。
-5. 數據清理：房間 24H 閒置後自動銷毀。
+1. 時間排序：依 [ON > 階4~1 > 計時中 > 已超時] 權重全域排列，相同權重則等級高者在前。
+2. 群組排序：依原邏輯分為階段區、計時區、閒置區。
+3. 叮聲提醒：進入 階段 4 或 ON 時會發聲。
             </div>
             <button class="btn-solid" style="width:100%; margin-top:10px; padding:10px;" onclick="toggleManual()">確認</button>
         </div>
@@ -102,13 +98,11 @@
                     <span class="room-id" id="displayID"></span>
                     <svg class="copy-icon" onclick="copyRoomID()" viewBox="0 0 24 24" fill="none" stroke="#0f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                     <button class="btn-toggle" style="font-size:10px;" onclick="toggleManual()">[使用說明]</button>
-                    
                     <div class="audio-controls">
                         <button id="voiceBtn" class="audio-btn" onclick="toggleVoice()">🔊</button>
                         <input type="range" id="volRange" class="vol-range" min="0" max="1" step="0.05" value="0.5">
                         <button id="sfxBtn" class="audio-btn" onclick="toggleSfx()">🔔</button>
                     </div>
-
                     <button class="btn-toggle" style="font-size:10px;" onclick="toggleChat()">[留言板]</button>
                 </div>
                 <div class="room-info">
@@ -122,8 +116,8 @@
             </div>
 
             <div class="sort-row">
-                <button id="sortGroupBtn" class="btn-toggle active" onclick="setSort('group')">群組排序</button>
-                <button id="sortTimeBtn" class="btn-toggle" onclick="setSort('time')">時間排序</button>
+                <button id="sortTimeBtn" class="btn-toggle active" onclick="setSort('time')">時間排序</button>
+                <button id="sortGroupBtn" class="btn-toggle" onclick="setSort('group')">群組排序</button>
                 <button id="sortCountdownBtn" class="btn-toggle" onclick="setSort('countdown')">倒數排序</button>
                 <button id="sortMapBtn" class="btn-toggle" onclick="setSort('map')">地圖排序</button>
             </div>
@@ -145,11 +139,12 @@
         const firebaseConfig = { apiKey: "AIzaSyAff__U1cLBr92gYmtbWpm80zO4rHvObUI", authDomain: "tos-m-fb.firebaseapp.com", databaseURL: "https://tos-m-fb-default-rtdb.asia-southeast1.firebasedatabase.app", projectId: "tos-m-fb" };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
-        let currentRoom = '', timers = {}, currentSort = 'group';
+        let currentRoom = '', timers = {}, currentSort = 'time'; // 預設改為時間排序
         let isVoiceEnabled = false, isSfxEnabled = false;
         let myName = '無名戰友', colorMode = 1, showWarningIcon = true, audioCtx = null, playedAlerts = new Set();
-        let timerPriority = 'overtime'; // overtime: 已超時優先, countdown: 計時中優先
-        let mapOrder = 'desc'; // desc: 大到小, asc: 小到大
+        let timerPriority = 'overtime';
+        let mapOrder = 'desc';
+        window.currentData = {};
 
         function unlockAudio() {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -176,8 +171,7 @@
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
                 const newData = s.val() || {};
                 Object.keys(newData).forEach(key => { if (newData[key].isFlash && (!window.currentData || !window.currentData[key] || !window.currentData[key].isFlash)) playDing(); });
-                window.currentData = newData; 
-                renderList(); 
+                window.currentData = newData; renderList(); 
             });
             db.ref(`rooms/${currentRoom}/messages`).limitToLast(15).on('value', s => {
                 const chatBox = document.getElementById('chatBox'); chatBox.innerHTML = '';
@@ -187,7 +181,7 @@
         }
 
         function saveBoss(map, ch, val) {
-            const id = `${map}_${ch}`, old = window.currentData ? window.currentData[id] : null;
+            const id = `${map}_${ch}`;
             let dv = val, tt = 0, flash = false; playedAlerts.delete(id);
             if (val.toUpperCase().startsWith("XX")) { const num = val.substring(2); dv = "階段" + (num ? num : "1"); tt = 0; }
             else if (val.toUpperCase() === "ON") { dv = "ON"; flash = true; }
@@ -197,61 +191,68 @@
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 5000);
         }
 
+        // 新增排序權重判斷函式
+        function getSortPriority(b) {
+            const now = Date.now();
+            if (b.displayValue === "ON") return 6;
+            if (b.displayValue === "階段4") return 5;
+            if (b.displayValue === "階段3") return 4;
+            if (b.displayValue === "階段2") return 3;
+            if (b.displayValue === "階段1") return 2;
+            if (b.targetTime > 0) {
+                return (b.targetTime > now) ? 1 : 0; // 1: 計時中, 0: 已超時
+            }
+            return -1;
+        }
+
+        function getMapLevel(name) { const m = name.match(/\d+/); return m ? parseInt(m[0]) : 0; }
+
         function renderList() {
             const container = document.getElementById('sectionsContainer'); container.innerHTML = ''; 
             Object.values(timers).forEach(clearInterval); timers = {};
             const all = Object.entries(window.currentData || {}), now = Date.now(), oneHour = 3600000;
-            const stages = [], timersList = [], idleList = [];
-            
-            all.forEach(([id, b]) => {
-                const isOverdue = b.targetTime > 0 && (now - b.targetTime > oneHour);
-                const isIdle = b.targetTime === 0 && (now - b.startTime > oneHour);
-                if (b.lastInput.toUpperCase().startsWith("XX") || isOverdue || isIdle) idleList.push([id, b]);
-                else if (b.targetTime > 0) timersList.push([id, b]); else stages.push([id, b]);
-            });
 
-            const getSortWeight = (v) => v.displayValue === "ON" ? 100 : (parseFloat(v.displayValue.match(/[\d.]+/)) || 0);
-            const getMapLevel = (name) => { const m = name.match(/\d+/); return m ? parseInt(m[0]) : 0; };
-
-            const render = (items, label, sectionType) => {
-                if (items.length === 0 && sectionType !== 'stages') return;
+            const renderItems = (items, label) => {
                 const sec = document.createElement('div'); sec.className = 'grid-section';
-                let ctrls = '';
-                if (sectionType === 'timers') ctrls = `<button class="btn-switch" onclick="setTimerPriority()">${timerPriority === 'overtime' ? '已超時優先' : '計時中優先'}</button>`;
-                else if (sectionType === 'stages') ctrls = `<button class="btn-switch" onclick="toggleColorMode()">${colorMode === 1 ? '漸層' : '模式2'}</button><button class="btn-switch ${!showWarningIcon ? 'muted-btn' : ''}" onclick="toggleWarning()">${showWarningIcon ? '⚠️開' : '⚠️關'}</button>`;
-                else if (sectionType === 'all') ctrls = `<button class="btn-switch" onclick="toggleMapOrder()">等級：${mapOrder === 'desc' ? '大到小' : '小到大'}</button>`;
-                
-                sec.innerHTML = `<div class="section-header"><div class="section-label">${label}</div>${ctrls}</div><div class="grid"></div>`;
+                sec.innerHTML = `<div class="section-header"><div class="section-label">${label}</div></div><div class="grid"></div>`;
                 container.appendChild(sec); const grid = sec.querySelector('.grid');
-                
-                items.sort((a,b) => {
-                    if (sectionType === 'all') {
-                        const lvlA = getMapLevel(a[1].map), lvlB = getMapLevel(b[1].map);
-                        return mapOrder === 'desc' ? (lvlB - lvlA || a[1].ch - b[1].ch) : (lvlA - lvlB || a[1].ch - b[1].ch);
-                    }
-                    if (sectionType === 'timers') {
-                        const getC = (v) => v.targetTime > now ? (timerPriority === 'overtime' ? 2 : 1) : (timerPriority === 'overtime' ? 1 : 2);
-                        return getC(a[1]) - getC(b[1]) || a[1].targetTime - b[1].targetTime;
-                    }
-                    if (sectionType === 'idle') {
-                        const weightA = getSortWeight(a[1]), weightB = getSortWeight(b[1]);
-                        if (weightA !== weightB) return weightB - weightA;
-                        const overdueA = a[1].targetTime > 0 ? (now - a[1].targetTime) : (now - a[1].startTime);
-                        const overdueB = b[1].targetTime > 0 ? (now - b[1].targetTime) : (now - b[1].startTime);
-                        return overdueB - overdueA;
-                    }
-                    return getSortWeight(b[1]) - getSortWeight(a[1]);
-                }).forEach(([id, b]) => {
-                    const card = document.createElement('div'); card.className = `card ${sectionType === 'idle' ? 'idle-card' : ''}`;
+                items.forEach(([id, b]) => {
+                    const card = document.createElement('div'); 
+                    const isIdle = (b.targetTime > 0 && now - b.targetTime > oneHour) || (b.targetTime === 0 && now - b.startTime > oneHour);
+                    card.className = `card ${isIdle ? 'idle-card' : ''}`;
                     card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button><h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - 分流${b.ch}</h3>
                         <div class="timer-container"><div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}">...</div>
-                        ${(b.targetTime === 0 && sectionType !== 'idle') ? `<button class="btn-next" id="btn_${id}" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>` : ''}</div>`;
-                    grid.appendChild(card); startTimer(id, b, sectionType === 'idle');
+                        ${(b.targetTime === 0) ? `<button class="btn-next" id="btn_${id}" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>` : ''}</div>`;
+                    grid.appendChild(card); startTimer(id, b, isIdle);
                 });
             };
 
-            if (currentSort === 'map') render(all, "所有 BOSS (地圖等級排序)", 'all');
-            else { render(stages, "階段追蹤區", 'stages'); render(timersList, "重生計時區", 'timers'); render(idleList, "超時閒置區", 'idle'); }
+            if (currentSort === 'time') {
+                // 不分群組排序邏輯
+                const sortedAll = all.sort((a, b) => {
+                    const pA = getSortPriority(a[1]), pB = getSortPriority(b[1]);
+                    if (pA !== pB) return pB - pA; // 權重大的在前
+                    return getMapLevel(b[1].map) - getMapLevel(a[1].map); // 權重相同比等級
+                });
+                renderItems(sortedAll, "全域時間排序 (ON > 階4~1 > 計時 > 超時)");
+            } else if (currentSort === 'map') {
+                const sortedAll = all.sort((a,b) => getMapLevel(b[1].map) - getMapLevel(a[1].map) || a[1].ch - b[1].ch);
+                renderItems(sortedAll, "所有 BOSS (地圖等級排序)");
+            } else if (currentSort === 'countdown') {
+                const sortedAll = all.filter(x => x[1].targetTime > 0).sort((a,b) => a[1].targetTime - b[1].targetTime);
+                renderItems(sortedAll, "倒數計時排序");
+            } else {
+                // 原有的群組排序邏輯
+                const stages = [], timersList = [], idleList = [];
+                all.forEach(([id, b]) => {
+                    const isIdle = (b.targetTime > 0 && now - b.targetTime > oneHour) || (b.targetTime === 0 && now - b.startTime > oneHour);
+                    if (b.lastInput.toUpperCase().startsWith("XX") || isIdle) idleList.push([id, b]);
+                    else if (b.targetTime > 0) timersList.push([id, b]); else stages.push([id, b]);
+                });
+                renderItems(stages.sort((a,b) => getSortPriority(b[1]) - getSortPriority(a[1]) || getMapLevel(b[1].map) - getMapLevel(a[1].map)), "階段追蹤區");
+                renderItems(timersList.sort((a,b) => a[1].targetTime - b[1].targetTime), "重生計時區");
+                renderItems(idleList, "超時閒置區");
+            }
         }
 
         function startTimer(id, b, isIdle) {
@@ -265,11 +266,14 @@
                     if (d === 0 && !playedAlerts.has(id)) { playedAlerts.add(id); speak(`${b.map}, 分流 ${b.ch}, 已重生`); }
                 } else {
                     const m = Math.floor((now - b.startTime) / 60000), s = Math.floor(((now - b.startTime) % 60000) / 1000);
-                    const rawVal = b.lastInput.toUpperCase().startsWith("XX") ? b.lastInput.substring(2) : b.lastInput.substring(2);
-                    const lv = b.displayValue === "ON" ? 99 : (parseFloat(rawVal) || 0);
-                    const isW = (lv < 2 && m >= 12) || (lv < 3 && lv >= 2 && m >= 7) || (lv < 4 && lv >= 3 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
+                    const rawNum = b.lastInput.toUpperCase().startsWith("XX") ? b.lastInput.substring(2) : b.lastInput.substring(2);
+                    const lv = b.displayValue === "ON" ? 99 : (parseFloat(rawNum) || 0);
+                    const isW = (lv < 2 && m >= 12) || (lv < 3 && lv >= 2 && m >= 7) || (lv < 4 && lv >= 3 && m >= 5) || (lv === 4 && m >= 3) || (lv >= 99 && m >= 3);
                     el.innerHTML = `<span class="timer-label">${b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isIdle) ? '<span class="warning-icon">⚠️</span>' : ''}`;
-                    if (!isIdle) { let c = (colorMode === 1) ? (lv < 2 ? '#0f0' : lv < 3 ? '#adff2f' : lv < 4 ? '#ff0' : lv < 5 ? '#f90' : '#f00') : (lv >= 99 ? '#f00' : lv >= 4 ? '#f90' : '#ff0'); el.style.color = c; if (btn) { btn.style.color = c; btn.style.borderColor = c; } }
+                    if (!isIdle) { 
+                        let c = (colorMode === 1) ? (lv < 2 ? '#0f0' : lv < 3 ? '#adff2f' : lv < 4 ? '#ff0' : lv < 5 ? '#f90' : '#f00') : (lv >= 99 ? '#f00' : lv >= 4 ? '#f90' : '#ff0'); 
+                        el.style.color = c; if (btn) { btn.style.color = c; btn.style.borderColor = c; } 
+                    }
                 }
             }; up(); timers[id] = setInterval(up, 1000);
         }
