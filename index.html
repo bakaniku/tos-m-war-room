@@ -68,9 +68,9 @@
             <h3 style="color:#0f0; margin-top:0;">📜 使用說明</h3>
             <div style="font-size:13px; line-height:1.5; color:#ccc; white-space: pre-wrap;">
 1. NEXT：1.x -> 2, 2.x -> 3, 3.x -> 4, 4.x -> ON。
-2. 閃爍：僅在大階段進入 4 或 ON 時觸發閃爍與叮聲。
-3. 留言板：標題列右側按鈕開啟。
-4. 重複：地圖分流重複時會顯示紅字提示。
+2. 閃爍：僅在大階段進入 4 或 ON 時叮聲。
+3. 留言板：標題列右側按鈕。
+4. 重複：地圖分流重複時紅字提醒。
             </div>
             <button class="btn-solid" style="width:100%; margin-top:10px; padding:10px;" onclick="toggleManual()">確認</button>
         </div>
@@ -89,7 +89,7 @@
             <div class="header">
                 <div class="room-info">
                     <span class="room-id" id="displayID"></span>
-                    <svg class="copy-icon" onclick="copyRoomID()" viewBox="0 0 24 24" fill="none" stroke="#0f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    <svg class="copy-icon" onclick="copyRoomID()" viewBox="0 0 24 24" fill="none" stroke="#0f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2-0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                     <button class="btn-toggle" style="font-size:10px;" onclick="toggleManual()">[說明]</button>
                     <div class="audio-controls">
                         <button id="voiceBtn" class="audio-btn" onclick="toggleVoice()">🔊</button>
@@ -149,7 +149,6 @@
         function toggleWarning() { showWarningIcon = !showWarningIcon; renderList(); }
         function toggleChat() { const c = document.getElementById('chatSection'); c.style.display = (c.style.display === 'block' ? 'none' : 'block'); }
         function setSort(t) { currentSort = t; document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id === `sort${t.charAt(0).toUpperCase()+t.slice(1)}Btn`)); renderList(); }
-        function setTimerPriority() { timerPriority = (timerPriority === 'overtime' ? 'countdown' : 'overtime'); renderList(); }
 
         document.getElementById('bossInput').addEventListener('input', function(e) {
             const p = e.target.value.trim().split(/\s+/);
@@ -204,7 +203,7 @@
                 if (!nStr.includes('.') && parseInt(nStr) >= 4) flash = true;
             } else tt = Date.now() + (parseTime(val) * 60000);
             
-            db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash });
+            db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: String(val), displayValue: dv, startTime: Date.now(), isFlash: flash });
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 5000);
         }
 
@@ -284,29 +283,29 @@
         function parseTime(v) { const p = String(v).split(/[:.：]/); if (p.length === 3) return parseInt(p[0])*60 + parseInt(p[1]) + parseInt(p[2])/60; if (p.length === 2) return parseInt(p[0])*60 + parseInt(p[1]); return parseFloat(v) || 0; }
         function addBoss() { const i = document.getElementById('bossInput'), p = i.value.trim().split(/\s+/); if (p.length >= 3) saveBoss(p[0], p[1], p[2]); i.value = ''; unlockAudio(); }
         
-        // 💡 原始邏輯回歸：使用顯式字串判定
+        // 💡 終極嚴謹 NEXT 邏輯
         function triggerNext(id) { 
             const b = window.currentData[id]; if (!b) return;
-            const l = String(b.lastInput).toUpperCase(); 
+            const l = String(b.lastInput).toUpperCase().trim(); 
             
-            if (l === "ON") {
+            // 優先處理 ON 與 空值
+            if (l === "ON" || l === "") {
                 saveBoss(b.map, b.ch, "001");
-            } else if (l.includes(".")) {
-                // 只要有小數點（如 1.1, 2.5, 3.2），一律判定完成該大階，進 ON (或者你可以改成進下一整數)
-                // 根據你的需求：1.1 -> 2, 2.x -> 3... 
-                const cur = parseFloat(l.replace(/[^\d.]/g, ""));
-                if (cur < 1.99) saveBoss(b.map, b.ch, "002");
-                else if (cur < 2.99) saveBoss(b.map, b.ch, "003");
-                else if (cur < 3.99) saveBoss(b.map, b.ch, "004");
-                else saveBoss(b.map, b.ch, "ON");
-            } else if (l.startsWith("00")) {
-                // 針對 001, 002, 003, 004
-                if (l === "001") saveBoss(b.map, b.ch, "002");
-                else if (l === "002") saveBoss(b.map, b.ch, "003");
-                else if (l === "003") saveBoss(b.map, b.ch, "004");
-                else saveBoss(b.map, b.ch, "ON");
-            } else {
+                unlockAudio(); return;
+            }
+
+            // 提取數字部分 (處理 001.2 -> 1.2)
+            const numPart = l.replace(/[^\d.]/g, "");
+            const val = parseFloat(numPart);
+
+            if (isNaN(val)) {
                 saveBoss(b.map, b.ch, "ON");
+            } else {
+                // 核心邏輯：依照數值區間判定下一個大階
+                if (val < 1.999) saveBoss(b.map, b.ch, "002");
+                else if (val < 2.999) saveBoss(b.map, b.ch, "003");
+                else if (val < 3.999) saveBoss(b.map, b.ch, "004");
+                else saveBoss(b.map, b.ch, "ON");
             }
             unlockAudio(); 
         }
