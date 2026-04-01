@@ -31,15 +31,19 @@
 
         .vol-group { display: flex; align-items: center; gap: 8px; background: #111; padding: 6px 14px; border-radius: 20px; border: 1px solid #333; height: 32px; box-sizing: border-box; }
         .vol-icon { background: none; color: #0f0; padding: 0; font-size: 16px; transition: color 0.2s; cursor: pointer; }
-        .vol-range { -webkit-appearance: none; width: 70px; height: 6px; background: #333; border-radius: 3px; outline: none; }
-        .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #0f0; border-radius: 50%; cursor: pointer; border: 2px solid #111; }
+        .vol-icon.muted { color: #777; }
+        
+        .vol-range { -webkit-appearance: none; width: 70px; height: 6px; background: #333; border-radius: 3px; outline: none; transition: background 0.2s; }
+        .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #0f0; border-radius: 50%; cursor: pointer; border: 2px solid #111; transition: background 0.2s; }
+        /* 靜音時拉桿圓點變灰 */
+        .vol-range.muted::-webkit-slider-thumb { background: #555 !important; }
         
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; border-radius: 0; margin-bottom: 5px; font-size: 16px; color: #fff; padding: 8px 0; }
         .duplicate-alert { color: #f44; font-size: 12px; height: 18px; margin-bottom: 10px; }
         .sort-row { margin-bottom: 15px; display: flex; gap: 8px; flex-wrap: wrap; }
         
         .grid-section { margin-bottom: 30px; }
-        .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
         .section-label { color: #555; font-size: 11px; border-left: 2px solid #333; padding-left: 8px; text-transform: uppercase; letter-spacing: 1px; }
         .btn-switch { background: #222; color: #0f0; font-size: 10px; padding: 2px 8px; border: 1px solid #444; border-radius: 4px; cursor: pointer; }
 
@@ -51,7 +55,6 @@
         .timer-label { font-size: 20px; } 
         .timer-sub { font-size: 16px; margin-left: 4px; opacity: 0.8; } 
         
-        /* 💡 警告符號樣式 */
         .warning-icon { 
             display: inline-block; 
             margin-left: 8px; 
@@ -140,7 +143,8 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
         let currentRoom = '', timers = {}, isAudioEnabled = false, playedAlerts = new Set(), currentSort = 'group';
-        let timerPriority = 'overtime', myName = '無名戰友', colorMode = 1; // 1: 漸層, 2: 分段
+        let timerPriority = 'overtime', myName = '無名戰友', colorMode = 1; 
+        let showWarningIcon = true; // 警告符號開關
 
         function speak(text) {
             if (!isAudioEnabled) return;
@@ -158,7 +162,8 @@
                 btn.innerText = '🔊'; btn.classList.remove('muted'); range.classList.remove('muted');
                 updateRangeBg(range); speak("語音功能已開啟");
             } else {
-                btn.innerText = '🔈'; btn.classList.add('muted'); range.classList.add('muted'); range.style.background = '#222';
+                btn.innerText = '🔈'; btn.classList.add('muted'); range.classList.add('muted'); 
+                range.style.background = '#222';
             }
         }
 
@@ -166,6 +171,8 @@
             if (isAudioEnabled) {
                 const val = range.value * 100;
                 range.style.background = `linear-gradient(to right, #0f0 0%, #0f0 ${val}%, #333 ${val}%, #333 100%)`;
+            } else {
+                range.style.background = '#222';
             }
         }
         document.getElementById('volRange').addEventListener('input', function() { updateRangeBg(this); });
@@ -186,6 +193,16 @@
 
         function toggleColorMode() {
             colorMode = (colorMode === 1) ? 2 : 1;
+            renderList();
+        }
+
+        function toggleWarning() {
+            showWarningIcon = !showWarningIcon;
+            renderList();
+        }
+
+        function toggleTimerPriority() {
+            timerPriority = (timerPriority === 'overtime') ? 'countdown' : 'overtime';
             renderList();
         }
 
@@ -311,13 +328,21 @@
                 if (items.length === 0) return;
                 const sec = document.createElement('div');
                 sec.className = 'grid-section';
-                let switchBtn = !isTimer && currentSort === 'group' ? `<button class="btn-switch" onclick="toggleColorMode()">${colorMode === 1 ? '漸層模式' : '模式2 (分段)'}</button>` : '';
-                if (isTimer && (currentSort === 'group' || currentSort === 'countdown')) {
-                    switchBtn = `<button class="btn-switch" onclick="toggleTimerPriority()">${timerPriority === 'overtime' ? '已超時優先' : '計時中優先'}</button>`;
+                
+                let controls = '';
+                if (!isTimer && currentSort === 'group') {
+                    controls = `
+                        <button class="btn-switch" onclick="toggleColorMode()">${colorMode === 1 ? '漸層模式' : '模式2 (分段)'}</button>
+                        <button class="btn-switch" onclick="toggleWarning()">${showWarningIcon ? '警告：開啟' : '警告：關閉'}</button>
+                    `;
+                } else if (isTimer && (currentSort === 'group' || currentSort === 'countdown')) {
+                    controls = `<button class="btn-switch" onclick="toggleTimerPriority()">${timerPriority === 'overtime' ? '已超時優先' : '計時中優先'}</button>`;
                 }
-                sec.innerHTML = `<div class="section-header"><div class="section-label">${label}</div>${switchBtn}</div><div class="grid"></div>`;
+
+                sec.innerHTML = `<div class="section-header"><div class="section-label">${label}</div>${controls}</div><div class="grid"></div>`;
                 container.appendChild(sec);
                 const grid = sec.querySelector('.grid');
+                
                 sortFunc(items, isTimer).forEach(([id, b]) => {
                     const card = document.createElement('div');
                     card.className = 'card';
@@ -341,24 +366,23 @@
                     const d = Math.floor((boss.targetTime - now) / 1000), a = Math.abs(d);
                     const h = Math.floor(a/3600), m = Math.floor((a%3600)/60), s = a%60;
                     el.innerText = `${h>0?h+':':''}${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
-                    
-                    // 💡 倒數區配色固定
                     el.style.color = d <= 0 ? '#ff3300' : '#0f0';
                 } else {
                     const sec = Math.floor((now - boss.startTime) / 1000), m = Math.floor(sec/60), s = sec%60;
                     const label = boss.displayValue;
                     const sub = `(${m}:${s.toString().padStart(2,'0')})`;
                     
-                    // 💡 檢查是否超時
                     let isWarn = false;
-                    const lv = boss.displayValue === "ON" ? 99 : parseFloat(boss.lastInput.substring(2));
-                    if ((lv < 2 && m >= 10) || (lv < 3 && lv >= 2 && m >= 7) || (lv < 4 && lv >= 3 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3)) {
+                    const lvStr = boss.lastInput.substring(2);
+                    const lv = boss.displayValue === "ON" ? 99 : parseFloat(lvStr);
+                    
+                    // 💡 階段 1 改為 12 分鐘警告
+                    if ((lv < 2 && m >= 12) || (lv < 3 && lv >= 2 && m >= 7) || (lv < 4 && lv >= 3 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3)) {
                         isWarn = true;
                     }
 
-                    el.innerHTML = `<span class="timer-label">${label}</span><span class="timer-sub">${sub}</span>${isWarn ? '<span class="warning-icon">⚠️</span>' : ''}`;
+                    el.innerHTML = `<span class="timer-label">${label}</span><span class="timer-sub">${sub}</span>${(showWarningIcon && isWarn) ? '<span class="warning-icon">⚠️</span>' : ''}`;
                     
-                    // 💡 階段配色邏輯
                     let color = '#fff';
                     if (colorMode === 1) {
                         if (label === "ON") color = '#ff0000';
@@ -369,7 +393,6 @@
                             else color = '#ff9900';             
                         }
                     } else {
-                        // 模式 2: 123黃, 4橘, ON紅
                         if (label === "ON") color = '#ff0000';
                         else if (lv >= 4) color = '#ff9900';
                         else color = '#ffff00';
@@ -380,11 +403,6 @@
                 }
             };
             up(); timers[id] = setInterval(up, 1000);
-        }
-
-        function toggleTimerPriority() {
-            timerPriority = (timerPriority === 'overtime') ? 'countdown' : 'overtime';
-            renderList();
         }
 
         function doEdit(m, c, l) {
