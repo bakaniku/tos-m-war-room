@@ -65,11 +65,12 @@
     <div id="app">
         <div id="modalOverlay" class="modal-overlay" onclick="toggleManual()"></div>
         <div id="manualModal" class="modal">
-            <h3 style="color:#0f0; margin-top:0;">📜 最終穩定版</h3>
+            <h3 style="color:#0f0; margin-top:0;">📜 邏輯校準完成</h3>
             <div style="font-size:13px; line-height:1.5; color:#ccc; white-space: pre-wrap;">
-1. NEXT 跳階：1.x -> 2, 2.x -> 3, 3.x -> 4, 4.x -> ON。
-2. 閃爍規則：僅在大階段進入 4 或 ON 時觸發。
-3. 色彩：大階判定鎖定（如 3.2 = 階段 3 = 黃色）。
+1. NEXT：1.x -> 2, 2.x -> 3, 3.x -> 4, 4.x -> ON。
+2. 閃爍：只有進入「階段 4」或「ON」時會觸發。
+3. 小數點：1.1, 2.5, 3.2 階段絕對不閃爍。
+4. 穩定性：已修復 Firebase 數字轉型導致的跳階錯誤。
             </div>
             <button class="btn-solid" style="width:100%; margin-top:10px; padding:10px;" onclick="toggleManual()">確認</button>
         </div>
@@ -143,7 +144,7 @@
         function speak(text) { if (isVoiceEnabled) { window.speechSynthesis.cancel(); const msg = new SpeechSynthesisUtterance(text); msg.volume = parseFloat(document.getElementById('volRange').value); msg.lang = 'zh-TW'; msg.rate = 1.1; window.speechSynthesis.speak(msg); } }
         function playDing() { if (isSfxEnabled) { unlockAudio(); const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'sine'; osc.frequency.setValueAtTime(880, audioCtx.currentTime); osc.connect(gain); gain.connect(audioCtx.destination); gain.gain.setValueAtTime(0, audioCtx.currentTime); gain.gain.linearRampToValueAtTime(0.3 * parseFloat(document.getElementById('volRange').value), audioCtx.currentTime + 0.01); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3); osc.start(); osc.stop(audioCtx.currentTime + 0.3); } }
 
-        function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); if (isVoiceEnabled) { unlockAudio(); speak("語音功能已開啟"); } else window.speechSynthesis.cancel(); }
+        function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); if (isVoiceEnabled) { unlockAudio(); speak("語音已開啟"); } else window.speechSynthesis.cancel(); }
         function toggleSfx() { isSfxEnabled = !isSfxEnabled; document.getElementById('sfxBtn').classList.toggle('active', isSfxEnabled); if (isSfxEnabled) { unlockAudio(); playDing(); } }
         function toggleColorMode() { colorMode = (colorMode === 1 ? 2 : 1); renderList(); }
         function toggleWarning() { showWarningIcon = !showWarningIcon; renderList(); }
@@ -187,6 +188,7 @@
             });
         }
 
+        // 💡 徹底隔離小數點閃爍與數值存儲
         function saveBoss(map, ch, val) {
             const id = `${map}_${ch}`;
             let dv = val, tt = 0, flash = false; playedAlerts.delete(id);
@@ -199,10 +201,12 @@
             } else if (raw.startsWith("00")) { 
                 const nStr = raw.substring(2);
                 dv = "階段" + (nStr.length > 1 && !nStr.includes('.') ? nStr.split('').join('.') : nStr); 
-                if (nStr === "4" || parseFloat(nStr) >= 4) flash = true;
+                // 💡 閃爍判定：不含小數點 且 數字等於 4
+                if (!nStr.includes('.') && nStr === "4") flash = true;
             } else if (!isNaN(parseFloat(raw)) && !raw.includes(':')) {
                 dv = "階段" + raw;
-                if (parseFloat(raw) >= 4) flash = true;
+                // 💡 只有純數字 4 以上才閃爍
+                if (parseFloat(raw) >= 4 && !raw.includes('.')) flash = true;
             } else tt = Date.now() + (parseTime(val) * 60000);
             
             db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: String(val), displayValue: dv, startTime: Date.now(), isFlash: flash });
@@ -282,33 +286,25 @@
         function parseTime(v) { const p = String(v).split(/[:.：]/); if (p.length === 3) return parseInt(p[0])*60 + parseInt(p[1]) + parseInt(p[2])/60; if (p.length === 2) return parseInt(p[0])*60 + parseInt(p[1]); return parseFloat(v) || 0; }
         function addBoss() { const i = document.getElementById('bossInput'), p = i.value.trim().split(/\s+/); if (p.length >= 3) saveBoss(p[0], p[1], p[2]); i.value = ''; unlockAudio(); }
         
-        // 💡 終極方案：採用「非此即彼」的精確區間判定
+        // 💡 使用絕對數值區間判定 NEXT
         function triggerNext(id) { 
             const b = window.currentData[id]; if (!b) return;
-            const l = String(b.lastInput).toUpperCase().trim(); 
+            let l = String(b.lastInput).toUpperCase().trim(); 
             
-            // 1. 如果是 ON 或 空，跳 001
             if (l === "ON" || l === "") {
                 saveBoss(b.map, b.ch, "001");
-                unlockAudio(); return;
-            }
-
-            // 2. 提取數字
-            const match = l.match(/\d+(\.\d+)?/);
-            if (!match) {
-                saveBoss(b.map, b.ch, "ON");
             } else {
-                const val = parseFloat(match[0]);
-                
-                // 💡 這裡是關鍵：嚴格區間判定，不使用預設 ON
-                if (val >= 1 && val < 2) {
-                    saveBoss(b.map, b.ch, "002");
-                } else if (val >= 2 && val < 3) {
-                    saveBoss(b.map, b.ch, "003");
-                } else if (val >= 3 && val < 4) {
-                    saveBoss(b.map, b.ch, "004");
-                } else {
+                // 從字串末端抓取數字（排除地圖等級干擾）
+                const match = l.match(/(\d+(\.\d+)?)(?!.*\d)/);
+                if (!match) {
                     saveBoss(b.map, b.ch, "ON");
+                } else {
+                    const val = parseFloat(match[0]);
+                    // 💡 這裡採用絕對數值區間，修正跳 ON 問題
+                    if (val >= 1 && val < 1.999) saveBoss(b.map, b.ch, "002");
+                    else if (val >= 2 && val < 2.999) saveBoss(b.map, b.ch, "003");
+                    else if (val >= 3 && val < 3.999) saveBoss(b.map, b.ch, "004");
+                    else saveBoss(b.map, b.ch, "ON");
                 }
             }
             unlockAudio(); 
