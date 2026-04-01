@@ -62,8 +62,6 @@
         @keyframes warn-flash { 0%, 100% { opacity: 1; scale: 1; } 50% { opacity: 0.5; scale: 1.1; } }
         @keyframes flash { 0%, 100% { opacity: 1; color: #fff; } 50% { opacity: 0.3; } }
         .flash-anim { animation: flash 0.5s step-end 10; }
-        
-        /* 💡 修正 NEXT 按鈕樣式確保顯示顏色 */
         .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-block; margin-top: 8px; border: 2px solid; color: inherit; }
 
         .chat-section { margin-top: 40px; border-top: 2px solid #222; padding-top: 20px; display: none; }
@@ -79,10 +77,10 @@
         <div id="manualModal" class="modal">
             <h3 style="color:#0f0; margin-top:0;">📜 使用說明</h3>
             <div style="font-size:13px; line-height:1.5; color:#ccc; white-space: pre-wrap;">
-1. NEXT 按鈕：顏色會隨大階段更新，點擊切換。
-2. 漸層切換：點擊「漸層/簡易」按鈕切換顯示風格。
-3. 警告符號(⚠️)：停留過久會自動顯示。
-4. 在線人員：標題下方即時顯示在線名單。
+1. NEXT：1.x -> 2, 2.x -> 3, 3.x -> 4, 4.x -> ON。
+2. 色彩：依據大階段顯示，3.2 與 3 統一為黃色。
+3. 重複：輸入重複的地圖分流會紅字提醒。
+4. 留言板：點擊標題列按鈕開啟/關閉。
             </div>
             <button class="btn-solid" style="width:100%; margin-top:10px; padding:10px;" onclick="toggleManual()">確認</button>
         </div>
@@ -203,10 +201,13 @@
         function saveBoss(map, ch, val) {
             const id = `${map}_${ch}`;
             let dv = val, tt = 0, flash = false; playedAlerts.delete(id);
-            if (val.toUpperCase().startsWith("XX")) { const num = val.substring(2); dv = "階段" + (num ? num : "1"); tt = 0; }
-            else if (val.toUpperCase() === "ON") { dv = "ON"; flash = true; }
-            else if (val.startsWith("00")) { const n = val.substring(2); dv = "階段" + (n.length > 1 ? n.split('').join('.') : n); if (val.startsWith("004")) flash = true; }
-            else tt = Date.now() + (parseTime(val) * 60000);
+            const raw = String(val).toUpperCase();
+            if (raw.startsWith("XX")) { const num = val.substring(2); dv = "階段" + (num ? num : "1"); tt = 0; }
+            else if (raw === "ON") { dv = "ON"; flash = true; }
+            else if (raw.startsWith("00")) { 
+                const n = raw.substring(2); dv = "階段" + (n.length > 1 ? n.split('').join('.') : n); 
+                if (parseFloat(n) >= 4) flash = true;
+            } else tt = Date.now() + (parseTime(val) * 60000);
             db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash });
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 5000);
         }
@@ -239,7 +240,12 @@
                 
                 items.sort((a,b) => {
                     if (currentSort === 'map') { const lA = (a[1].map.match(/\d+/) || [0])[0], lB = (b[1].map.match(/\d+/) || [0])[0]; return lB - lA; }
-                    if (type === 'timers') { const cA = a[1].targetTime > now ? 2 : 1, cB = b[1].targetTime > now ? 2 : 1; if (timerPriority === 'overtime') return cA - cB || a[1].targetTime - b[1].targetTime; return cB - cA || a[1].targetTime - b[1].targetTime; }
+                    if (type === 'timers') { 
+                        const cA = a[1].targetTime > now ? (timerPriority === 'overtime' ? 2 : 1) : (timerPriority === 'overtime' ? 1 : 2);
+                        const cB = b[1].targetTime > now ? (timerPriority === 'overtime' ? 2 : 1) : (timerPriority === 'overtime' ? 1 : 2);
+                        return cA - cB || a[1].targetTime - b[1].targetTime;
+                    }
+                    if (type === 'idle') { if (getWeight(a[1]) !== getWeight(b[1])) return getWeight(b[1]) - getWeight(a[1]); return (b[1].targetTime || b[1].startTime) - (a[1].targetTime || a[1].startTime); }
                     return getWeight(b[1]) - getWeight(a[1]);
                 }).forEach(([id, b]) => {
                     const card = document.createElement('div'); card.className = `card ${type === 'idle' ? 'idle-card' : ''}`;
@@ -285,18 +291,35 @@
 
         function parseTime(v) { const p = v.split(/[:.：]/); if (p.length === 3) return parseInt(p[0])*60 + parseInt(p[1]) + parseInt(p[2])/60; if (p.length === 2) return parseInt(p[0])*60 + parseInt(p[1]); return parseFloat(v) || 0; }
         function addBoss() { const i = document.getElementById('bossInput'), p = i.value.trim().split(/\s+/); if (p.length >= 3) saveBoss(p[0], p[1], p[2]); i.value = ''; unlockAudio(); }
+        
+        // 💡 修正後的 NEXT 跳階邏輯
         function triggerNext(m, c) { 
             db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => { 
                 const b = s.val(); if (!b) return;
-                const l = b.lastInput; 
-                if (l.toUpperCase()==="ON") saveBoss(m,c,""); 
-                else if (l.startsWith("00")) { 
-                    const cur = parseFloat(l.substring(2)); 
-                    const next = Math.floor(cur) + 1;
-                    saveBoss(m,c, next >= 5 ? "ON" : "00"+next); 
-                } 
+                const l = String(b.lastInput).toUpperCase(); 
+                if (l === "ON" || l === "") {
+                    saveBoss(m, c, "001"); 
+                } else if (l.startsWith("00")) {
+                    const numMatch = l.match(/[\d.]+/);
+                    if (numMatch) {
+                        const cur = parseFloat(numMatch[0]);
+                        // 如果是整數且小於 4，進到下一整數；若是 3.x 或 4，直接進 ON
+                        if (cur < 4) {
+                            const next = Math.floor(cur) + 1;
+                            saveBoss(m, c, "00" + next);
+                        } else {
+                            saveBoss(m, c, "ON");
+                        }
+                    } else {
+                        saveBoss(m, c, "ON");
+                    }
+                } else {
+                    // 若是 3.2 這種小數且非 00 開頭，點擊 NEXT 視為該階完成進 ON
+                    saveBoss(m, c, "ON");
+                }
             }); unlockAudio(); 
         }
+        
         function sendMessage() { const i = document.getElementById('chatInput'); if (!i.value.trim()) return; db.ref(`rooms/${currentRoom}/messages`).push({ user: myName, text: i.value.trim(), time: Date.now() }); i.value = ''; unlockAudio(); }
         function deleteBoss(id) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
         function clearAllBosses() { if(confirm("確定一鍵清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
@@ -304,7 +327,6 @@
         function joinRoom() { const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
         function createRoom() { const i = Math.random().toString(36).substring(2, 8).toUpperCase(); startSession(i); }
         function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); i.setSelectionRange(m.length + c.length + 2, i.value.length); }
-        function toggleManual() { const m = document.getElementById('manualModal'), o = document.getElementById('modalOverlay'); m.style.display = (m.style.display === 'block' ? 'none' : 'block'); o.style.display = (o.style.display === 'block' ? 'none' : 'block'); }
     </script>
 </body>
 </html>
