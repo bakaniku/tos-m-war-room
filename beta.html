@@ -21,27 +21,29 @@
         .btn-toggle { background: #222; color: #888; font-size: 12px; padding: 5px 10px; border: 1px solid #444; }
         .btn-toggle.active { background: #050; color: #0f0; border-color: #0f0; }
         
-        .btn-next { background: #050; color: #0f0; border: 1px solid #0f0; font-size: 11px; padding: 3px 10px; border-radius: 4px; cursor: pointer; display: inline-block; margin-top: 8px; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
-        .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-        .room-id { color: #0f0; font-size: 20px; font-weight: bold; }
+        .copy-icon { width: 18px; height: 18px; min-width: 18px; min-height: 18px; vertical-align: middle; cursor: pointer; opacity: 0.7; transition: 0.2s; }
+        .copy-icon:hover { opacity: 1; }
         
-        .vol-group { display: flex; align-items: center; gap: 8px; background: #111; padding: 6px 14px; border-radius: 20px; border: 1px solid #333; }
-        .vol-icon { background: none; color: #0f0; padding: 0; font-size: 16px; }
+        .btn-next { background: #050; color: #0f0; border: 1px solid #0f0; font-size: 11px; padding: 3px 10px; border-radius: 4px; cursor: pointer; display: inline-block; margin-top: 8px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
+        .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .room-id { color: #0f0; font-size: 20px; font-weight: bold; line-height: 1; }
+        
+        .vol-group { display: flex; align-items: center; gap: 8px; background: #111; padding: 6px 14px; border-radius: 20px; border: 1px solid #333; height: 32px; box-sizing: border-box; }
+        .vol-icon { background: none; color: #0f0; padding: 0; font-size: 16px; transition: color 0.2s; cursor: pointer; }
         .vol-icon.muted { color: #777; }
-        .vol-range { -webkit-appearance: none; width: 70px; height: 6px; background: #333; border-radius: 3px; outline: none; }
-        .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #0f0; border-radius: 50%; cursor: pointer; border: 2px solid #111; margin-top: -4px; }
+        .vol-range { -webkit-appearance: none; width: 70px; height: 6px; background: #333; border-radius: 3px; outline: none; transition: background 0.2s; }
+        .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #0f0; border-radius: 50%; cursor: pointer; border: 2px solid #111; transition: background 0.2s; }
         .vol-range.muted::-webkit-slider-thumb { background: #555; }
         
-        .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; border-radius: 0; margin-bottom: 5px; }
+        .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; border-radius: 0; margin-bottom: 5px; font-size: 16px; color: #fff; padding: 8px 0; }
         .duplicate-alert { color: #f44; font-size: 12px; height: 18px; margin-bottom: 10px; }
         .sort-row { margin-bottom: 15px; display: flex; gap: 8px; flex-wrap: wrap; }
         
         .grid-section { margin-bottom: 30px; }
-        .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+        .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
         .section-label { color: #555; font-size: 11px; border-left: 2px solid #333; padding-left: 8px; text-transform: uppercase; letter-spacing: 1px; }
         .btn-switch { background: #222; color: #0f0; font-size: 10px; padding: 2px 8px; border: 1px solid #444; border-radius: 4px; cursor: pointer; }
-        .btn-switch:hover { background: #333; }
 
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
@@ -50,6 +52,7 @@
         .timer-container { display: flex; flex-direction: column; align-items: flex-start; }
         .del { position: absolute; top: 5px; right: 10px; color: #444; background: none; border: none; font-size: 20px; cursor: pointer; }
         .warning-yellow { color: #ff0 !important; }
+        
         @keyframes flash { 0%, 100% { opacity: 1; color: #0f0; } 50% { opacity: 0.3; color: #fff; } }
         .flash-anim { animation: flash 0.5s step-end 10; }
         .idle-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
@@ -75,7 +78,7 @@
             <div class="header">
                 <div class="room-info">
                     <span class="room-id" id="displayID"></span>
-                    <svg class="copy-icon" onclick="copyRoomID()" viewBox="0 0 24 24" fill="none" stroke="#0f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="cursor:pointer;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    <svg class="copy-icon" onclick="copyRoomID()" viewBox="0 0 24 24" fill="none" stroke="#0f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                     <div class="vol-group">
                         <button id="volBtn" class="vol-icon muted" onclick="toggleAudio()">🔈</button>
                         <input type="range" id="volRange" class="vol-range muted" min="0" max="1" step="0.05" value="0.5">
@@ -108,15 +111,14 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
         let currentRoom = '', timers = {}, isAudioEnabled = false, playedAlerts = new Set(), currentSort = 'group';
-        let timerPriority = 'overtime'; // 'overtime' 或 'countdown'
+        let timerPriority = 'overtime'; 
 
         function speak(text) {
             if (!isAudioEnabled) return;
             window.speechSynthesis.cancel();
             const msg = new SpeechSynthesisUtterance(text);
             msg.volume = parseFloat(document.getElementById('volRange').value);
-            msg.lang = 'zh-TW';
-            msg.rate = 1.1;
+            msg.lang = 'zh-TW'; msg.rate = 1.1;
             window.speechSynthesis.speak(msg);
         }
 
@@ -125,8 +127,7 @@
             const btn = document.getElementById('volBtn'), range = document.getElementById('volRange');
             if (isAudioEnabled) {
                 btn.innerText = '🔊'; btn.classList.remove('muted'); range.classList.remove('muted');
-                updateRangeBg(range);
-                speak("語音功能已開啟");
+                updateRangeBg(range); speak("語音已開啟");
             } else {
                 btn.innerText = '🔈'; btn.classList.add('muted'); range.classList.add('muted'); 
                 range.style.background = '#222';
@@ -139,7 +140,6 @@
                 range.style.background = `linear-gradient(to right, #0f0 0%, #0f0 ${val}%, #333 ${val}%, #333 100%)`;
             }
         }
-
         document.getElementById('volRange').addEventListener('input', function() { updateRangeBg(this); });
 
         function copyRoomID() {
@@ -212,14 +212,23 @@
         }
 
         function saveBoss(map, ch, val) {
-            const id = `${map}_${ch}`, old = window.currentData ? window.currentData[id] : null;
+            const id = `${map}_${ch}`;
             let dv = val, tt = 0, flash = false;
             playedAlerts.delete(id);
-            if (val.toUpperCase() === "ON") dv = "ON";
-            else if (val.startsWith("00")) {
-                const n = val.substring(2); dv = "階段" + (n.length > 1 ? n.split('').join('.') : n);
+
+            // 💡 修正閃爍邏輯：只要是進入 ON 狀態就閃爍
+            if (val.toUpperCase() === "ON") {
+                dv = "ON";
+                flash = true;
+            } else if (val.startsWith("00")) {
+                const n = val.substring(2); 
+                dv = "階段" + (n.length > 1 ? n.split('').join('.') : n);
+                // 階段 3 轉 階段 4 也閃爍
+                const old = window.currentData ? window.currentData[id] : null;
                 if (old && old.lastInput.startsWith("003") && val.startsWith("004")) flash = true;
-            } else tt = Date.now() + (parseTime(val) * 60000);
+            } else {
+                tt = Date.now() + (parseTime(val) * 60000);
+            }
 
             db.ref(`rooms/${currentRoom}/bosses/${id}`).set({
                 map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash
@@ -234,33 +243,23 @@
             const all = Object.entries(window.currentData || {}), now = Date.now();
             const getStage = (v) => parseFloat(v.match(/[\d.]+/)[0]);
 
-            // 💡 邏輯修正：ON 屬於階段區
             let stages = all.filter(([id, b]) => b.displayValue.includes("階段") || b.displayValue === "ON");
             let timersList = all.filter(([id, b]) => b.targetTime > 0);
 
             const sortFunc = (list, isTimerSection = false) => {
                 if (currentSort === 'map') return list.sort((a,b) => parseInt(b[1].map) - parseInt(a[1].map) || parseInt(a[1].ch) - parseInt(b[1].ch));
-                
                 return list.sort((a,b) => {
                     const getC = (v) => v.targetTime > now ? 1 : (v.targetTime > 0 ? 2 : (v.displayValue.includes("階段") ? 3 : 4));
                     const cA = getC(a[1]), cB = getC(b[1]);
-                    
                     if (isTimerSection && (currentSort === 'group' || currentSort === 'countdown')) {
-                        // 💡 重生區專屬切換邏輯
-                        if (timerPriority === 'overtime') {
-                            // 已超時優先 (2 > 1)
-                            if (cA !== cB) return cB - cA; 
-                        } else {
-                            // 計時中優先 (1 > 2)
-                            if (cA !== cB) return cA - cB;
-                        }
+                        if (timerPriority === 'overtime') { if (cA !== cB) return cB - cA; }
+                        else { if (cA !== cB) return cA - cB; }
                         return a[1].targetTime - b[1].targetTime;
                     }
-
                     if (cA !== cB) return cA - cB;
                     if (cA <= 2) return a[1].targetTime - b[1].targetTime;
                     if (cA === 3) return getStage(b[1].displayValue) - getStage(a[1].displayValue);
-                    return (parseInt(b[1].map) || 0) - (parseInt(a[1].map) || 0);
+                    return parseInt(b[1].map) - parseInt(a[1].map);
                 });
             };
 
@@ -268,11 +267,8 @@
                 if (items.length === 0) return;
                 const sec = document.createElement('div');
                 sec.className = 'grid-section';
-                
-                // 💡 標題與切換鍵
-                let switchBtn = isTimer ? `<button class="btn-switch" onclick="toggleTimerPriority()">${timerPriority === 'overtime' ? '目前：已超時優先' : '目前：計時中優先'}</button>` : '';
+                let switchBtn = isTimer && (currentSort === 'group' || currentSort === 'countdown') ? `<button class="btn-switch" onclick="toggleTimerPriority()">${timerPriority === 'overtime' ? '已超時優先' : '計時中優先'}</button>` : '';
                 sec.innerHTML = `<div class="section-header"><div class="section-label">${label}</div>${switchBtn}</div><div class="grid"></div>`;
-                
                 container.appendChild(sec);
                 const grid = sec.querySelector('.grid');
                 sortFunc(items, isTimer).forEach(([id, b]) => {
@@ -281,16 +277,13 @@
                     card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button>
                         <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - 分流${b.ch}</h3>
                         <div class="timer-container"><div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}">...</div>
-                        ${b.targetTime === 0 ? `<button class="btn-next" onclick="triggerNext('${b.map}','${b.ch}','b.lastInput')">NEXT</button>` : ''}</div>`;
+                        ${b.targetTime === 0 ? `<button class="btn-next" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>` : ''}</div>`;
                     grid.appendChild(card); startTimer(id, b);
                 });
             };
 
             if (currentSort === 'map') render(all, "所有 BOSS");
-            else { 
-                render(stages, "階段追蹤區 (含 ON)"); 
-                render(timersList, "重生計時區", true); 
-            }
+            else { render(stages, "階段追蹤區 (含 ON)"); render(timersList, "重生計時區", true); }
         }
 
         function startTimer(id, boss) {
@@ -321,11 +314,9 @@
             i.setSelectionRange(i.value.length - l.length, i.value.length);
         }
 
-        function triggerNext(m, c, l) {
-            // 從 Firebase 重新抓取最新的 lastInput
+        function triggerNext(m, c) {
             db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => {
-                const d = s.val();
-                if (!d) return;
+                const d = s.val(); if (!d) return;
                 const last = d.lastInput;
                 if (last.toUpperCase() === "ON") saveBoss(m, c, "");
                 else if (last.startsWith("00")) {
