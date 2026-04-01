@@ -29,7 +29,6 @@
         .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #111; border: 2px solid #0f0; padding: 15px; border-radius: 12px; z-index: 2000; width: 85%; max-width: 450px; max-height: 55vh; overflow-y: auto; display: none; }
         .modal-overlay { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.85); z-index: 1999; display: none; }
 
-        /* 💡 音訊控制組樣式 */
         .audio-controls { display: flex; align-items: center; gap: 5px; background: #111; padding: 4px 10px; border-radius: 20px; border: 1px solid #333; height: 32px; box-sizing: border-box; }
         .audio-btn { background: none; color: #0f0; padding: 0; font-size: 14px; cursor: pointer; border: none; opacity: 0.3; transition: 0.2s; }
         .audio-btn.active { opacity: 1; }
@@ -79,11 +78,11 @@
         <div id="manualModal" class="modal">
             <h3 style="color:#0f0; margin-top:0;">📜 使用說明</h3>
             <div style="font-size:13px; line-height:1.5; color:#ccc; white-space: pre-wrap;">
-1. 語音：重生倒數歸零時報時 (🔊 圖標)。
-2. 音效：進入 階段 4 或 ON 時叮聲 (🔔 圖標)。
-3. 共用音量：中間拉桿同時控制語音與音效。
-4. 測試：開啟語音或音效按鈕時會發出聲音測試。
-5. 閒置：超過 1 小時自動移到底部。
+1. 語音(🔊)：重生歸零報時。音效(🔔)：4/ON 叮聲。
+2. 排序：自動執行 ON > 4 > 3 > 2 > 1。
+3. 警告：停留過久出現 ⚠️。
+4. XX代碼：XX1, XX2 直接進入閒置區。
+5. 數據：房間 24H 閒置後自動銷毀。
             </div>
             <button class="btn-solid" style="width:100%; margin-top:10px; padding:10px;" onclick="toggleManual()">確認</button>
         </div>
@@ -106,9 +105,9 @@
                     <button class="btn-toggle" style="font-size:10px;" onclick="toggleManual()">[使用說明]</button>
                     
                     <div class="audio-controls">
-                        <button id="voiceBtn" class="audio-btn" onclick="toggleVoice()" title="語音報時">🔊</button>
+                        <button id="voiceBtn" class="audio-btn" onclick="toggleVoice()">🔊</button>
                         <input type="range" id="volRange" class="vol-range" min="0" max="1" step="0.05" value="0.5">
-                        <button id="sfxBtn" class="audio-btn" onclick="toggleSfx()" title="階段音效">🔔</button>
+                        <button id="sfxBtn" class="audio-btn" onclick="toggleSfx()">🔔</button>
                     </div>
 
                     <button class="btn-toggle" style="font-size:10px;" onclick="toggleChat()">[留言板]</button>
@@ -148,8 +147,9 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
         let currentRoom = '', timers = {}, currentSort = 'group';
-        let isVoiceEnabled = false, isSfxEnabled = false; // 💡 獨立開關變數
+        let isVoiceEnabled = false, isSfxEnabled = false;
         let myName = '無名戰友', colorMode = 1, showWarningIcon = true, audioCtx = null, playedAlerts = new Set();
+        let timerPriority = 'overtime';
 
         function unlockAudio() {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -178,20 +178,8 @@
             osc.start(); osc.stop(audioCtx.currentTime + 0.3);
         }
 
-        function toggleVoice() {
-            isVoiceEnabled = !isVoiceEnabled;
-            const btn = document.getElementById('voiceBtn');
-            btn.classList.toggle('active', isVoiceEnabled);
-            if (isVoiceEnabled) { unlockAudio(); speak("語音功能已開啟"); }
-            else window.speechSynthesis.cancel();
-        }
-
-        function toggleSfx() {
-            isSfxEnabled = !isSfxEnabled;
-            const btn = document.getElementById('sfxBtn');
-            btn.classList.toggle('active', isSfxEnabled);
-            if (isSfxEnabled) { unlockAudio(); playDing(); }
-        }
+        function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); if (isVoiceEnabled) { unlockAudio(); speak("語音功能已開啟"); } else window.speechSynthesis.cancel(); }
+        function toggleSfx() { isSfxEnabled = !isSfxEnabled; document.getElementById('sfxBtn').classList.toggle('active', isSfxEnabled); if (isSfxEnabled) { unlockAudio(); playDing(); } }
 
         function startSession(id) {
             currentRoom = id; myName = document.getElementById('userNameInput').value.trim() || '無名戰友';
@@ -199,19 +187,18 @@
             document.getElementById('displayID').innerText = id;
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
             document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
-            document.body.addEventListener('click', unlockAudio, { once: true });
-
+            
             const myPresenceRef = db.ref(`rooms/${currentRoom}/users`).push(); myPresenceRef.set({ name: myName }); myPresenceRef.onDisconnect().remove();
             db.ref(`rooms/${currentRoom}/users`).on('value', s => { const users = Object.values(s.val() || {}); document.getElementById('onlineCount').innerText = users.length; document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', '); });
             
+            // 💡 修正初始化監聽邏輯
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
                 const newData = s.val() || {};
                 Object.keys(newData).forEach(key => {
-                    if (newData[key].isFlash && (!window.currentData || !window.currentData[key] || !window.currentData[key].isFlash)) {
-                        playDing();
-                    }
+                    if (newData[key].isFlash && (!window.currentData || !window.currentData[key] || !window.currentData[key].isFlash)) playDing();
                 });
-                window.currentData = newData; renderList(); 
+                window.currentData = newData; 
+                renderList(); // 💡 每次數據變動都執行完整分類渲染
             });
             db.ref(`rooms/${currentRoom}/messages`).limitToLast(15).on('value', s => {
                 const chatBox = document.getElementById('chatBox'); chatBox.innerHTML = '';
@@ -219,8 +206,6 @@
                 chatBox.scrollTop = chatBox.scrollHeight;
             });
         }
-
-        function sendMessage() { const input = document.getElementById('chatInput'); if (!input.value.trim()) return; db.ref(`rooms/${currentRoom}/messages`).push({ user: myName, text: input.value.trim(), time: Date.now() }); input.value = ''; unlockAudio(); }
 
         function saveBoss(map, ch, val) {
             const id = `${map}_${ch}`, old = window.currentData ? window.currentData[id] : null;
@@ -234,32 +219,48 @@
         }
 
         function renderList() {
-            const container = document.getElementById('sectionsContainer'); container.innerHTML = ''; Object.values(timers).forEach(clearInterval); timers = {};
+            const container = document.getElementById('sectionsContainer'); container.innerHTML = ''; 
+            Object.values(timers).forEach(clearInterval); timers = {};
             const all = Object.entries(window.currentData || {}), now = Date.now(), oneHour = 3600000;
             const stages = [], timersList = [], idleList = [];
+            
             all.forEach(([id, b]) => {
                 const isOverdue = b.targetTime > 0 && (now - b.targetTime > oneHour);
                 const isIdle = b.targetTime === 0 && (now - b.startTime > oneHour);
                 if (b.lastInput.toUpperCase().startsWith("XX") || isOverdue || isIdle) idleList.push([id, b]);
                 else if (b.targetTime > 0) timersList.push([id, b]); else stages.push([id, b]);
             });
+
             const getSortWeight = (v) => v.displayValue === "ON" ? 100 : (parseFloat(v.displayValue.match(/[\d.]+/)) || 0);
 
-            const render = (items, label, isTimer = false, isIdle = false) => {
-                if (items.length === 0) return;
+            const render = (items, label, sectionType) => {
+                if (items.length === 0 && sectionType !== 'stages') return; // 除了階段區外，沒內容不顯示
                 const sec = document.createElement('div'); sec.className = 'grid-section';
-                let ctrls = isTimer ? `<button class="btn-switch" onclick="setTimerPriority()">${timerPriority === 'overtime' ? '已超時優先' : '計時中優先'}</button>` : (isIdle ? '' : `<button class="btn-switch" onclick="toggleColorMode()">${colorMode === 1 ? '漸層' : '模式2'}</button><button class="btn-switch ${!showWarningIcon ? 'muted-btn' : ''}" onclick="toggleWarning()">${showWarningIcon ? '⚠️開' : '⚠️關'}</button>`);
+                let ctrls = '';
+                if (sectionType === 'timers') ctrls = `<button class="btn-switch" onclick="setTimerPriority()">${timerPriority === 'overtime' ? '已超時優先' : '計時中優先'}</button>`;
+                else if (sectionType === 'stages') ctrls = `<button class="btn-switch" onclick="toggleColorMode()">${colorMode === 1 ? '漸層' : '模式2'}</button><button class="btn-switch ${!showWarningIcon ? 'muted-btn' : ''}" onclick="toggleWarning()">${showWarningIcon ? '⚠️開' : '⚠️關'}</button>`;
+                
                 sec.innerHTML = `<div class="section-header"><div class="section-label">${label}</div>${ctrls}</div><div class="grid"></div>`;
                 container.appendChild(sec); const grid = sec.querySelector('.grid');
-                items.sort((a,b) => isTimer ? (a[1].targetTime - b[1].targetTime) : (getSortWeight(b[1]) - getSortWeight(a[1]))).forEach(([id, b]) => {
-                    const card = document.createElement('div'); card.className = `card ${isIdle ? 'idle-card' : ''}`;
+                
+                items.sort((a,b) => {
+                    if (sectionType === 'timers') return timerPriority === 'overtime' ? (a[1].targetTime - b[1].targetTime) : (a[1].targetTime - b[1].targetTime);
+                    return getSortWeight(b[1]) - getSortWeight(a[1]);
+                }).forEach(([id, b]) => {
+                    const card = document.createElement('div'); card.className = `card ${sectionType === 'idle' ? 'idle-card' : ''}`;
                     card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button><h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - 分流${b.ch}</h3>
                         <div class="timer-container"><div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}">...</div>
-                        ${(b.targetTime === 0 && !isIdle) ? `<button class="btn-next" id="btn_${id}" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>` : ''}</div>`;
-                    grid.appendChild(card); startTimer(id, b, isIdle);
+                        ${(b.targetTime === 0 && sectionType !== 'idle') ? `<button class="btn-next" id="btn_${id}" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>` : ''}</div>`;
+                    grid.appendChild(card); startTimer(id, b, sectionType === 'idle');
                 });
             };
-            if (currentSort === 'map') render(all, "所有 BOSS"); else { render(stages, "階段追蹤區"); render(timersList, "重生計時區", true); render(idleList, "超時閒置區", false, true); }
+
+            if (currentSort === 'map') render(all, "所有 BOSS", 'all');
+            else {
+                render(stages, "階段追蹤區", 'stages');
+                render(timersList, "重生計時區", 'timers');
+                render(idleList, "超時閒置區", 'idle');
+            }
         }
 
         function startTimer(id, b, isIdle) {
@@ -273,8 +274,8 @@
                     if (d === 0 && !playedAlerts.has(id)) { playedAlerts.add(id); speak(`${b.map}, 分流 ${b.ch}, 已重生`); }
                 } else {
                     const m = Math.floor((now - b.startTime) / 60000), s = Math.floor(((now - b.startTime) % 60000) / 1000);
-                    const cleanVal = b.lastInput.toUpperCase().startsWith("XX") ? b.lastInput.substring(2) : b.lastInput.substring(2);
-                    const lv = b.displayValue === "ON" ? 99 : parseFloat(cleanVal);
+                    const rawLv = b.lastInput.toUpperCase().startsWith("XX") ? b.lastInput.substring(2) : b.lastInput.substring(2);
+                    const lv = b.displayValue === "ON" ? 99 : (parseFloat(rawLv) || 0);
                     const isW = (lv < 2 && m >= 12) || (lv < 3 && lv >= 2 && m >= 7) || (lv < 4 && lv >= 3 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
                     el.innerHTML = `<span class="timer-label">${b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isIdle) ? '<span class="warning-icon">⚠️</span>' : ''}`;
                     if (!isIdle) { let c = (colorMode === 1) ? (lv < 2 ? '#0f0' : lv < 3 ? '#adff2f' : lv < 4 ? '#ff0' : lv < 5 ? '#f90' : '#f00') : (lv >= 99 ? '#f00' : lv >= 4 ? '#f90' : '#ff0'); el.style.color = c; if (btn) { btn.style.color = c; btn.style.borderColor = c; } }
@@ -286,7 +287,7 @@
         function addBoss() { const i = document.getElementById('bossInput'), p = i.value.trim().split(/\s+/); if (p.length >= 3) saveBoss(p[0], p[1], p[2]); i.value = ''; unlockAudio(); }
         function triggerNext(m, c) { db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => { const l = s.val().lastInput; if (l.toUpperCase()==="ON") saveBoss(m,c,""); else if (l.startsWith("00")) { let v = parseInt(l.substring(2,3)); saveBoss(m,c,v>=4?"ON":"00"+(v+1)); } }); unlockAudio(); }
         function deleteBoss(id) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
-        function clearAllBosses() { if(confirm("確定清除此房間所有資料？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
+        function clearAllBosses() { if(confirm("確定一鍵清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
         function copyRoomID() { const t = document.createElement('textarea'); t.value = currentRoom; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); alert('房號已複製'); }
         function joinRoom() { const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
         function createRoom() { const i = Math.random().toString(36).substring(2, 8).toUpperCase(); startSession(i); }
@@ -297,6 +298,7 @@
         function toggleManual() { const m = document.getElementById('manualModal'); const o = document.getElementById('modalOverlay'); const isShow = m.style.display === 'block'; m.style.display = isShow ? 'none' : 'block'; o.style.display = isShow ? 'none' : 'block'; }
         function toggleChat() { const c = document.getElementById('chatSection'); c.style.display = c.style.display === 'block' ? 'none' : 'block'; }
         function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); i.setSelectionRange(m.length + c.length + 2, i.value.length); }
+        function sendMessage() { const i = document.getElementById('chatInput'); if (!i.value.trim()) return; db.ref(`rooms/${currentRoom}/messages`).push({ user: myName, text: i.value.trim(), time: Date.now() }); i.value = ''; unlockAudio(); }
     </script>
 </body>
 </html>
