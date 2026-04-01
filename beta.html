@@ -81,8 +81,8 @@
             <div style="font-size:13px; line-height:1.5; color:#ccc; white-space: pre-wrap;">
 1. 排序：ON > 4 > 3 > 2 > 1。
 2. 提醒：進入 階段 4 或 ON 時會閃爍並發出「叮」聲。
-3. 警告：停留過久出現 ⚠️，關閉開關時按鈕變灰。
-4. 快速編輯：點擊標題的地圖-分流即可修改時間。
+3. 語音：重生倒數歸零時會報時，請確保語音已開啟。
+4. 快速編輯：點擊標題的地圖-分流即可修改。
 5. XX數字：代碼可將項目送入閒置區。
             </div>
             <button class="btn-solid" style="width:100%; margin-top:10px; padding:10px;" onclick="toggleManual()">確認</button>
@@ -146,31 +146,57 @@
         const db = firebase.database();
         let currentRoom = '', timers = {}, isAudioEnabled = false, currentSort = 'group';
         let timerPriority = 'overtime', myName = '無名戰友', colorMode = 1, showWarningIcon = true;
+        let audioCtx = null;
 
-        // 💡 叮音效
-        function playDing() {
+        // 💡 語音報時加強版
+        function speak(text) {
             if (!isAudioEnabled) return;
-            const context = new (window.AudioContext || window.webkitAudioContext)();
-            const osc = context.createOscillator();
-            const gain = context.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(880, context.currentTime); // A5 高音
-            osc.connect(gain);
-            gain.connect(context.destination);
-            gain.gain.setValueAtTime(0, context.currentTime);
-            gain.gain.linearRampToValueAtTime(0.3 * parseFloat(document.getElementById('volRange').value), context.currentTime + 0.01);
-            gain.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.3);
-            osc.start();
-            osc.stop(context.currentTime + 0.3);
+            window.speechSynthesis.cancel(); // 停止目前語音
+            const msg = new SpeechSynthesisUtterance(text);
+            msg.volume = parseFloat(document.getElementById('volRange').value);
+            msg.lang = 'zh-TW';
+            msg.rate = 1.1;
+            window.speechSynthesis.speak(msg);
         }
 
-        function toggleManual() { const m = document.getElementById('manualModal'); const o = document.getElementById('modalOverlay'); const isShow = m.style.display === 'block'; m.style.display = isShow ? 'none' : 'block'; o.style.display = isShow ? 'none' : 'block'; }
-        function toggleChat() { const c = document.getElementById('chatSection'); c.style.display = c.style.display === 'block' ? 'none' : 'block'; }
-        function toggleAudio() { isAudioEnabled = !isAudioEnabled; const btn = document.getElementById('volBtn'), range = document.getElementById('volRange'); if (isAudioEnabled) { btn.innerText = '🔊'; btn.classList.remove('muted'); range.classList.remove('muted'); updateRangeBg(range); } else { btn.innerText = '🔈'; btn.classList.add('muted'); range.classList.add('muted'); range.style.background = '#222'; } }
+        // 💡 解鎖 AudioContext (解決瀏覽器政策問題)
+        function unlockAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playDing() {
+            if (!isAudioEnabled) return;
+            unlockAudio();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            gain.gain.setValueAtTime(0, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.3 * parseFloat(document.getElementById('volRange').value), audioCtx.currentTime + 0.01);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.3);
+        }
+
+        function toggleAudio() {
+            isAudioEnabled = !isAudioEnabled;
+            const btn = document.getElementById('volBtn'), range = document.getElementById('volRange');
+            if (isAudioEnabled) {
+                unlockAudio();
+                btn.innerText = '🔊'; btn.classList.remove('muted'); range.classList.remove('muted');
+                updateRangeBg(range); speak("語音已開啟");
+            } else {
+                btn.innerText = '🔈'; btn.classList.add('muted'); range.classList.add('muted'); range.style.background = '#222';
+            }
+        }
         function updateRangeBg(r) { if (isAudioEnabled) { const v = r.value * 100; r.style.background = `linear-gradient(to right, #0f0 0%, #0f0 ${v}%, #333 ${v}%, #333 100%)`; } }
         document.getElementById('volRange').addEventListener('input', function() { updateRangeBg(this); });
 
         function startSession(id) {
+            unlockAudio();
             currentRoom = id; myName = document.getElementById('userNameInput').value.trim() || '無名戰友';
             document.getElementById('loginView').style.display = 'none'; document.getElementById('mainView').style.display = 'block';
             document.getElementById('displayID').innerText = id;
@@ -179,10 +205,8 @@
             const myPresenceRef = db.ref(`rooms/${currentRoom}/users`).push(); myPresenceRef.set({ name: myName }); myPresenceRef.onDisconnect().remove();
             db.ref(`rooms/${currentRoom}/users`).on('value', s => { const users = Object.values(s.val() || {}); document.getElementById('onlineCount').innerText = users.length; document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', '); });
             
-            // 💡 監聽 BOSS 變化並觸發音效
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
                 const newData = s.val() || {};
-                // 比對是否有新增的閃爍標籤
                 Object.keys(newData).forEach(key => {
                     if (newData[key].isFlash && (!window.currentData || !window.currentData[key] || !window.currentData[key].isFlash)) {
                         playDing();
@@ -195,7 +219,7 @@
             db.ref(`rooms/${currentRoom}/messages`).limitToLast(15).on('value', s => { const chatBox = document.getElementById('chatBox'); chatBox.innerHTML = ''; const msgs = s.val() || {}; Object.values(msgs).forEach(m => { chatBox.innerHTML += `<div><span class="msg-name">${m.user}</span>: ${m.text}</div>`; }); chatBox.scrollTop = chatBox.scrollHeight; });
         }
 
-        function sendMessage() { const input = document.getElementById('chatInput'); const text = input.value.trim(); if (!text) return; db.ref(`rooms/${currentRoom}/messages`).push({ user: myName, text: text, time: Date.now() }); input.value = ''; }
+        function sendMessage() { const input = document.getElementById('chatInput'); const text = input.value.trim(); if (!text) return; db.ref(`rooms/${currentRoom}/messages`).push({ user: myName, text: text, time: Date.now() }); input.value = ''; unlockAudio(); }
         
         function saveBoss(map, ch, val) {
             const id = `${map}_${ch}`, old = window.currentData ? window.currentData[id] : null;
@@ -207,7 +231,6 @@
                 dv = "ON"; flash = true; 
             } else if (val.startsWith("00")) { 
                 const n = val.substring(2); dv = "階段" + (n.length > 1 ? n.split('').join('.') : n); 
-                // 💡 只有進入階段 4 才閃爍提醒
                 if (val.startsWith("004")) flash = true;
             } else tt = Date.now() + (parseTime(val) * 60000);
             
@@ -227,7 +250,6 @@
                 else if (b.targetTime > 0) timersList.push([id, b]); else stages.push([id, b]);
             });
 
-            // 💡 排序權重處理
             const getSortWeight = (v) => {
                 if (v.displayValue === "ON") return 100;
                 const match = v.displayValue.match(/[\d.]+/);
@@ -250,7 +272,6 @@
                         if (timerPriority === 'overtime') return getC(b[1]) - getC(a[1]) || a[1].targetTime - b[1].targetTime;
                         return getC(a[1]) - getC(b[1]) || a[1].targetTime - b[1].targetTime;
                     }
-                    // 💡 階段排序：ON > 4 > 3 > 2 > 1
                     return getSortWeight(b[1]) - getSortWeight(a[1]);
                 }).forEach(([id, b]) => {
                     const card = document.createElement('div'); card.className = `card ${isIdle ? 'idle-card' : ''}`;
@@ -272,6 +293,12 @@
                     const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
                     el.innerText = `${Math.floor(a/3600)}:${Math.floor((a%3600)/60).toString().padStart(2,'0')}:${(a%60).toString().padStart(2,'0')}`;
                     if (!isIdle) el.style.color = d <= 0 ? '#ff3300' : '#0f0';
+                    
+                    // 💡 重生語音報時
+                    if (d === 0 && !playedAlerts.has(id)) {
+                        speak(`${b.map}, 分流 ${b.ch}, 已重生`);
+                        playedAlerts.add(id);
+                    }
                 } else {
                     const m = Math.floor((now - b.startTime) / 60000), s = Math.floor(((now - b.startTime) % 60000) / 1000);
                     const cleanInput = b.lastInput.toUpperCase().startsWith("XX") ? b.lastInput.substring(2) : b.lastInput.substring(2);
@@ -284,8 +311,8 @@
         }
 
         function parseTime(v) { v = v.toLowerCase(); const p = v.split(/[:.：]/); if (p.length === 3) return parseInt(p[0])*60 + parseInt(p[1]) + parseInt(p[2])/60; if (p.length === 2) return parseInt(p[0])*60 + parseInt(p[1]); return parseFloat(v) || 0; }
-        function addBoss() { const i = document.getElementById('bossInput'), p = i.value.trim().split(/\s+/); if (p.length >= 3) saveBoss(p[0], p[1], p[2]); i.value = ''; }
-        function triggerNext(m, c) { db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => { const l = s.val().lastInput; if (l.toUpperCase()==="ON") saveBoss(m,c,""); else if (l.startsWith("00")) { let v = parseInt(l.substring(2,3)); saveBoss(m,c,v>=4?"ON":"00"+(v+1)); } }); }
+        function addBoss() { const i = document.getElementById('bossInput'), p = i.value.trim().split(/\s+/); if (p.length >= 3) saveBoss(p[0], p[1], p[2]); i.value = ''; unlockAudio(); }
+        function triggerNext(m, c) { db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => { const l = s.val().lastInput; if (l.toUpperCase()==="ON") saveBoss(m,c,""); else if (l.startsWith("00")) { let v = parseInt(l.substring(2,3)); saveBoss(m,c,v>=4?"ON":"00"+(v+1)); } }); unlockAudio(); }
         function deleteBoss(id) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
         function clearAllBosses() { if(confirm("確定清除此房間所有資料？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
         function copyRoomID() { const t = document.createElement('textarea'); t.value = currentRoom; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); alert('房號已複製'); }
