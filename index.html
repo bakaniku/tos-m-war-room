@@ -45,6 +45,8 @@
         .section-label { color: #555; font-size: 11px; border-left: 2px solid #333; padding-left: 8px; text-transform: uppercase; }
         
         .btn-switch { background: #222; color: #0f0; font-size: 10px; padding: 2px 8px; border: 1px solid #444; border-radius: 4px; cursor: pointer; }
+        .btn-switch.active { background: #050; color: #0f0; border-color: #0f0; }
+
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
@@ -60,7 +62,9 @@
         @keyframes warn-flash { 0%, 100% { opacity: 1; scale: 1; } 50% { opacity: 0.5; scale: 1.1; } }
         @keyframes flash { 0%, 100% { opacity: 1; color: #fff; } 50% { opacity: 0.3; } }
         .flash-anim { animation: flash 0.5s step-end 10; }
-        .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-block; margin-top: 8px; border: 2px solid; }
+        
+        /* 💡 修正 NEXT 按鈕樣式確保顯示顏色 */
+        .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-block; margin-top: 8px; border: 2px solid; color: inherit; }
 
         .chat-section { margin-top: 40px; border-top: 2px solid #222; padding-top: 20px; display: none; }
         .chat-box { background: #080808; height: 120px; overflow-y: auto; padding: 10px; border-radius: 8px; font-size: 13px; margin-bottom: 10px; border: 1px solid #111; }
@@ -75,11 +79,10 @@
         <div id="manualModal" class="modal">
             <h3 style="color:#0f0; margin-top:0;">📜 使用說明</h3>
             <div style="font-size:13px; line-height:1.5; color:#ccc; white-space: pre-wrap;">
-1. NEXT：所有階段追蹤卡片皆會顯示。
-2. 留言板：點擊標題列按鈕開啟。
-3. 人員：標題列下方顯示目前在線人數與名稱。
-4. 色彩：依據大階段顯示漸層，小階段不影響色系判定。
-5. 重複提醒：輸入重複 BOSS 會出現紅字警告。
+1. NEXT 按鈕：顏色會隨大階段更新，點擊切換。
+2. 漸層切換：點擊「漸層/簡易」按鈕切換顯示風格。
+3. 警告符號(⚠️)：停留過久會自動顯示。
+4. 在線人員：標題下方即時顯示在線名單。
             </div>
             <button class="btn-solid" style="width:100%; margin-top:10px; padding:10px;" onclick="toggleManual()">確認</button>
         </div>
@@ -113,7 +116,7 @@
                 </div>
             </div>
 
-            <div class="user-list-bar">
+            <div id="userListBar" class="user-list-bar">
                 在線:<span id="onlineCount" style="color:#0f0;">0</span> | <span id="onlineUsers">載入中...</span>
             </div>
 
@@ -146,7 +149,7 @@
         let currentRoom = '', timers = {}, currentSort = 'group';
         let isVoiceEnabled = false, isSfxEnabled = false;
         let myName = '無名戰友', colorMode = 1, showWarningIcon = true, audioCtx = null, playedAlerts = new Set();
-        let timerPriority = 'overtime', mapOrder = 'desc';
+        let timerPriority = 'overtime';
 
         function unlockAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); }
         function speak(text) { if (isVoiceEnabled) { window.speechSynthesis.cancel(); const msg = new SpeechSynthesisUtterance(text); msg.volume = parseFloat(document.getElementById('volRange').value); msg.lang = 'zh-TW'; msg.rate = 1.1; window.speechSynthesis.speak(msg); } }
@@ -154,11 +157,11 @@
 
         function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); if (isVoiceEnabled) { unlockAudio(); speak("語音功能已開啟"); } else window.speechSynthesis.cancel(); }
         function toggleSfx() { isSfxEnabled = !isSfxEnabled; document.getElementById('sfxBtn').classList.toggle('active', isSfxEnabled); if (isSfxEnabled) { unlockAudio(); playDing(); } }
+        function toggleColorMode() { colorMode = (colorMode === 1 ? 2 : 1); renderList(); }
+        function toggleWarning() { showWarningIcon = !showWarningIcon; renderList(); }
+        function toggleChat() { const c = document.getElementById('chatSection'); c.style.display = (c.style.display === 'block' ? 'none' : 'block'); }
         function setSort(t) { currentSort = t; document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id === `sort${t.charAt(0).toUpperCase()+t.slice(1)}Btn`)); renderList(); }
         function setTimerPriority() { timerPriority = (timerPriority === 'overtime' ? 'countdown' : 'overtime'); renderList(); }
-        function toggleMapOrder() { mapOrder = (mapOrder === 'desc' ? 'asc' : 'desc'); renderList(); }
-        function toggleChat() { const c = document.getElementById('chatSection'); c.style.display = c.style.display === 'block' ? 'none' : 'block'; }
-        function toggleManual() { const m = document.getElementById('manualModal'), o = document.getElementById('modalOverlay'); m.style.display = m.style.display === 'block' ? 'none' : 'block'; o.style.display = o.style.display === 'block' ? 'none' : 'block'; }
 
         document.getElementById('bossInput').addEventListener('input', function(e) {
             const p = e.target.value.trim().split(/\s+/);
@@ -177,7 +180,6 @@
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
             document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
             
-            // 人員監聽
             const myPresenceRef = db.ref(`rooms/${currentRoom}/users`).push(); myPresenceRef.set({ name: myName }); myPresenceRef.onDisconnect().remove();
             db.ref(`rooms/${currentRoom}/users`).on('value', s => { 
                 const users = Object.values(s.val() || {}); 
@@ -185,14 +187,12 @@
                 document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', '); 
             });
 
-            // BOSS 監聽
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
                 const newData = s.val() || {};
                 Object.keys(newData).forEach(key => { if (newData[key].isFlash && (!window.currentData || !window.currentData[key] || !window.currentData[key].isFlash)) playDing(); });
                 window.currentData = newData; renderList(); 
             });
 
-            // 留言板監聽
             db.ref(`rooms/${currentRoom}/messages`).limitToLast(15).on('value', s => {
                 const chatBox = document.getElementById('chatBox'); chatBox.innerHTML = '';
                 Object.values(s.val() || {}).forEach(m => { chatBox.innerHTML += `<div><span class="msg-name">${m.user}</span>: ${m.text}</div>`; });
@@ -205,10 +205,8 @@
             let dv = val, tt = 0, flash = false; playedAlerts.delete(id);
             if (val.toUpperCase().startsWith("XX")) { const num = val.substring(2); dv = "階段" + (num ? num : "1"); tt = 0; }
             else if (val.toUpperCase() === "ON") { dv = "ON"; flash = true; }
-            else if (val.startsWith("00")) { 
-                const n = val.substring(2); dv = "階段" + (n.length > 1 ? n.split('').join('.') : n); 
-                if (val.startsWith("004")) flash = true;
-            } else tt = Date.now() + (parseTime(val) * 60000);
+            else if (val.startsWith("00")) { const n = val.substring(2); dv = "階段" + (n.length > 1 ? n.split('').join('.') : n); if (val.startsWith("004")) flash = true; }
+            else tt = Date.now() + (parseTime(val) * 60000);
             db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash });
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 5000);
         }
@@ -228,27 +226,20 @@
             });
 
             const getWeight = (v) => v.displayValue === "ON" ? 100 : (parseFloat(v.displayValue.match(/[\d.]+/)) || 0);
-            const getMapLvl = (name) => { const m = name.match(/\d+/); return m ? parseInt(m[0]) : 0; };
 
             const render = (items, label, type) => {
                 if (items.length === 0 && type !== 'stages') return;
                 const sec = document.createElement('div'); sec.className = 'grid-section';
                 let ctrls = '';
                 if (type === 'timers') ctrls = `<button class="btn-switch" onclick="setTimerPriority()">${timerPriority === 'overtime' ? '已超時優先' : '計時中優先'}</button>`;
-                else if (type === 'stages') ctrls = `<button class="btn-switch" onclick="toggleColorMode()">${colorMode === 1 ? '漸層' : '模式2'}</button><button class="btn-switch ${!showWarningIcon ? 'muted-btn' : ''}" onclick="toggleWarning()">${showWarningIcon ? '⚠️開' : '⚠️關'}</button>`;
-                else if (type === 'all') ctrls = `<button class="btn-switch" onclick="toggleMapOrder()">等級：${mapOrder === 'desc' ? '大到小' : '小到大'}</button>`;
+                else if (type === 'stages') ctrls = `<button class="btn-switch ${colorMode === 1 ? 'active' : ''}" onclick="toggleColorMode()">${colorMode === 1 ? '漸層模式' : '簡易模式'}</button><button class="btn-switch ${showWarningIcon ? 'active' : ''}" onclick="toggleWarning()">⚠️${showWarningIcon ? '開' : '關'}</button>`;
                 
                 sec.innerHTML = `<div class="section-header"><div class="section-label">${label}</div>${ctrls}</div><div class="grid"></div>`;
                 container.appendChild(sec); const grid = sec.querySelector('.grid');
                 
                 items.sort((a,b) => {
-                    if (type === 'all') { const lA = getMapLvl(a[1].map), lB = getMapLvl(b[1].map); return mapOrder === 'desc' ? (lB - lA) : (lA - lB); }
-                    if (type === 'timers') { 
-                        const cA = a[1].targetTime > now ? (timerPriority === 'overtime' ? 2 : 1) : (timerPriority === 'overtime' ? 1 : 2);
-                        const cB = b[1].targetTime > now ? (timerPriority === 'overtime' ? 2 : 1) : (timerPriority === 'overtime' ? 1 : 2);
-                        return cA - cB || a[1].targetTime - b[1].targetTime;
-                    }
-                    if (type === 'idle') { if (getWeight(a[1]) !== getWeight(b[1])) return getWeight(b[1]) - getWeight(a[1]); return (b[1].targetTime || b[1].startTime) - (a[1].targetTime || a[1].startTime); }
+                    if (currentSort === 'map') { const lA = (a[1].map.match(/\d+/) || [0])[0], lB = (b[1].map.match(/\d+/) || [0])[0]; return lB - lA; }
+                    if (type === 'timers') { const cA = a[1].targetTime > now ? 2 : 1, cB = b[1].targetTime > now ? 2 : 1; if (timerPriority === 'overtime') return cA - cB || a[1].targetTime - b[1].targetTime; return cB - cA || a[1].targetTime - b[1].targetTime; }
                     return getWeight(b[1]) - getWeight(a[1]);
                 }).forEach(([id, b]) => {
                     const card = document.createElement('div'); card.className = `card ${type === 'idle' ? 'idle-card' : ''}`;
@@ -256,28 +247,40 @@
                         <div class="timer-container"><div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}">...</div>
                         ${(b.targetTime === 0 && type !== 'idle') ? `<button class="btn-next" id="btn_${id}" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>` : ''}</div>`;
                     grid.appendChild(card);
+                    
                     const up = () => {
                         const el = card.querySelector('.timer'); if (!el) return;
+                        const btnNext = card.querySelector('.btn-next');
                         if (b.targetTime > 0) {
                             const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
                             el.innerText = `${Math.floor(a/3600)}:${Math.floor((a%3600)/60).toString().padStart(2,'0')}:${(a%60).toString().padStart(2,'0')}`;
                             if (type !== 'idle') el.style.color = d <= 0 ? '#ff3300' : '#0f0';
                             if (d === 0 && !playedAlerts.has(id)) { playedAlerts.add(id); speak(`${b.map}, 分流 ${b.ch}, 已重生`); }
                         } else {
-                            const m = Math.floor((Date.now() - b.startTime) / 60000), s = Math.floor(((Date.now() - b.startTime) % 60000) / 1000);
+                            const diff = (Date.now() - b.startTime) / 60000;
+                            const m = Math.floor(diff), s = Math.floor(((Date.now() - b.startTime) % 60000) / 1000);
                             const w = getWeight(b);
-                            el.innerHTML = `<span class="timer-label">${b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && type !== 'idle') ? '<span class="warning-icon">⚠️</span>' : ''}`;
+                            const isW = (w < 2 && m >= 12) || (w < 3 && w >= 2 && m >= 7) || (w < 4 && w >= 3 && m >= 5) || (w >= 4 && m >= 3);
+                            
+                            el.innerHTML = `<span class="timer-label">${b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && type !== 'idle') ? '<span class="warning-icon">⚠️</span>' : ''}`;
+                            
                             if (type !== 'idle') {
                                 let c = '#fff';
-                                if (w >= 99) c = '#ff0000'; else if (w >= 4) c = '#ff6600'; else if (w >= 3) c = '#ffcc00'; else if (w >= 2) c = '#ffff00'; else if (w >= 1) c = '#adff2f';
+                                if (colorMode === 1) { // 漸層
+                                    if (w >= 99) c = '#ff0000'; else if (w >= 4) c = '#ff6600'; else if (w >= 3) c = '#ffcc00'; else if (w >= 2) c = '#ffff00'; else if (w >= 1) c = '#adff2f';
+                                } else { // 簡易
+                                    if (w >= 99) c = '#ff0000'; else if (w >= 4) c = '#ff9900'; else c = '#ffff00';
+                                }
                                 el.style.color = c;
+                                if (btnNext) { btnNext.style.borderColor = c; btnNext.style.color = c; }
                             }
                         }
                     }; timers[id] = setInterval(up, 1000); up();
                 });
             };
-            if (currentSort === 'map') render(all, "地圖等級排序", 'all');
-            else { render(stages, "階段追蹤區", 'stages'); render(timersList, "重生計時區", 'timers'); render(idleList, "超時閒置區", 'idle'); }
+            render(stages, "階段追蹤區", 'stages');
+            render(timersList, "重生計時區", 'timers');
+            render(idleList, "超時閒置區", 'idle');
         }
 
         function parseTime(v) { const p = v.split(/[:.：]/); if (p.length === 3) return parseInt(p[0])*60 + parseInt(p[1]) + parseInt(p[2])/60; if (p.length === 2) return parseInt(p[0])*60 + parseInt(p[1]); return parseFloat(v) || 0; }
@@ -292,8 +295,7 @@
                     const next = Math.floor(cur) + 1;
                     saveBoss(m,c, next >= 5 ? "ON" : "00"+next); 
                 } 
-            }); 
-            unlockAudio(); 
+            }); unlockAudio(); 
         }
         function sendMessage() { const i = document.getElementById('chatInput'); if (!i.value.trim()) return; db.ref(`rooms/${currentRoom}/messages`).push({ user: myName, text: i.value.trim(), time: Date.now() }); i.value = ''; unlockAudio(); }
         function deleteBoss(id) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
@@ -302,6 +304,7 @@
         function joinRoom() { const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
         function createRoom() { const i = Math.random().toString(36).substring(2, 8).toUpperCase(); startSession(i); }
         function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); i.setSelectionRange(m.length + c.length + 2, i.value.length); }
+        function toggleManual() { const m = document.getElementById('manualModal'), o = document.getElementById('modalOverlay'); m.style.display = (m.style.display === 'block' ? 'none' : 'block'); o.style.display = (o.style.display === 'block' ? 'none' : 'block'); }
     </script>
 </body>
 </html>
