@@ -22,59 +22,36 @@
         .btn-toggle.active { background: #050; color: #0f0; border-color: #0f0; }
         .copy-icon { width: 18px; height: 18px; vertical-align: middle; margin-left: 8px; cursor: pointer; opacity: 0.7; }
         .copy-icon:hover { opacity: 1; }
-        
-        /* 💡 NEXT 按鈕 UI 調整 */
-        .btn-next { 
-            background: #050; 
-            color: #0f0; 
-            border: 1px solid #0f0; 
-            font-size: 11px; 
-            padding: 3px 10px; 
-            border-radius: 4px; 
-            cursor: pointer; 
-            display: inline-block; 
-            margin-top: 8px; /* 這裡控制按鈕下來一點點 */
-            transition: 0.2s;
-        }
-        .btn-next:active { background: #0f0; color: #000; }
-        
+        .btn-next { background: #050; color: #0f0; border: 1px solid #0f0; font-size: 11px; padding: 3px 10px; border-radius: 4px; cursor: pointer; display: inline-block; margin-top: 8px; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
         .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .room-id { color: #0f0; font-size: 20px; font-weight: bold; }
         .vol-group { display: flex; align-items: center; gap: 8px; background: #111; padding: 6px 14px; border-radius: 20px; border: 1px solid #333; }
-        .vol-icon { background: none; color: #0f0; padding: 0; font-size: 16px; transition: color 0.2s; }
+        .vol-icon { background: none; color: #0f0; padding: 0; font-size: 16px; }
         .vol-icon.muted { color: #f44; }
-        .vol-range { -webkit-appearance: none; width: 70px; height: 6px; background: #333; border-radius: 3px; outline: none; transition: background 0.2s; margin: 0; padding: 0; }
+        .vol-range { -webkit-appearance: none; width: 70px; height: 6px; background: #333; border-radius: 3px; outline: none; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #0f0; border-radius: 50%; cursor: pointer; border: 2px solid #111; margin-top: -4px; }
-        
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; border-radius: 0; margin-bottom: 5px; }
         .duplicate-alert { color: #f44; font-size: 12px; height: 18px; margin-bottom: 10px; }
         .sort-row { margin-bottom: 15px; display: flex; gap: 8px; flex-wrap: wrap; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
-        
-        .timer { font-size: 20px; font-weight: bold; margin-top: 8px; font-family: monospace; transition: 0.3s; }
-        /* 讓 NEXT 按鈕與階段/時間區塊垂直排列 */
+        .timer { font-size: 20px; font-weight: bold; margin-top: 8px; font-family: monospace; }
         .timer-container { display: flex; flex-direction: column; align-items: flex-start; }
-
-        .del { position: absolute; top: 5px; right: 10px; color: #444; background: none; border: none; font-size: 20px; cursor: pointer; z-index: 10; }
-        .idle-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; text-align: center; }
-        
-        @keyframes flash {
-            0%, 100% { opacity: 1; color: #0f0; }
-            50% { opacity: 0.3; color: #fff; }
-        }
-        .flash-anim { animation: flash 0.5s step-end 10; }
+        .del { position: absolute; top: 5px; right: 10px; color: #444; background: none; border: none; font-size: 20px; cursor: pointer; }
+        .idle-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
         .warning-yellow { color: #ff0 !important; }
+        @keyframes flash { 0%, 100% { opacity: 1; color: #0f0; } 50% { opacity: 0.3; color: #fff; } }
+        .flash-anim { animation: flash 0.5s step-end 10; }
     </style>
 </head>
 <body>
     <div id="app">
         <div id="idleOverlay" class="idle-overlay" style="display:none;">
             <h2 style="color:#0f0">TOS M FB TIME</h2>
-            <p>連線已斷開（已達 24 小時自動保護限制）</p>
-            <button class="btn-solid" onclick="location.reload()" style="width:200px">重新連接</button>
+            <p>連線已斷開（24小時自動保護）</p>
+            <button class="btn-solid" onclick="location.reload()">重新連接</button>
         </div>
 
         <div id="loginView" class="login-view">
@@ -91,7 +68,6 @@
                 <div class="room-info">
                     <span class="room-id" id="displayID"></span>
                     <svg class="copy-icon" onclick="copyRoomID()" viewBox="0 0 24 24" fill="none" stroke="#0f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                    
                     <div class="vol-group">
                         <button id="volBtn" class="vol-icon muted" onclick="toggleAudio()">🔈</button>
                         <input type="range" id="volRange" class="vol-range muted" min="0" max="1" step="0.05" value="0.5">
@@ -104,6 +80,7 @@
             <div class="sort-row">
                 <button id="sortTimeBtn" class="btn-toggle active" onclick="setSort('time')">時間排序</button>
                 <button id="sortCountdownBtn" class="btn-toggle" onclick="setSort('countdown')">倒數排序</button>
+                <button id="sortGroupBtn" class="btn-toggle" onclick="setSort('group')">群組排序</button>
                 <button id="sortMapBtn" class="btn-toggle" onclick="setSort('map')">地圖排序</button>
             </div>
 
@@ -122,12 +99,11 @@
         };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
-        
         let currentRoom = '', timers = {}, isAudioEnabled = false, playedAlerts = new Set(), currentSort = 'time';
 
         function speak(text) {
-            if (!isAudioEnabled) return; 
-            window.speechSynthesis.cancel(); 
+            if (!isAudioEnabled) return;
+            window.speechSynthesis.cancel();
             const msg = new SpeechSynthesisUtterance(text);
             msg.volume = parseFloat(document.getElementById('volRange').value);
             msg.lang = 'zh-TW';
@@ -137,25 +113,20 @@
 
         function toggleAudio() {
             isAudioEnabled = !isAudioEnabled;
-            const volBtn = document.getElementById('volBtn');
-            const volRange = document.getElementById('volRange');
+            const btn = document.getElementById('volBtn'), range = document.getElementById('volRange');
             if (isAudioEnabled) {
-                volBtn.innerText = '🔊'; volBtn.classList.remove('muted'); volRange.classList.remove('muted');
-                volRange.style.background = `linear-gradient(to right, #0f0 0%, #0f0 ${volRange.value * 100}%, #333 ${volRange.value * 100}%, #333 100%)`;
+                btn.innerText = '🔊'; btn.classList.remove('muted'); range.classList.remove('muted');
+                range.style.background = `linear-gradient(to right, #0f0 0%, #0f0 ${range.value * 100}%, #333 ${range.value * 100}%, #333 100%)`;
                 speak("語音功能已開啟");
             } else {
-                volBtn.innerText = '🔈'; volBtn.classList.add('muted'); volRange.classList.add('muted');
-                volRange.style.background = '#222';
+                btn.innerText = '🔈'; btn.classList.add('muted'); range.classList.add('muted'); range.style.background = '#222';
             }
         }
-        
+
         function copyRoomID() {
             const el = document.createElement('textarea');
-            el.value = currentRoom;
-            document.body.appendChild(el);
-            el.select();
-            document.execCommand('copy');
-            document.body.removeChild(el);
+            el.value = currentRoom; document.body.appendChild(el); el.select();
+            document.execCommand('copy'); document.body.removeChild(el);
             alert('房號 ' + currentRoom + ' 已複製！');
         }
 
@@ -185,10 +156,8 @@
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
             db.ref(`rooms/${currentRoom}/lastActive`).transaction((c) => c || Date.now());
             db.ref(`rooms/${currentRoom}`).on('value', s => {
-                const data = s.val();
-                if (!data) { exitRoom(); return; }
-                window.currentData = data.bosses || {};
-                renderList();
+                const data = s.val(); if (!data) { exitRoom(); return; }
+                window.currentData = data.bosses || {}; renderList();
             });
             setInterval(checkRoomStatus, 60000);
         }
@@ -198,40 +167,28 @@
         function checkRoomStatus() {
             if (!currentRoom) return;
             db.ref(`rooms/${currentRoom}`).once('value', s => {
-                const d = s.val();
-                if (!d) return;
-                const bossCount = d.bosses ? Object.keys(d.bosses).length : 0;
-                const idleTime = Date.now() - (d.lastActive || 0);
-                if ((bossCount === 0 && idleTime > 30 * 60 * 1000) || idleTime > 24 * 60 * 60 * 1000) {
-                    db.ref(`rooms/${currentRoom}`).remove();
-                }
+                const d = s.val(); if (!d) return;
+                const count = d.bosses ? Object.keys(d.bosses).length : 0;
+                const idle = Date.now() - (d.lastActive || 0);
+                if ((count === 0 && idle > 30 * 60 * 1000) || idle > 24 * 60 * 60 * 1000) db.ref(`rooms/${currentRoom}`).remove();
             });
         }
 
         function checkDuplicate() {
-            const input = document.getElementById('bossInput').value.trim().split(/\s+/);
+            const p = document.getElementById('bossInput').value.trim().split(/\s+/);
             const alertEl = document.getElementById('duplicateAlert');
-            if (input.length >= 2) {
-                const id = `${input[0]}_${input[1]}`;
-                if (window.currentData && window.currentData[id]) {
-                    alertEl.innerText = `⚠️ 注意：${input[0]} - 分流 ${input[1]} 已存在，輸入將覆蓋舊資料`;
-                    return;
-                }
-            }
-            alertEl.innerText = "";
+            if (p.length >= 2 && window.currentData && window.currentData[`${p[0]}_${p[1]}`]) {
+                alertEl.innerText = `⚠️ 注意：${p[0]} - 分流 ${p[1]} 已存在，輸入將覆蓋`;
+            } else alertEl.innerText = "";
         }
 
         function addBoss() {
-            const input = document.getElementById('bossInput');
-            const p = input.value.trim().split(/\s+/);
-            if (p.length < 3) return;
-            saveBoss(p[0], p[1], p[2]);
-            input.value = '';
+            const input = document.getElementById('bossInput'), p = input.value.trim().split(/\s+/);
+            if (p.length < 3) return; saveBoss(p[0], p[1], p[2]); input.value = '';
         }
 
-        function parseTimeInput(val) {
-            val = val.toLowerCase();
-            if (val.endsWith('s')) return parseFloat(val) / 60;
+        function parseTime(val) {
+            val = val.toLowerCase(); if (val.endsWith('s')) return parseFloat(val) / 60;
             const p = val.split(/[:.：]/);
             if (p.length === 3) return (parseInt(p[0])*60) + parseInt(p[1]) + (parseInt(p[2])/60);
             if (p.length === 2) return (parseInt(p[0])*60) + parseInt(p[1]);
@@ -239,51 +196,50 @@
         }
 
         function saveBoss(map, ch, val) {
-            const bossID = `${map}_${ch}`;
-            const oldData = window.currentData ? window.currentData[bossID] : null;
-            let displayValue = val;
-            let targetTime = 0;
-            let isFlash = false;
+            const id = `${map}_${ch}`, old = window.currentData ? window.currentData[id] : null;
+            let dv = val, tt = 0, flash = false;
+            playedAlerts.delete(id);
+            if (val.toUpperCase() === "ON") dv = "ON";
+            else if (val.startsWith("00")) {
+                const n = val.substring(2); dv = "階段" + (n.length > 1 ? n.split('').join('.') : n);
+                if (old && old.lastInput.startsWith("003") && val.startsWith("004")) flash = true;
+            } else tt = Date.now() + (parseTime(val) * 60000);
 
-            playedAlerts.delete(bossID);
-
-            if (val.toUpperCase() === "ON") {
-                displayValue = "ON";
-            } else if (val.startsWith("00")) {
-                const stageNum = val.substring(2);
-                displayValue = "階段" + (stageNum.length > 1 ? stageNum.split('').join('.') : stageNum);
-                if (oldData && oldData.lastInput.startsWith("003") && val.startsWith("004")) {
-                    isFlash = true;
-                }
-            } else {
-                targetTime = Date.now() + (parseTimeInput(val) * 60000);
-            }
-
-            db.ref(`rooms/${currentRoom}/bosses/${bossID}`).set({
-                map, ch, targetTime, lastInput: val, displayValue,
-                startTime: Date.now(),
-                isFlash: isFlash
+            db.ref(`rooms/${currentRoom}/bosses/${id}`).set({
+                map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash
             });
             db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
         }
 
         function renderList() {
-            const list = document.getElementById('bossList');
-            list.innerHTML = '';
-            Object.values(timers).forEach(clearInterval);
-            timers = {};
-            let sorted = Object.entries(window.currentData || {});
-            const now = Date.now();
+            const list = document.getElementById('bossList'); list.innerHTML = '';
+            Object.values(timers).forEach(clearInterval); timers = {};
+            let sorted = Object.entries(window.currentData || {}), now = Date.now();
 
-            const getStageVal = (v) => parseFloat(v.match(/[\d.]+/)[0]);
+            const getStage = (v) => parseFloat(v.match(/[\d.]+/)[0]);
 
             if (currentSort === 'countdown') {
                 sorted.sort((a, b) => {
                     const getCat = (v) => v.targetTime > now ? 1 : (v.targetTime > 0 ? 2 : (v.displayValue.includes("階段") ? 3 : 4));
-                    const catA = getCat(a[1]), catB = getCat(b[1]);
-                    if (catA !== catB) return catA - catB;
-                    if (catA <= 2) return a[1].targetTime - b[1].targetTime;
-                    if (catA === 3) return getStageVal(b[1].displayValue) - getStageVal(a[1].displayValue);
+                    const cA = getCat(a[1]), cB = getCat(b[1]);
+                    if (cA !== cB) return cA - cB;
+                    if (cA <= 2) return a[1].targetTime - b[1].targetTime;
+                    if (cA === 3) return getStage(b[1].displayValue) - getStage(a[1].displayValue);
+                    return parseInt(b[1].map) - parseInt(a[1].map);
+                });
+            } else if (currentSort === 'group') {
+                // 💡 群組排序：階段(上) > 已超時(中) > 計時(下) > ON
+                sorted.sort((a, b) => {
+                    const getGroup = (v) => {
+                        if (v.displayValue.includes("階段")) return 1;
+                        if (v.targetTime > 0 && v.targetTime <= now) return 2; // 已超時
+                        if (v.targetTime > now) return 3; // 計時中
+                        return 4;
+                    };
+                    const gA = getGroup(a[1]), gB = getGroup(b[1]);
+                    if (gA !== gB) return gA - gB;
+                    if (gA === 1) return getStage(b[1].displayValue) - getStage(a[1].displayValue);
+                    if (gA === 2 || gA === 3) return a[1].targetTime - b[1].targetTime;
                     return parseInt(b[1].map) - parseInt(a[1].map);
                 });
             } else if (currentSort === 'map') {
@@ -291,85 +247,63 @@
             } else {
                 sorted.sort((a, b) => {
                     const getCat = (v) => v.displayValue.includes("階段") ? 1 : (v.targetTime > now ? 2 : (v.targetTime > 0 ? 3 : 4));
-                    const catA = getCat(a[1]), catB = getCat(b[1]);
-                    if (catA !== catB) return catA - catB;
-                    if (catA === 1) return getStageVal(b[1].displayValue) - getStageVal(a[1].displayValue);
+                    const cA = getCat(a[1]), cB = getCat(b[1]);
+                    if (cA !== cB) return cA - cB;
+                    if (cA === 1) return getStage(b[1].displayValue) - getStage(a[1].displayValue);
                     return a[1].targetTime - b[1].targetTime || parseInt(b[1].map) - parseInt(a[1].map);
                 });
             }
 
             sorted.forEach(([id, boss]) => {
-                const card = document.createElement('div');
+                const card = document.createElement('div'), tid = `t_${id}`;
                 card.className = 'card';
-                const timerId = `t_${id}`;
                 card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button>
                     <h3 onclick="doEdit('${boss.map}','${boss.ch}','${boss.lastInput}')">${boss.map} - 分流${boss.ch}</h3>
-                    <div class="timer-container">
-                        <div class="timer ${boss.isFlash ? 'flash-anim' : ''}" id="${timerId}">...</div>
-                        ${boss.targetTime === 0 ? `<button class="btn-next" onclick="triggerNext('${boss.map}','${boss.ch}','${boss.lastInput}')">NEXT</button>` : ''}
-                    </div>`;
-                list.appendChild(card);
-                startTimer(id, boss);
+                    <div class="timer-container"><div class="timer ${boss.isFlash ? 'flash-anim' : ''}" id="${tid}">...</div>
+                    ${boss.targetTime === 0 ? `<button class="btn-next" onclick="triggerNext('${boss.map}','${boss.ch}','${boss.lastInput}')">NEXT</button>` : ''}</div>`;
+                list.appendChild(card); startTimer(id, boss);
             });
         }
 
         function startTimer(id, boss) {
             const el = document.getElementById(`t_${id}`);
-            const update = () => {
+            const up = () => {
                 const now = Date.now();
                 if (boss.targetTime > 0) {
-                    const diff = Math.floor((boss.targetTime - now) / 1000);
-                    const abs = Math.abs(diff);
-                    const h = Math.floor(abs/3600), m = Math.floor((abs%3600)/60), s = abs%60;
+                    const d = Math.floor((boss.targetTime - now) / 1000), a = Math.abs(d);
+                    const h = Math.floor(a/3600), m = Math.floor((a%3600)/60), s = a%60;
                     el.innerText = `${h>0?h+':':''}${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
-                    el.style.color = diff <= 0 ? '#f44' : '#0f0';
-                    if (diff === 0 && !playedAlerts.has(id)) {
-                        speak(`${boss.map}, 分流 ${boss.ch}, 已重生`);
-                        playedAlerts.add(id);
-                    }
+                    el.style.color = d <= 0 ? '#f44' : '#0f0';
+                    if (d === 0 && !playedAlerts.has(id)) { speak(`${boss.map}, 分流 ${boss.ch}, 已重生`); playedAlerts.add(id); }
                 } else {
-                    const passedSec = Math.floor((now - boss.startTime) / 1000);
-                    const m = Math.floor(passedSec / 60), s = passedSec % 60;
+                    const sec = Math.floor((now - boss.startTime) / 1000), m = Math.floor(sec/60), s = sec%60;
                     el.innerText = `${boss.displayValue} (${m}:${s.toString().padStart(2,'0')})`;
                     el.classList.remove('warning-yellow');
                     if (boss.displayValue.includes("階段")) {
                         const lv = parseFloat(boss.lastInput.substring(2));
-                        if ((lv < 2 && m >= 10) || (lv < 3 && lv >= 2 && m >= 7) || (lv < 4 && lv >= 3 && m >= 5) || (lv >= 4 && m >= 3)) {
-                            el.classList.add('warning-yellow');
-                        }
+                        if ((lv < 2 && m >= 10) || (lv < 3 && lv >= 2 && m >= 7) || (lv < 4 && lv >= 3 && m >= 5) || (lv >= 4 && m >= 3)) el.classList.add('warning-yellow');
                     }
                 }
             };
-            update();
-            timers[id] = setInterval(update, 1000);
+            up(); timers[id] = setInterval(up, 1000);
         }
 
         function doEdit(m, c, l) {
-            const i = document.getElementById('bossInput');
-            i.value = `${m} ${c} ${l}`; i.focus();
+            const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus();
             i.setSelectionRange(i.value.length - l.length, i.value.length);
         }
 
-        function triggerNext(map, ch, last) {
-            if (last.toUpperCase() === "ON") saveBoss(map, ch, "");
-            else if (last.startsWith("00")) {
-                let v = parseInt(last.substring(2, 3));
-                if (v >= 4) saveBoss(map, ch, "ON");
-                else saveBoss(map, ch, "00" + (v + 1));
+        function triggerNext(m, c, l) {
+            if (l.toUpperCase() === "ON") saveBoss(m, c, "");
+            else if (l.startsWith("00")) {
+                let v = parseInt(l.substring(2, 3));
+                if (v >= 4) saveBoss(m, c, "ON"); else saveBoss(m, c, "00" + (v + 1));
             }
         }
 
-        function deleteBoss(id) { 
-            db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); 
-            db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
-        }
-        
-        function clearAllBosses() { 
-            if(confirm("確定一鍵清除？")) {
-                db.ref(`rooms/${currentRoom}/bosses`).remove();
-                db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now());
-            }
-        }
+        function deleteBoss(id) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now()); }
+        function clearAllBosses() { if(confirm("確定一鍵清除？")) { db.ref(`rooms/${currentRoom}/bosses`).remove(); db.ref(`rooms/${currentRoom}/lastActive`).set(Date.now()); } }
+        window.onload = () => { document.getElementById('volRange').style.background = '#222'; document.getElementById('roomInput').focus(); };
     </script>
 </body>
 </html>
