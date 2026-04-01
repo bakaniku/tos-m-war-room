@@ -21,19 +21,19 @@
         .btn-toggle { background: #222; color: #888; font-size: 12px; padding: 5px 10px; border: 1px solid #444; }
         .btn-toggle.active { background: #050; color: #0f0; border-color: #0f0; }
         
-        /* 💡 複製鍵尺寸固定 */
-        .copy-icon { width: 18px; height: 18px; min-width: 18px; min-height: 18px; vertical-align: middle; cursor: pointer; opacity: 0.7; transition: 0.2s; }
-        .copy-icon:hover { opacity: 1; }
-        
-        .btn-next { background: #050; color: #0f0; border: 1px solid #0f0; font-size: 11px; padding: 3px 10px; border-radius: 4px; cursor: pointer; display: inline-block; margin-top: 8px; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px; }
+        .copy-icon { width: 18px; height: 18px; min-width: 18px; min-height: 18px; vertical-align: middle; cursor: pointer; opacity: 0.7; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 15px; }
         .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .room-id { color: #0f0; font-size: 20px; font-weight: bold; line-height: 1; }
         
+        /* 💡 人數與名單樣式 */
+        .user-list-bar { font-size: 12px; color: #666; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 1px solid #222; }
+        .online-count { color: #0f0; font-weight: bold; margin-left: 5px; }
+
         .vol-group { display: flex; align-items: center; gap: 8px; background: #111; padding: 6px 14px; border-radius: 20px; border: 1px solid #333; height: 32px; box-sizing: border-box; }
         .vol-icon { background: none; color: #0f0; padding: 0; font-size: 16px; transition: color 0.2s; cursor: pointer; }
         .vol-icon.muted { color: #777; }
-        .vol-range { -webkit-appearance: none; width: 70px; height: 6px; background: #333; border-radius: 3px; outline: none; transition: background 0.2s; }
+        .vol-range { -webkit-appearance: none; width: 70px; height: 6px; background: #333; border-radius: 3px; outline: none; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #0f0; border-radius: 50%; cursor: pointer; border: 2px solid #111; transition: background 0.2s; }
         .vol-range.muted::-webkit-slider-thumb { background: #555; }
         
@@ -50,10 +50,9 @@
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
         
-        /* 💡 修正 ON 與 階段 的字體大小一致性 */
         .timer { font-size: 20px; font-weight: bold; margin-top: 8px; font-family: monospace; }
-        .timer-label { font-size: 20px; } /* 強制 ON 或 階段 文字大小相同 */
-        .timer-sub { font-size: 16px; margin-left: 4px; opacity: 0.8; } /* 括號內的計時稍微小一點點 */
+        .timer-label { font-size: 20px; }
+        .timer-sub { font-size: 16px; margin-left: 4px; opacity: 0.8; }
 
         .timer-container { display: flex; flex-direction: column; align-items: flex-start; }
         .del { position: absolute; top: 5px; right: 10px; color: #444; background: none; border: none; font-size: 20px; cursor: pointer; }
@@ -74,6 +73,7 @@
         <div id="loginView" class="login-view">
             <div class="title">TOS M FB TIME</div>
             <div class="input-group">
+                <input type="text" id="userNameInput" placeholder="你的稱呼 (選填)" maxlength="10">
                 <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
                 <input type="text" id="roomInput" placeholder="輸入房號" maxlength="6">
                 <button class="btn-solid" onclick="joinRoom()">進入房間</button>
@@ -92,6 +92,11 @@
                     <button class="btn-danger" onclick="clearAllBosses()">一鍵清除</button>
                 </div>
                 <button style="background:none; color:#444;" onclick="exitRoom()">退出</button>
+            </div>
+
+            <div class="user-list-bar">
+                目前在線:<span class="online-count" id="onlineCount">0</span>人
+                <div id="onlineUsers" style="margin-top:5px; color:#444;">載入名單中...</div>
             </div>
 
             <div class="sort-row">
@@ -118,6 +123,7 @@
         const db = firebase.database();
         let currentRoom = '', timers = {}, isAudioEnabled = false, playedAlerts = new Set(), currentSort = 'group';
         let timerPriority = 'overtime'; 
+        let myName = '無名戰友';
 
         function speak(text) {
             if (!isAudioEnabled) return;
@@ -169,11 +175,28 @@
 
         function startSession(id) {
             currentRoom = id;
+            const inputName = document.getElementById('userNameInput').value.trim();
+            if (inputName) myName = inputName;
+
             document.getElementById('loginView').style.display = 'none';
             document.getElementById('mainView').style.display = 'block';
             document.getElementById('displayID').innerText = id;
             document.getElementById('bossInput').addEventListener('input', checkDuplicate);
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
+            
+            // 💡 處理個人在線狀態
+            const myPresenceRef = db.ref(`rooms/${currentRoom}/users`).push();
+            myPresenceRef.set({ name: myName, lastActive: Date.now() });
+            myPresenceRef.onDisconnect().remove(); // 斷線自動刪除
+
+            // 💡 監聽在線名單
+            db.ref(`rooms/${currentRoom}/users`).on('value', s => {
+                const users = s.val() || {};
+                const userNames = Object.values(users).map(u => u.name);
+                document.getElementById('onlineCount').innerText = userNames.length;
+                document.getElementById('onlineUsers').innerText = "在線名單: " + userNames.join(', ');
+            });
+
             db.ref(`rooms/${currentRoom}/lastActive`).transaction((c) => c || Date.now());
             db.ref(`rooms/${currentRoom}`).on('value', s => {
                 const data = s.val(); if (!data) { location.reload(); return; }
@@ -310,7 +333,6 @@
                     if (d === 0 && !playedAlerts.has(id)) { speak(`${boss.map}, 分流 ${boss.ch}, 已重生`); playedAlerts.add(id); }
                 } else {
                     const sec = Math.floor((now - boss.startTime) / 1000), m = Math.floor(sec/60), s = sec%60;
-                    // 💡 渲染邏輯拆分：標籤(ON/階段) 與 計時分離
                     const label = boss.displayValue;
                     const sub = `(${m}:${s.toString().padStart(2,'0')})`;
                     el.innerHTML = `<span class="timer-label">${label}</span><span class="timer-sub">${sub}</span>`;
