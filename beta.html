@@ -31,7 +31,6 @@
 
         .vol-group { display: flex; align-items: center; gap: 8px; background: #111; padding: 6px 14px; border-radius: 20px; border: 1px solid #333; height: 32px; box-sizing: border-box; }
         .vol-icon { background: none; color: #0f0; padding: 0; font-size: 16px; transition: color 0.2s; cursor: pointer; }
-        .vol-icon.muted { color: #777; }
         .vol-range { -webkit-appearance: none; width: 70px; height: 6px; background: #333; border-radius: 3px; outline: none; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #0f0; border-radius: 50%; cursor: pointer; border: 2px solid #111; }
         
@@ -51,6 +50,15 @@
         .timer { font-size: 20px; font-weight: bold; margin-top: 8px; font-family: monospace; }
         .timer-label { font-size: 20px; } 
         .timer-sub { font-size: 16px; margin-left: 4px; opacity: 0.8; } 
+        
+        /* 💡 警告符號樣式 */
+        .warning-icon { 
+            display: inline-block; 
+            margin-left: 8px; 
+            font-size: 18px; 
+            animation: warn-flash 0.8s infinite;
+        }
+        @keyframes warn-flash { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.2); } }
 
         .btn-next { 
             background: #000; 
@@ -67,14 +75,6 @@
 
         .timer-container { display: flex; flex-direction: column; align-items: flex-start; }
         .del { position: absolute; top: 5px; right: 10px; color: #444; background: none; border: none; font-size: 20px; cursor: pointer; }
-        
-        /* 💡 顏色漸層定義 */
-        .color-stage1 { color: #00ff00 !important; } /* 階段 1 - 綠 */
-        .color-stage2 { color: #adff2f !important; } /* 階段 2 - 黃綠 */
-        .color-stage3 { color: #ffff00 !important; } /* 階段 3 - 黃 */
-        .color-stage4 { color: #ff9900 !important; } /* 階段 4 - 橙 */
-        .color-on     { color: #ff0000 !important; } /* ON - 紅 */
-        .color-alert  { color: #ff3300 !important; } /* 超時 - 橘紅 */
         
         @keyframes flash { 0%, 100% { opacity: 1; color: #fff; } 50% { opacity: 0.3; } }
         .flash-anim { animation: flash 0.5s step-end 10; }
@@ -140,7 +140,7 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
         let currentRoom = '', timers = {}, isAudioEnabled = false, playedAlerts = new Set(), currentSort = 'group';
-        let timerPriority = 'overtime', myName = '無名戰友', multiColorMode = true;
+        let timerPriority = 'overtime', myName = '無名戰友', colorMode = 1; // 1: 漸層, 2: 分段
 
         function speak(text) {
             if (!isAudioEnabled) return;
@@ -184,8 +184,8 @@
             renderList();
         }
 
-        function toggleTimerPriority() {
-            timerPriority = (timerPriority === 'overtime') ? 'countdown' : 'overtime';
+        function toggleColorMode() {
+            colorMode = (colorMode === 1) ? 2 : 1;
             renderList();
         }
 
@@ -256,7 +256,6 @@
             } else if (val.startsWith("00")) {
                 const n = val.substring(2); 
                 dv = "階段" + (n.length > 1 ? n.split('').join('.') : n);
-                // 💡 只有升級到 階段 4 或 ON 時觸發閃爍
                 if (old && old.lastInput.startsWith("003") && val.startsWith("004")) flash = true;
             } else {
                 tt = Date.now() + (parseTime(val) * 60000);
@@ -312,7 +311,10 @@
                 if (items.length === 0) return;
                 const sec = document.createElement('div');
                 sec.className = 'grid-section';
-                let switchBtn = isTimer && (currentSort === 'group' || currentSort === 'countdown') ? `<button class="btn-switch" onclick="toggleTimerPriority()">${timerPriority === 'overtime' ? '已超時優先' : '計時中優先'}</button>` : '';
+                let switchBtn = !isTimer && currentSort === 'group' ? `<button class="btn-switch" onclick="toggleColorMode()">${colorMode === 1 ? '漸層模式' : '模式2 (分段)'}</button>` : '';
+                if (isTimer && (currentSort === 'group' || currentSort === 'countdown')) {
+                    switchBtn = `<button class="btn-switch" onclick="toggleTimerPriority()">${timerPriority === 'overtime' ? '已超時優先' : '計時中優先'}</button>`;
+                }
                 sec.innerHTML = `<div class="section-header"><div class="section-label">${label}</div>${switchBtn}</div><div class="grid"></div>`;
                 container.appendChild(sec);
                 const grid = sec.querySelector('.grid');
@@ -339,31 +341,50 @@
                     const d = Math.floor((boss.targetTime - now) / 1000), a = Math.abs(d);
                     const h = Math.floor(a/3600), m = Math.floor((a%3600)/60), s = a%60;
                     el.innerText = `${h>0?h+':':''}${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
-                    el.style.color = d <= 0 ? '#ff3300' : '#0f0'; // 超時計時橘紅，正常計時綠
+                    
+                    // 💡 倒數區配色固定
+                    el.style.color = d <= 0 ? '#ff3300' : '#0f0';
                 } else {
                     const sec = Math.floor((now - boss.startTime) / 1000), m = Math.floor(sec/60), s = sec%60;
                     const label = boss.displayValue;
                     const sub = `(${m}:${s.toString().padStart(2,'0')})`;
-                    el.innerHTML = `<span class="timer-label">${label}</span><span class="timer-sub">${sub}</span>`;
                     
-                    let color = '#fff';
-                    if (boss.displayValue === "ON") color = '#ff0000'; // ON 紅
-                    else {
-                        const lv = parseFloat(boss.lastInput.substring(2));
-                        if (lv < 2) color = '#00ff00';      // 階 1 綠
-                        else if (lv < 3) color = '#adff2f'; // 階 2 黃綠
-                        else if (lv < 4) color = '#ffff00'; // 階 3 黃
-                        else color = '#ff9900';             // 階 4 橙
-                        
-                        if ((lv < 2 && m >= 10) || (lv < 3 && lv >= 2 && m >= 7) || (lv < 4 && lv >= 3 && m >= 5) || (lv >= 4 && m >= 3) || (boss.displayValue === "ON" && m >= 3)) {
-                            color = '#ff3300'; // 階段超時橘紅
-                        }
+                    // 💡 檢查是否超時
+                    let isWarn = false;
+                    const lv = boss.displayValue === "ON" ? 99 : parseFloat(boss.lastInput.substring(2));
+                    if ((lv < 2 && m >= 10) || (lv < 3 && lv >= 2 && m >= 7) || (lv < 4 && lv >= 3 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3)) {
+                        isWarn = true;
                     }
+
+                    el.innerHTML = `<span class="timer-label">${label}</span><span class="timer-sub">${sub}</span>${isWarn ? '<span class="warning-icon">⚠️</span>' : ''}`;
+                    
+                    // 💡 階段配色邏輯
+                    let color = '#fff';
+                    if (colorMode === 1) {
+                        if (label === "ON") color = '#ff0000';
+                        else {
+                            if (lv < 2) color = '#00ff00';      
+                            else if (lv < 3) color = '#adff2f'; 
+                            else if (lv < 4) color = '#ffff00'; 
+                            else color = '#ff9900';             
+                        }
+                    } else {
+                        // 模式 2: 123黃, 4橘, ON紅
+                        if (label === "ON") color = '#ff0000';
+                        else if (lv >= 4) color = '#ff9900';
+                        else color = '#ffff00';
+                    }
+                    
                     el.style.color = color;
                     if (nextBtn) { nextBtn.style.color = color; nextBtn.style.borderColor = color; }
                 }
             };
             up(); timers[id] = setInterval(up, 1000);
+        }
+
+        function toggleTimerPriority() {
+            timerPriority = (timerPriority === 'overtime') ? 'countdown' : 'overtime';
+            renderList();
         }
 
         function doEdit(m, c, l) {
