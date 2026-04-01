@@ -26,8 +26,8 @@
         .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .room-id { color: #0f0; font-size: 20px; font-weight: bold; line-height: 1; }
         
-        /* 💡 使用守則彈窗優化 */
-        .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #111; border: 2px solid #0f0; padding: 15px; border-radius: 12px; z-index: 2000; width: 85%; max-width: 450px; max-height: 60vh; overflow-y: auto; display: none; box-shadow: 0 0 20px rgba(0,255,0,0.2); }
+        /* 使用說明彈窗 */
+        .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #111; border: 2px solid #0f0; padding: 15px; border-radius: 12px; z-index: 2000; width: 85%; max-width: 450px; max-height: 55vh; overflow-y: auto; display: none; box-shadow: 0 0 20px rgba(0,255,0,0.2); }
         .modal-overlay { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.85); z-index: 1999; display: none; }
 
         .vol-group { display: flex; align-items: center; gap: 8px; background: #111; padding: 6px 14px; border-radius: 20px; border: 1px solid #333; height: 32px; box-sizing: border-box; }
@@ -49,13 +49,13 @@
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
         
-        /* 💡 閒置卡片無彩色 */
-        .card.idle-card h3 { color: #444; border-bottom: 1px dashed #222; }
-        .card.idle-card .timer { color: #555 !important; }
-        .card.idle-card .btn-next { border-color: #333 !important; color: #333 !important; }
+        /* 💡 閒置與關閉警告時的無彩色 */
+        .card.no-color h3 { color: #444; border-bottom: 1px dashed #222; }
+        .card.no-color .timer { color: #555 !important; }
+        .card.no-color .btn-next { border-color: #333 !important; color: #333 !important; }
 
-        /* 💡 回歸原始 X 鍵大小 */
-        .del { position: absolute; top: 6px; right: 10px; color: #444; background: none; border: none; font-size: 16px; cursor: pointer; padding: 2px; }
+        /* 💡 精細小尺寸 X 鍵 */
+        .del { position: absolute; top: 6px; right: 10px; color: #444; background: none; border: none; font-size: 14px; cursor: pointer; padding: 2px; line-height: 1; }
         .del:hover { color: #888; }
 
         .timer { font-size: 20px; font-weight: bold; margin-top: 8px; font-family: monospace; }
@@ -75,13 +75,13 @@
     <div id="app">
         <div id="modalOverlay" class="modal-overlay" onclick="toggleManual()"></div>
         <div id="manualModal" class="modal">
-            <h3 style="color:#0f0; margin-top:0;">📜 使用守則</h3>
-            <div id="manualContent" style="font-size:13px; line-height:1.5; color:#ccc; white-space: pre-wrap;">
+            <h3 style="color:#0f0; margin-top:0;">📜 使用說明</h3>
+            <div style="font-size:13px; line-height:1.5; color:#ccc; white-space: pre-wrap;">
 1. 階段追蹤：ON (紅色) > 階段 4 (橙) > 階段 123 (黃)。
-2. 超時偵測：當階段停留過久會出現 ⚠️。
-3. 閒置區：超過 1 小時或代碼 000 會移至底部。
-4. 語音：靜音狀態下拉桿會自動變灰。
-5. 數據同步：所有分流數據 24H 閒置後自動清理。
+2. 超時偵測：停留過久會出現 ⚠️。
+3. 無彩色顯示：警告符號關閉時，超時卡片會變灰。
+4. 閒置區：超過 1 小時或代碼 000 會移至底部。
+5. 數據清理：房間 24H 無人使用將自動刪除。
             </div>
             <button class="btn-solid" style="width:100%; margin-top:10px; padding:10px;" onclick="toggleManual()">確認</button>
         </div>
@@ -101,7 +101,7 @@
                 <div class="room-info">
                     <span class="room-id" id="displayID"></span>
                     <svg class="copy-icon" onclick="copyRoomID()" viewBox="0 0 24 24" fill="none" stroke="#0f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                    <button class="btn-toggle" style="font-size:10px;" onclick="toggleManual()">[守則]</button>
+                    <button class="btn-toggle" style="font-size:10px;" onclick="toggleManual()">[說明]</button>
                     <div class="vol-group">
                         <button id="volBtn" class="vol-icon muted" onclick="toggleAudio()">🔈</button>
                         <input type="range" id="volRange" class="vol-range muted" min="0" max="1" step="0.05" value="0.5">
@@ -160,7 +160,7 @@
             const myPresenceRef = db.ref(`rooms/${currentRoom}/users`).push(); myPresenceRef.set({ name: myName }); myPresenceRef.onDisconnect().remove();
             db.ref(`rooms/${currentRoom}/users`).on('value', s => { const users = Object.values(s.val() || {}); document.getElementById('onlineCount').innerText = users.length; document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', '); });
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => { window.currentData = s.val() || {}; renderList(); });
-            db.ref(`rooms/${currentRoom}/messages`).limitToLast(15).on('value', s => { const chatBox = document.getElementById('chatBox'); chatBox.innerHTML = ''; const msgs = s.val() || {}; Object.values(msgs).forEach(m => { const d = new Date(m.time); chatBox.innerHTML += `<div><span class="msg-name">${m.user}</span>: ${m.text}</div>`; }); chatBox.scrollTop = chatBox.scrollHeight; });
+            db.ref(`rooms/${currentRoom}/messages`).limitToLast(15).on('value', s => { const chatBox = document.getElementById('chatBox'); chatBox.innerHTML = ''; const msgs = s.val() || {}; Object.values(msgs).forEach(m => { chatBox.innerHTML += `<div><span class="msg-name">${m.user}</span>: ${m.text}</div>`; }); chatBox.scrollTop = chatBox.scrollHeight; });
         }
 
         function sendMessage() { const input = document.getElementById('chatInput'); const text = input.value.trim(); if (!text) return; db.ref(`rooms/${currentRoom}/messages`).push({ user: myName, text: text, time: Date.now() }); input.value = ''; }
@@ -176,50 +176,56 @@
 
         function renderList() {
             const container = document.getElementById('sectionsContainer'); container.innerHTML = ''; Object.values(timers).forEach(clearInterval); timers = {};
-            const all = Object.entries(window.currentData || {}), now = Date.now();
-            const oneHour = 3600000;
-
+            const all = Object.entries(window.currentData || {}), now = Date.now(), oneHour = 3600000;
             const stages = [], timersList = [], idleList = [];
             all.forEach(([id, b]) => {
-                const elapsed = now - b.startTime;
-                const isOverdueOneHour = b.targetTime > 0 && (now - b.targetTime > oneHour);
-                const isStageOneHour = b.targetTime === 0 && (elapsed > oneHour);
-                if (b.lastInput === "000" || isOverdueOneHour || isStageOneHour) idleList.push([id, b]);
-                else if (b.targetTime > 0) timersList.push([id, b]);
-                else stages.push([id, b]);
+                const isOverdue = b.targetTime > 0 && (now - b.targetTime > oneHour);
+                const isIdle = b.targetTime === 0 && (now - b.startTime > oneHour);
+                if (b.lastInput === "000" || isOverdue || isIdle) idleList.push([id, b]);
+                else if (b.targetTime > 0) timersList.push([id, b]); else stages.push([id, b]);
             });
 
             const render = (items, label, isTimer = false, isIdle = false) => {
                 if (items.length === 0) return;
                 const sec = document.createElement('div'); sec.className = 'grid-section';
-                let controls = isTimer ? `<button class="btn-switch" onclick="toggleTimerPriority()">${timerPriority === 'overtime' ? '已超時優先' : '計時中優先'}</button>` : (isIdle ? '' : `<button class="btn-switch" onclick="toggleColorMode()">${colorMode === 1 ? '漸層' : '模式2'}</button><button class="btn-switch" onclick="toggleWarning()">${showWarningIcon ? '⚠️開' : '⚠️關'}</button>`);
-                sec.innerHTML = `<div class="section-header"><div class="section-label">${label}</div>${controls}</div><div class="grid"></div>`;
+                let ctrls = isTimer ? `<button class="btn-switch" onclick="toggleTimerPriority()">${timerPriority === 'overtime' ? '已超時優先' : '計時中優先'}</button>` : (isIdle ? '' : `<button class="btn-switch" onclick="toggleColorMode()">${colorMode === 1 ? '漸層' : '模式2'}</button><button class="btn-switch" onclick="toggleWarning()">${showWarningIcon ? '⚠️開' : '⚠️關'}</button>`);
+                sec.innerHTML = `<div class="section-header"><div class="section-label">${label}</div>${ctrls}</div><div class="grid"></div>`;
                 container.appendChild(sec); const grid = sec.querySelector('.grid');
                 items.sort((a,b) => { const getC = (v) => v.targetTime > now ? 1 : (v.targetTime > 0 ? 2 : (v.displayValue === "ON" ? 3 : 4)); return getC(a[1]) - getC(b[1]) || a[1].targetTime - b[1].targetTime; }).forEach(([id, b]) => {
-                    const card = document.createElement('div'); card.className = `card ${isIdle ? 'idle-card' : ''}`;
+                    const card = document.createElement('div');
+                    // 💡 判斷是否需要無彩色顯示
+                    let isNoColor = isIdle;
+                    if (!isIdle) {
+                        const m = Math.floor((now - b.startTime) / 60000);
+                        const lv = b.displayValue === "ON" ? 99 : parseFloat(b.lastInput.substring(2));
+                        const isWarn = (lv < 2 && m >= 12) || (lv < 3 && lv >= 2 && m >= 7) || (lv < 4 && lv >= 3 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
+                        if (!showWarningIcon && isWarn) isNoColor = true;
+                    }
+
+                    card.className = `card ${isNoColor ? 'no-color' : ''}`;
                     card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button><h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - 分流${b.ch}</h3>
                         <div class="timer-container"><div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}">...</div>
                         ${(b.targetTime === 0 && !isIdle) ? `<button class="btn-next" id="btn_${id}" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>` : ''}</div>`;
-                    grid.appendChild(card); startTimer(id, b, isIdle);
+                    grid.appendChild(card); startTimer(id, b, isNoColor);
                 });
             };
             if (currentSort === 'map') render(all, "所有 BOSS"); else { render(stages, "階段追蹤區"); render(timersList, "重生計時區", true); render(idleList, "超時閒置區", false, true); }
         }
 
-        function startTimer(id, b, isIdle) {
+        function startTimer(id, b, isNoColor) {
             const el = document.getElementById(`t_${id}`), btn = document.getElementById(`btn_${id}`);
             const up = () => {
                 const now = Date.now();
                 if (b.targetTime > 0) {
                     const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
                     el.innerText = `${Math.floor(a/3600)}:${Math.floor((a%3600)/60).toString().padStart(2,'0')}:${(a%60).toString().padStart(2,'0')}`;
-                    if (!isIdle) el.style.color = d <= 0 ? '#ff3300' : '#0f0';
+                    if (!isNoColor) el.style.color = d <= 0 ? '#ff3300' : '#0f0';
                 } else {
                     const m = Math.floor((now - b.startTime) / 60000), s = Math.floor(((now - b.startTime) % 60000) / 1000);
                     const lv = b.displayValue === "ON" ? 99 : parseFloat(b.lastInput.substring(2));
                     const isW = (lv < 2 && m >= 12) || (lv < 3 && lv >= 2 && m >= 7) || (lv < 4 && lv >= 3 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
-                    el.innerHTML = `${b.displayValue} (${m}:${s.toString().padStart(2,'0')})${(showWarningIcon && isW && !isIdle) ? '<span class="warning-icon">⚠️</span>' : ''}`;
-                    if (!isIdle) { let c = (colorMode === 1) ? (lv < 2 ? '#0f0' : lv < 3 ? '#adff2f' : lv < 4 ? '#ff0' : lv < 5 ? '#f90' : '#f00') : (lv >= 99 ? '#f00' : lv >= 4 ? '#f90' : '#ff0'); el.style.color = c; if (btn) { btn.style.color = c; btn.style.borderColor = c; } }
+                    el.innerHTML = `${b.displayValue} (${m}:${s.toString().padStart(2,'0')})${(showWarningIcon && isW && !isNoColor) ? '<span class="warning-icon">⚠️</span>' : ''}`;
+                    if (!isNoColor) { let c = (colorMode === 1) ? (lv < 2 ? '#0f0' : lv < 3 ? '#adff2f' : lv < 4 ? '#ff0' : lv < 5 ? '#f90' : '#f00') : (lv >= 99 ? '#f00' : lv >= 4 ? '#f90' : '#ff0'); el.style.color = c; if (btn) { btn.style.color = c; btn.style.borderColor = c; } }
                 }
             }; up(); timers[id] = setInterval(up, 1000);
         }
