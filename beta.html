@@ -29,11 +29,13 @@
         .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #111; border: 2px solid #0f0; padding: 15px; border-radius: 12px; z-index: 2000; width: 85%; max-width: 450px; max-height: 55vh; overflow-y: auto; display: none; }
         .modal-overlay { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.85); z-index: 1999; display: none; }
 
-        .vol-group { display: flex; align-items: center; gap: 8px; background: #111; padding: 6px 14px; border-radius: 20px; border: 1px solid #333; height: 32px; box-sizing: border-box; }
-        .vol-icon { background: none; color: #0f0; padding: 0; font-size: 16px; transition: color 0.2s; cursor: pointer; }
-        .vol-range { -webkit-appearance: none; width: 60px; height: 6px; background: #333; border-radius: 3px; outline: none; }
-        .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: #0f0; border-radius: 50%; border: 2px solid #111; }
-        .vol-range.muted::-webkit-slider-thumb { background: #555 !important; }
+        /* 💡 音訊控制組樣式 */
+        .audio-controls { display: flex; align-items: center; gap: 5px; background: #111; padding: 4px 10px; border-radius: 20px; border: 1px solid #333; height: 32px; box-sizing: border-box; }
+        .audio-btn { background: none; color: #0f0; padding: 0; font-size: 14px; cursor: pointer; border: none; opacity: 0.3; transition: 0.2s; }
+        .audio-btn.active { opacity: 1; }
+        
+        .vol-range { -webkit-appearance: none; width: 50px; height: 4px; background: #0f0; border-radius: 2px; outline: none; margin: 0 5px; }
+        .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: #0f0; border-radius: 50%; border: 2px solid #111; cursor: pointer; }
         
         .user-list-bar { font-size: 12px; color: #555; margin-bottom: 20px; border-bottom: 1px solid #222; padding-bottom: 8px; }
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; margin-bottom: 5px; font-size: 16px; color: #fff; padding: 8px 0; }
@@ -43,7 +45,7 @@
         .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
         .section-label { color: #555; font-size: 11px; border-left: 2px solid #333; padding-left: 8px; text-transform: uppercase; }
         
-        .btn-switch { background: #222; color: #0f0; font-size: 10px; padding: 2px 8px; border: 1px solid #444; border-radius: 4px; cursor: pointer; transition: 0.2s; }
+        .btn-switch { background: #222; color: #0f0; font-size: 10px; padding: 2px 8px; border: 1px solid #444; border-radius: 4px; cursor: pointer; }
         .btn-switch.muted-btn { color: #555; border-color: #333; }
 
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
@@ -51,8 +53,7 @@
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
         .card.idle-card h3 { color: #444; border-bottom: 1px dashed #222; }
         .card.idle-card .timer { color: #555 !important; }
-
-        .del { position: absolute; top: 6px; right: 10px; color: #444; background: none; border: none; font-size: 14px; cursor: pointer; padding: 2px; }
+        .del { position: absolute; top: 6px; right: 10px; color: #444; background: none; border: none; font-size: 14px; cursor: pointer; }
 
         .timer { font-size: 18px; font-weight: bold; margin-top: 8px; font-family: monospace; display: flex; align-items: center; flex-wrap: nowrap; overflow: hidden; }
         .timer-label { font-size: 18px; white-space: nowrap; }
@@ -78,11 +79,11 @@
         <div id="manualModal" class="modal">
             <h3 style="color:#0f0; margin-top:0;">📜 使用說明</h3>
             <div style="font-size:13px; line-height:1.5; color:#ccc; white-space: pre-wrap;">
-1. 排序：ON > 4 > 3 > 2 > 1。
-2. 提醒：進入 階段 4 或 ON 時會閃爍並發出「叮」聲。
-3. 語音：重生倒數歸零時會自動語音報時。
-4. 測試：點擊語音開關開啟時會播報測試，方便調整音量。
-5. XX數字：代碼可將項目送入閒置區。
+1. 語音：重生倒數歸零時報時 (🔊 圖標)。
+2. 音效：進入 階段 4 或 ON 時叮聲 (🔔 圖標)。
+3. 共用音量：中間拉桿同時控制語音與音效。
+4. 測試：開啟語音或音效按鈕時會發出聲音測試。
+5. 閒置：超過 1 小時自動移到底部。
             </div>
             <button class="btn-solid" style="width:100%; margin-top:10px; padding:10px;" onclick="toggleManual()">確認</button>
         </div>
@@ -103,10 +104,13 @@
                     <span class="room-id" id="displayID"></span>
                     <svg class="copy-icon" onclick="copyRoomID()" viewBox="0 0 24 24" fill="none" stroke="#0f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                     <button class="btn-toggle" style="font-size:10px;" onclick="toggleManual()">[使用說明]</button>
-                    <div class="vol-group">
-                        <button id="volBtn" class="vol-icon muted" onclick="toggleAudio()">🔈</button>
-                        <input type="range" id="volRange" class="vol-range muted" min="0" max="1" step="0.05" value="0.5">
+                    
+                    <div class="audio-controls">
+                        <button id="voiceBtn" class="audio-btn" onclick="toggleVoice()" title="語音報時">🔊</button>
+                        <input type="range" id="volRange" class="vol-range" min="0" max="1" step="0.05" value="0.5">
+                        <button id="sfxBtn" class="audio-btn" onclick="toggleSfx()" title="階段音效">🔔</button>
                     </div>
+
                     <button class="btn-toggle" style="font-size:10px;" onclick="toggleChat()">[留言板]</button>
                 </div>
                 <div class="room-info">
@@ -126,7 +130,7 @@
                 <button id="sortMapBtn" class="btn-toggle" onclick="setSort('map')">地圖排序</button>
             </div>
 
-            <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 分鐘/00X/時:分:秒">
+            <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 分鐘/00X/XX數字">
             <div id="sectionsContainer"></div>
 
             <div id="chatSection" class="chat-section">
@@ -143,9 +147,9 @@
         const firebaseConfig = { apiKey: "AIzaSyAff__U1cLBr92gYmtbWpm80zO4rHvObUI", authDomain: "tos-m-fb.firebaseapp.com", databaseURL: "https://tos-m-fb-default-rtdb.asia-southeast1.firebasedatabase.app", projectId: "tos-m-fb" };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
-        let currentRoom = '', timers = {}, isAudioEnabled = false, currentSort = 'group';
-        let timerPriority = 'overtime', myName = '無名戰友', colorMode = 1, showWarningIcon = true;
-        let audioCtx = null, playedAlerts = new Set();
+        let currentRoom = '', timers = {}, currentSort = 'group';
+        let isVoiceEnabled = false, isSfxEnabled = false; // 💡 獨立開關變數
+        let myName = '無名戰友', colorMode = 1, showWarningIcon = true, audioCtx = null, playedAlerts = new Set();
 
         function unlockAudio() {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -153,48 +157,41 @@
         }
 
         function speak(text) {
-            if (!isAudioEnabled) return;
+            if (!isVoiceEnabled) return;
             window.speechSynthesis.cancel();
             const msg = new SpeechSynthesisUtterance(text);
             msg.volume = parseFloat(document.getElementById('volRange').value);
-            msg.lang = 'zh-TW';
-            msg.rate = 1.1;
+            msg.lang = 'zh-TW'; msg.rate = 1.1;
             window.speechSynthesis.speak(msg);
         }
 
         function playDing() {
-            if (!isAudioEnabled) return;
+            if (!isSfxEnabled) return;
             unlockAudio();
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
+            osc.type = 'sine'; osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+            osc.connect(gain); gain.connect(audioCtx.destination);
             gain.gain.setValueAtTime(0, audioCtx.currentTime);
             gain.gain.linearRampToValueAtTime(0.3 * parseFloat(document.getElementById('volRange').value), audioCtx.currentTime + 0.01);
             gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
-            osc.start();
-            osc.stop(audioCtx.currentTime + 0.3);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.3);
         }
 
-        function toggleAudio() {
-            isAudioEnabled = !isAudioEnabled;
-            const btn = document.getElementById('volBtn'), range = document.getElementById('volRange');
-            if (isAudioEnabled) {
-                unlockAudio();
-                btn.innerText = '🔊'; btn.classList.remove('muted'); range.classList.remove('muted');
-                updateRangeBg(range); 
-                // 💡 開啟時觸發叮聲與測試語音
-                playDing();
-                setTimeout(() => speak("語音功能已開啟"), 400);
-            } else {
-                btn.innerText = '🔈'; btn.classList.add('muted'); range.classList.add('muted'); range.style.background = '#222';
-                window.speechSynthesis.cancel();
-            }
+        function toggleVoice() {
+            isVoiceEnabled = !isVoiceEnabled;
+            const btn = document.getElementById('voiceBtn');
+            btn.classList.toggle('active', isVoiceEnabled);
+            if (isVoiceEnabled) { unlockAudio(); speak("語音功能已開啟"); }
+            else window.speechSynthesis.cancel();
         }
-        function updateRangeBg(r) { if (isAudioEnabled) { const v = r.value * 100; r.style.background = `linear-gradient(to right, #0f0 0%, #0f0 ${v}%, #333 ${v}%, #333 100%)`; } }
-        document.getElementById('volRange').addEventListener('input', function() { updateRangeBg(this); });
+
+        function toggleSfx() {
+            isSfxEnabled = !isSfxEnabled;
+            const btn = document.getElementById('sfxBtn');
+            btn.classList.toggle('active', isSfxEnabled);
+            if (isSfxEnabled) { unlockAudio(); playDing(); }
+        }
 
         function startSession(id) {
             currentRoom = id; myName = document.getElementById('userNameInput').value.trim() || '無名戰友';
@@ -202,7 +199,6 @@
             document.getElementById('displayID').innerText = id;
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
             document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
-            
             document.body.addEventListener('click', unlockAudio, { once: true });
 
             const myPresenceRef = db.ref(`rooms/${currentRoom}/users`).push(); myPresenceRef.set({ name: myName }); myPresenceRef.onDisconnect().remove();
@@ -215,36 +211,24 @@
                         playDing();
                     }
                 });
-                window.currentData = newData; 
-                renderList(); 
+                window.currentData = newData; renderList(); 
             });
-
-            db.ref(`rooms/${currentRoom}/messages`).limitToLast(15).on('value', s => { const chatBox = document.getElementById('chatBox'); chatBox.innerHTML = ''; const msgs = s.val() || {}; Object.values(msgs).forEach(m => { chatBox.innerHTML += `<div><span class="msg-name">${m.user}</span>: ${m.text}</div>`; }); chatBox.scrollTop = chatBox.scrollHeight; });
+            db.ref(`rooms/${currentRoom}/messages`).limitToLast(15).on('value', s => {
+                const chatBox = document.getElementById('chatBox'); chatBox.innerHTML = '';
+                Object.values(s.val() || {}).forEach(m => { chatBox.innerHTML += `<div><span class="msg-name">${m.user}</span>: ${m.text}</div>`; });
+                chatBox.scrollTop = chatBox.scrollHeight;
+            });
         }
 
-        function sendMessage() { 
-            const input = document.getElementById('chatInput'); 
-            const text = input.value.trim(); 
-            if (!text) return; 
-            db.ref(`rooms/${currentRoom}/messages`).push({ user: myName, text: text, time: Date.now() }); 
-            input.value = ''; 
-            unlockAudio();
-        }
-        
+        function sendMessage() { const input = document.getElementById('chatInput'); if (!input.value.trim()) return; db.ref(`rooms/${currentRoom}/messages`).push({ user: myName, text: input.value.trim(), time: Date.now() }); input.value = ''; unlockAudio(); }
+
         function saveBoss(map, ch, val) {
             const id = `${map}_${ch}`, old = window.currentData ? window.currentData[id] : null;
-            let dv = val, tt = 0, flash = false;
-            playedAlerts.delete(id);
-
-            if (val.toUpperCase().startsWith("XX")) {
-                const num = val.substring(2); dv = "階段" + (num ? num : "1"); tt = 0;
-            } else if (val.toUpperCase() === "ON") { 
-                dv = "ON"; flash = true; 
-            } else if (val.startsWith("00")) { 
-                const n = val.substring(2); dv = "階段" + (n.length > 1 ? n.split('').join('.') : n); 
-                if (val.startsWith("004")) flash = true;
-            } else tt = Date.now() + (parseTime(val) * 60000);
-            
+            let dv = val, tt = 0, flash = false; playedAlerts.delete(id);
+            if (val.toUpperCase().startsWith("XX")) { const num = val.substring(2); dv = "階段" + (num ? num : "1"); tt = 0; }
+            else if (val.toUpperCase() === "ON") { dv = "ON"; flash = true; }
+            else if (val.startsWith("00")) { const n = val.substring(2); dv = "階段" + (n.length > 1 ? n.split('').join('.') : n); if (val.startsWith("004")) flash = true; }
+            else tt = Date.now() + (parseTime(val) * 60000);
             db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash });
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 5000);
         }
@@ -253,38 +237,21 @@
             const container = document.getElementById('sectionsContainer'); container.innerHTML = ''; Object.values(timers).forEach(clearInterval); timers = {};
             const all = Object.entries(window.currentData || {}), now = Date.now(), oneHour = 3600000;
             const stages = [], timersList = [], idleList = [];
-            
             all.forEach(([id, b]) => {
                 const isOverdue = b.targetTime > 0 && (now - b.targetTime > oneHour);
                 const isIdle = b.targetTime === 0 && (now - b.startTime > oneHour);
                 if (b.lastInput.toUpperCase().startsWith("XX") || isOverdue || isIdle) idleList.push([id, b]);
                 else if (b.targetTime > 0) timersList.push([id, b]); else stages.push([id, b]);
             });
-
-            const getSortWeight = (v) => {
-                if (v.displayValue === "ON") return 100;
-                const match = v.displayValue.match(/[\d.]+/);
-                return match ? parseFloat(match[0]) : 0;
-            };
+            const getSortWeight = (v) => v.displayValue === "ON" ? 100 : (parseFloat(v.displayValue.match(/[\d.]+/)) || 0);
 
             const render = (items, label, isTimer = false, isIdle = false) => {
                 if (items.length === 0) return;
                 const sec = document.createElement('div'); sec.className = 'grid-section';
-                let ctrls = isTimer ? `<button class="btn-switch" onclick="toggleTimerPriority()">${timerPriority === 'overtime' ? '已超時優先' : '計時中優先'}</button>` : (isIdle ? '' : `
-                    <button class="btn-switch" onclick="toggleColorMode()">${colorMode === 1 ? '漸層' : '模式2'}</button>
-                    <button class="btn-switch ${!showWarningIcon ? 'muted-btn' : ''}" onclick="toggleWarning()">${showWarningIcon ? '⚠️開' : '⚠️關'}</button>`);
-                
+                let ctrls = isTimer ? `<button class="btn-switch" onclick="setTimerPriority()">${timerPriority === 'overtime' ? '已超時優先' : '計時中優先'}</button>` : (isIdle ? '' : `<button class="btn-switch" onclick="toggleColorMode()">${colorMode === 1 ? '漸層' : '模式2'}</button><button class="btn-switch ${!showWarningIcon ? 'muted-btn' : ''}" onclick="toggleWarning()">${showWarningIcon ? '⚠️開' : '⚠️關'}</button>`);
                 sec.innerHTML = `<div class="section-header"><div class="section-label">${label}</div>${ctrls}</div><div class="grid"></div>`;
                 container.appendChild(sec); const grid = sec.querySelector('.grid');
-                
-                items.sort((a,b) => {
-                    if (isTimer) {
-                        const getC = (v) => v.targetTime > now ? 1 : 2;
-                        if (timerPriority === 'overtime') return getC(b[1]) - getC(a[1]) || a[1].targetTime - b[1].targetTime;
-                        return getC(a[1]) - getC(b[1]) || a[1].targetTime - b[1].targetTime;
-                    }
-                    return getSortWeight(b[1]) - getSortWeight(a[1]);
-                }).forEach(([id, b]) => {
+                items.sort((a,b) => isTimer ? (a[1].targetTime - b[1].targetTime) : (getSortWeight(b[1]) - getSortWeight(a[1]))).forEach(([id, b]) => {
                     const card = document.createElement('div'); card.className = `card ${isIdle ? 'idle-card' : ''}`;
                     card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button><h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - 分流${b.ch}</h3>
                         <div class="timer-container"><div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}">...</div>
@@ -292,8 +259,7 @@
                     grid.appendChild(card); startTimer(id, b, isIdle);
                 });
             };
-            if (currentSort === 'map') render(all, "所有 BOSS"); 
-            else { render(stages, "階段追蹤區"); render(timersList, "重生計時區", true); render(idleList, "超時閒置區", false, true); }
+            if (currentSort === 'map') render(all, "所有 BOSS"); else { render(stages, "階段追蹤區"); render(timersList, "重生計時區", true); render(idleList, "超時閒置區", false, true); }
         }
 
         function startTimer(id, b, isIdle) {
@@ -304,14 +270,11 @@
                     const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
                     el.innerText = `${Math.floor(a/3600)}:${Math.floor((a%3600)/60).toString().padStart(2,'0')}:${(a%60).toString().padStart(2,'0')}`;
                     if (!isIdle) el.style.color = d <= 0 ? '#ff3300' : '#0f0';
-                    if (d === 0 && !playedAlerts.has(id)) {
-                        playedAlerts.add(id);
-                        speak(`${b.map}, 分流 ${b.ch}, 已重生`);
-                    }
+                    if (d === 0 && !playedAlerts.has(id)) { playedAlerts.add(id); speak(`${b.map}, 分流 ${b.ch}, 已重生`); }
                 } else {
                     const m = Math.floor((now - b.startTime) / 60000), s = Math.floor(((now - b.startTime) % 60000) / 1000);
-                    const cleanInput = b.lastInput.toUpperCase().startsWith("XX") ? b.lastInput.substring(2) : b.lastInput.substring(2);
-                    const lv = b.displayValue === "ON" ? 99 : parseFloat(cleanInput);
+                    const cleanVal = b.lastInput.toUpperCase().startsWith("XX") ? b.lastInput.substring(2) : b.lastInput.substring(2);
+                    const lv = b.displayValue === "ON" ? 99 : parseFloat(cleanVal);
                     const isW = (lv < 2 && m >= 12) || (lv < 3 && lv >= 2 && m >= 7) || (lv < 4 && lv >= 3 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
                     el.innerHTML = `<span class="timer-label">${b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isIdle) ? '<span class="warning-icon">⚠️</span>' : ''}`;
                     if (!isIdle) { let c = (colorMode === 1) ? (lv < 2 ? '#0f0' : lv < 3 ? '#adff2f' : lv < 4 ? '#ff0' : lv < 5 ? '#f90' : '#f00') : (lv >= 99 ? '#f00' : lv >= 4 ? '#f90' : '#ff0'); el.style.color = c; if (btn) { btn.style.color = c; btn.style.borderColor = c; } }
@@ -319,7 +282,7 @@
             }; up(); timers[id] = setInterval(up, 1000);
         }
 
-        function parseTime(v) { v = v.toLowerCase(); const p = v.split(/[:.：]/); if (p.length === 3) return parseInt(p[0])*60 + parseInt(p[1]) + parseInt(p[2])/60; if (p.length === 2) return parseInt(p[0])*60 + parseInt(p[1]); return parseFloat(v) || 0; }
+        function parseTime(v) { const p = v.split(/[:.：]/); if (p.length === 3) return parseInt(p[0])*60 + parseInt(p[1]) + parseInt(p[2])/60; if (p.length === 2) return parseInt(p[0])*60 + parseInt(p[1]); return parseFloat(v) || 0; }
         function addBoss() { const i = document.getElementById('bossInput'), p = i.value.trim().split(/\s+/); if (p.length >= 3) saveBoss(p[0], p[1], p[2]); i.value = ''; unlockAudio(); }
         function triggerNext(m, c) { db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => { const l = s.val().lastInput; if (l.toUpperCase()==="ON") saveBoss(m,c,""); else if (l.startsWith("00")) { let v = parseInt(l.substring(2,3)); saveBoss(m,c,v>=4?"ON":"00"+(v+1)); } }); unlockAudio(); }
         function deleteBoss(id) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
@@ -330,17 +293,10 @@
         function setSort(t) { currentSort = t; document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id === `sort${t.charAt(0).toUpperCase()+t.slice(1)}Btn`)); renderList(); }
         function toggleColorMode() { colorMode = colorMode === 1 ? 2 : 1; renderList(); }
         function toggleWarning() { showWarningIcon = !showWarningIcon; renderList(); }
-        function toggleTimerPriority() { timerPriority = timerPriority === 'overtime' ? 'countdown' : 'overtime'; renderList(); }
-
-        function doEdit(m, c, l) {
-            const i = document.getElementById('bossInput');
-            i.value = `${m} ${c} ${l}`;
-            i.focus();
-            const start = m.length + c.length + 2;
-            i.setSelectionRange(start, i.value.length);
-        }
-        function toggleChat() { const c = document.getElementById('chatSection'); c.style.display = c.style.display === 'block' ? 'none' : 'block'; }
+        function setTimerPriority() { timerPriority = timerPriority === 'overtime' ? 'countdown' : 'overtime'; renderList(); }
         function toggleManual() { const m = document.getElementById('manualModal'); const o = document.getElementById('modalOverlay'); const isShow = m.style.display === 'block'; m.style.display = isShow ? 'none' : 'block'; o.style.display = isShow ? 'none' : 'block'; }
+        function toggleChat() { const c = document.getElementById('chatSection'); c.style.display = c.style.display === 'block' ? 'none' : 'block'; }
+        function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); i.setSelectionRange(m.length + c.length + 2, i.value.length); }
     </script>
 </body>
 </html>
