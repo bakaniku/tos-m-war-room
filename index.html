@@ -36,7 +36,6 @@
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: #0f0; border-radius: 50%; border: 2px solid #111; cursor: pointer; }
         
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; font-size: 16px; color: #fff; padding: 8px 0; margin-bottom: 2px; }
-        /* 💡 重複輸入提醒樣式 */
         #duplicateWarn { color: #f44; font-size: 12px; height: 18px; margin-bottom: 8px; font-weight: bold; }
 
         .sort-row { margin-bottom: 15px; display: flex; gap: 8px; flex-wrap: wrap; }
@@ -71,11 +70,10 @@
         <div id="manualModal" class="modal">
             <h3 style="color:#0f0; margin-top:0;">📜 使用說明</h3>
             <div style="font-size:13px; line-height:1.5; color:#ccc; white-space: pre-wrap;">
-1. 輸入提示：輸入重複的地圖-分流時會顯示紅字警告。
-2. 色彩判斷：依據大階段判定，例如 3.2 視為階段 3 (黃色)。
-3. 重生排序：點擊切換 [已超時/計時中] 優先順序。
-4. 閒置排序：依階段高低 (ON>4>3>2>1) 為主排序。
-5. 地圖排序：自動識別地圖名稱中的等級數字。
+1. 漸層色彩：1(綠) > 2(青) > 3(黃) > 4(橙) > ON(紅)。
+2. NEXT 按鈕：點擊可自動切換至下一大階段。
+3. 重複提醒：輸入框下方會顯示紅字警告。
+4. 排序邏輯：重生計時區可切換 [已超時優先/計時中優先]。
             </div>
             <button class="btn-solid" style="width:100%; margin-top:10px; padding:10px;" onclick="toggleManual()">確認</button>
         </div>
@@ -137,12 +135,10 @@
 
         function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); if (isVoiceEnabled) { unlockAudio(); speak("語音功能已開啟"); } else window.speechSynthesis.cancel(); }
         function toggleSfx() { isSfxEnabled = !isSfxEnabled; document.getElementById('sfxBtn').classList.toggle('active', isSfxEnabled); if (isSfxEnabled) { unlockAudio(); playDing(); } }
-        
         function setSort(t) { currentSort = t; document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id === `sort${t.charAt(0).toUpperCase()+t.slice(1)}Btn`)); renderList(); }
         function setTimerPriority() { timerPriority = (timerPriority === 'overtime' ? 'countdown' : 'overtime'); renderList(); }
         function toggleMapOrder() { mapOrder = (mapOrder === 'desc' ? 'asc' : 'desc'); renderList(); }
 
-        // 💡 重複輸入偵測
         document.getElementById('bossInput').addEventListener('input', function(e) {
             const p = e.target.value.trim().split(/\s+/);
             const warnEl = document.getElementById('duplicateWarn');
@@ -161,13 +157,12 @@
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
                 const newData = s.val() || {};
                 Object.keys(newData).forEach(key => { if (newData[key].isFlash && (!window.currentData || !window.currentData[key] || !window.currentData[key].isFlash)) playDing(); });
-                window.currentData = newData; 
-                renderList(); 
+                window.currentData = newData; renderList(); 
             });
         }
 
         function saveBoss(map, ch, val) {
-            const id = `${map}_${ch}`, old = window.currentData ? window.currentData[id] : null;
+            const id = `${map}_${ch}`;
             let dv = val, tt = 0, flash = false; playedAlerts.delete(id);
             if (val.toUpperCase().startsWith("XX")) { const num = val.substring(2); dv = "階段" + (num ? num : "1"); tt = 0; }
             else if (val.toUpperCase() === "ON") { dv = "ON"; flash = true; }
@@ -210,9 +205,9 @@
                 items.sort((a,b) => {
                     if (type === 'all') { const lA = getMapLvl(a[1].map), lB = getMapLvl(b[1].map); return mapOrder === 'desc' ? (lB - lA) : (lA - lB); }
                     if (type === 'timers') { 
-                        const cA = a[1].targetTime > now ? 2 : 1, cB = b[1].targetTime > now ? 2 : 1;
-                        if (timerPriority === 'overtime') return cA - cB || a[1].targetTime - b[1].targetTime;
-                        return cB - cA || a[1].targetTime - b[1].targetTime;
+                        const cA = a[1].targetTime > now ? (timerPriority === 'overtime' ? 2 : 1) : (timerPriority === 'overtime' ? 1 : 2);
+                        const cB = b[1].targetTime > now ? (timerPriority === 'overtime' ? 2 : 1) : (timerPriority === 'overtime' ? 1 : 2);
+                        return cA - cB || a[1].targetTime - b[1].targetTime;
                     }
                     if (type === 'idle') { if (getWeight(a[1]) !== getWeight(b[1])) return getWeight(b[1]) - getWeight(a[1]); return (b[1].targetTime || b[1].startTime) - (a[1].targetTime || a[1].startTime); }
                     return getWeight(b[1]) - getWeight(a[1]);
@@ -231,11 +226,16 @@
                             if (d === 0 && !playedAlerts.has(id)) { playedAlerts.add(id); speak(`${b.map}, 分流 ${b.ch}, 已重生`); }
                         } else {
                             const m = Math.floor((Date.now() - b.startTime) / 60000), s = Math.floor(((Date.now() - b.startTime) % 60000) / 1000);
-                            const major = Math.floor(getWeight(b));
-                            el.innerHTML = `<span class="timer-label">${b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>`;
+                            const w = getWeight(b);
+                            el.innerHTML = `<span class="timer-label">${b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && !type !== 'idle') ? '<span class="warning-icon">⚠️</span>' : ''}`;
                             if (type !== 'idle') {
+                                // 💡 漸層色彩邏輯
                                 let c = '#fff';
-                                if (major >= 99) c = '#ff0000'; else if (major >= 4) c = '#ff9900'; else if (major >= 1) c = '#ffff00';
+                                if (w >= 99) c = '#ff0000'; // ON (紅)
+                                else if (w >= 4) c = '#ff6600'; // 階段 4 (橘紅)
+                                else if (w >= 3) c = '#ffcc00'; // 階段 3 (深黃)
+                                else if (w >= 2) c = '#ffff00'; // 階段 2 (亮黃)
+                                else if (w >= 1) c = '#adff2f'; // 階段 1 (黃綠)
                                 el.style.color = c;
                             }
                         }
@@ -248,14 +248,12 @@
 
         function parseTime(v) { const p = v.split(/[:.：]/); if (p.length === 3) return parseInt(p[0])*60 + parseInt(p[1]) + parseInt(p[2])/60; if (p.length === 2) return parseInt(p[0])*60 + parseInt(p[1]); return parseFloat(v) || 0; }
         function addBoss() { const i = document.getElementById('bossInput'), p = i.value.trim().split(/\s+/); if (p.length >= 3) saveBoss(p[0], p[1], p[2]); i.value = ''; unlockAudio(); }
-        function triggerNext(m, c) { db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => { const l = s.val().lastInput; if (l.toUpperCase()==="ON") saveBoss(m,c,""); else if (l.startsWith("00")) { let v = parseInt(l.substring(2,3)); saveBoss(m,c,v>=4?"ON":"00"+(v+1)); } }); unlockAudio(); }
+        function triggerNext(m, c) { db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => { const l = s.val().lastInput; if (l.toUpperCase()==="ON") saveBoss(m,c,""); else if (l.startsWith("00")) { let v = parseFloat(l.substring(2)); saveBoss(m,c,v>=4?"ON":"00"+(Math.floor(v)+1)); } }); unlockAudio(); }
         function deleteBoss(id) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
         function clearAllBosses() { if(confirm("確定一鍵清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
         function copyRoomID() { const t = document.createElement('textarea'); t.value = currentRoom; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); alert('房號已複製'); }
         function joinRoom() { const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
         function createRoom() { const i = Math.random().toString(36).substring(2, 8).toUpperCase(); startSession(i); }
-        function toggleColorMode() { colorMode = colorMode === 1 ? 2 : 1; renderList(); }
-        function toggleWarning() { showWarningIcon = !showWarningIcon; renderList(); }
         function toggleManual() { const m = document.getElementById('manualModal'), o = document.getElementById('modalOverlay'); m.style.display = m.style.display === 'block' ? 'none' : 'block'; o.style.display = o.style.display === 'block' ? 'none' : 'block'; }
         function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); i.setSelectionRange(m.length + c.length + 2, i.value.length); }
     </script>
