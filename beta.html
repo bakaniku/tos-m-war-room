@@ -43,7 +43,6 @@
         .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
         .section-label { color: #555; font-size: 11px; border-left: 2px solid #333; padding-left: 8px; text-transform: uppercase; }
         
-        /* 💡 警告開關無彩色樣式 */
         .btn-switch { background: #222; color: #0f0; font-size: 10px; padding: 2px 8px; border: 1px solid #444; border-radius: 4px; cursor: pointer; transition: 0.2s; }
         .btn-switch.muted-btn { color: #555; border-color: #333; }
 
@@ -51,15 +50,13 @@
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
         
-        /* 閒置區無彩色 */
         .card.idle-card h3 { color: #444; border-bottom: 1px dashed #222; }
         .card.idle-card .timer { color: #555 !important; }
         .card.idle-card .btn-next { border-color: #333 !important; color: #333 !important; }
 
         .del { position: absolute; top: 6px; right: 10px; color: #444; background: none; border: none; font-size: 14px; cursor: pointer; padding: 2px; }
 
-        /* 💡 字體微調確保警告符號並列 */
-        .timer { font-size: 18px; font-weight: bold; margin-top: 8px; font-family: monospace; display: flex; align-items: center; flex-wrap: nowrap; }
+        .timer { font-size: 18px; font-weight: bold; margin-top: 8px; font-family: monospace; display: flex; align-items: center; flex-wrap: nowrap; overflow: hidden; }
         .timer-label { font-size: 18px; white-space: nowrap; }
         .timer-sub { font-size: 14px; margin-left: 4px; opacity: 0.8; white-space: nowrap; }
         .warning-icon { display: inline-block; margin-left: 6px; font-size: 16px; animation: warn-flash 0.8s infinite; flex-shrink: 0; }
@@ -81,10 +78,10 @@
             <h3 style="color:#0f0; margin-top:0;">📜 使用說明</h3>
             <div style="font-size:13px; line-height:1.5; color:#ccc; white-space: pre-wrap;">
 1. 階段追蹤：ON (紅色) > 階段 4 (橙) > 階段 123 (黃)。
-2. 超時偵測：停留過久會出現 ⚠️（開關關閉時顯示為灰色）。
-3. 快速輸入：地圖 分流 分鐘/00X/XX1。
-4. XX1 功能：輸入後直接進入閒置區並顯示「階段 1」。
-5. 數據清理：房間 24H 無人使用將自動刪除。
+2. 超時偵測：停留過久會出現 ⚠️（警告開關關閉時按鈕變灰）。
+3. 快速輸入：地圖 分流 分鐘/00X/XX數字。
+4. XX數字：輸入後直接進入閒置區。
+5. 自動閒置：計時或階段超過 1 小時會自動移入底層閒置區。
             </div>
             <button class="btn-solid" style="width:100%; margin-top:10px; padding:10px;" onclick="toggleManual()">確認</button>
         </div>
@@ -172,9 +169,10 @@
             const id = `${map}_${ch}`, old = window.currentData ? window.currentData[id] : null;
             let dv = val, tt = 0, flash = false;
             
-            // 💡 XX1 邏輯：強制進入階段1並標記為閒置
-            if (val.toUpperCase() === "XX1") {
-                dv = "階段1";
+            // 💡 XX 通用邏輯
+            if (val.toUpperCase().startsWith("XX")) {
+                const num = val.substring(2);
+                dv = "階段" + (num ? num : "1");
                 tt = 0;
             } else if (val.toUpperCase() === "ON") { dv = "ON"; flash = true; }
             else if (val.startsWith("00")) { 
@@ -195,8 +193,7 @@
             all.forEach(([id, b]) => {
                 const isOverdue = b.targetTime > 0 && (now - b.targetTime > oneHour);
                 const isIdle = b.targetTime === 0 && (now - b.startTime > oneHour);
-                // 💡 若輸入為 XX1 則直接進閒置區
-                if (b.lastInput.toUpperCase() === "XX1" || isOverdue || isIdle) idleList.push([id, b]);
+                if (b.lastInput.toUpperCase().startsWith("XX") || isOverdue || isIdle) idleList.push([id, b]);
                 else if (b.targetTime > 0) timersList.push([id, b]); else stages.push([id, b]);
             });
 
@@ -234,7 +231,8 @@
                     if (!isIdle) el.style.color = d <= 0 ? '#ff3300' : '#0f0';
                 } else {
                     const m = Math.floor((now - b.startTime) / 60000), s = Math.floor(((now - b.startTime) % 60000) / 1000);
-                    const lv = b.displayValue === "ON" ? 99 : parseFloat(b.lastInput.replace('XX1','1').substring(2));
+                    const cleanInput = b.lastInput.toUpperCase().startsWith("XX") ? b.lastInput.substring(2) : b.lastInput.substring(2);
+                    const lv = b.displayValue === "ON" ? 99 : parseFloat(cleanInput);
                     const isW = (lv < 2 && m >= 12) || (lv < 3 && lv >= 2 && m >= 7) || (lv < 4 && lv >= 3 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
                     el.innerHTML = `<span class="timer-label">${b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isIdle) ? '<span class="warning-icon">⚠️</span>' : ''}`;
                     if (!isIdle) { let c = (colorMode === 1) ? (lv < 2 ? '#0f0' : lv < 3 ? '#adff2f' : lv < 4 ? '#ff0' : lv < 5 ? '#f90' : '#f00') : (lv >= 99 ? '#f00' : lv >= 4 ? '#f90' : '#ff0'); el.style.color = c; if (btn) { btn.style.color = c; btn.style.borderColor = c; } }
@@ -255,12 +253,10 @@
         function toggleWarning() { showWarningIcon = !showWarningIcon; renderList(); }
         function toggleTimerPriority() { timerPriority = timerPriority === 'overtime' ? 'countdown' : 'overtime'; renderList(); }
 
-        // 💡 快速編輯修正
         function doEdit(m, c, l) {
             const i = document.getElementById('bossInput');
             i.value = `${m} ${c} ${l}`;
             i.focus();
-            // 自動選取後方的參數部分方便修改
             const start = m.length + c.length + 2;
             i.setSelectionRange(start, i.value.length);
         }
