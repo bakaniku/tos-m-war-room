@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME - 穩定修復版</title>
+    <title>TOS M FB TIME</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -20,40 +20,50 @@
         .btn-danger { background: #422; color: #f66; font-size: 11px; padding: 5px 10px; border-radius: 6px; }
         .btn-toggle { background: #222; color: #888; font-size: 12px; padding: 5px 10px; border: 1px solid #444; }
         .btn-toggle.active { background: #050; color: #0f0; border-color: #0f0; }
+        
         .copy-icon { width: 18px; height: 18px; min-width: 18px; vertical-align: middle; cursor: pointer; opacity: 0.7; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px; }
         .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .room-id { color: #0f0; font-size: 20px; font-weight: bold; line-height: 1; }
+        
         .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #111; border: 2px solid #0f0; padding: 15px; border-radius: 12px; z-index: 2000; width: 85%; max-width: 450px; max-height: 55vh; overflow-y: auto; display: none; }
         .modal-overlay { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.85); z-index: 1999; display: none; }
+
         .audio-controls { display: flex; align-items: center; gap: 5px; background: #111; padding: 4px 10px; border-radius: 20px; border: 1px solid #333; height: 32px; box-sizing: border-box; }
         .audio-btn { background: none; color: #0f0; padding: 0; font-size: 14px; cursor: pointer; border: none; opacity: 0.3; transition: 0.2s; }
         .audio-btn.active { opacity: 1; }
         .vol-range { -webkit-appearance: none; width: 50px; height: 4px; background: #0f0; border-radius: 2px; outline: none; margin: 0 5px; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: #0f0; border-radius: 50%; border: 2px solid #111; cursor: pointer; }
-        .user-list-bar { font-size: 12px; color: #555; margin-bottom: 12px; border-bottom: 1px solid #222; padding-bottom: 8px; }
-        .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; font-size: 16px; color: #fff; padding: 8px 0; margin-bottom: 2px; }
-        #duplicateWarn { color: #f44; font-size: 12px; height: 18px; margin-bottom: 8px; font-weight: bold; }
+        
+        .user-list-bar { font-size: 12px; color: #555; margin-bottom: 20px; border-bottom: 1px solid #222; padding-bottom: 8px; }
+        .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; margin-bottom: 5px; font-size: 16px; color: #fff; padding: 8px 0; }
         .sort-row { margin-bottom: 15px; display: flex; gap: 8px; flex-wrap: wrap; }
+        
         .grid-section { margin-bottom: 30px; }
         .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
         .section-label { color: #555; font-size: 11px; border-left: 2px solid #333; padding-left: 8px; text-transform: uppercase; }
+        
         .btn-switch { background: #222; color: #0f0; font-size: 10px; padding: 2px 8px; border: 1px solid #444; border-radius: 4px; cursor: pointer; }
-        .btn-switch.active { background: #050; color: #0f0; border-color: #0f0; }
+        .btn-switch.muted-btn { color: #555; border-color: #333; }
+
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
         .card.idle-card h3 { color: #444; border-bottom: 1px dashed #222; }
         .card.idle-card .timer { color: #555 !important; }
         .del { position: absolute; top: 6px; right: 10px; color: #444; background: none; border: none; font-size: 14px; cursor: pointer; }
+
         .timer { font-size: 18px; font-weight: bold; margin-top: 8px; font-family: monospace; display: flex; align-items: center; flex-wrap: nowrap; overflow: hidden; }
         .timer-label { font-size: 18px; white-space: nowrap; }
         .timer-sub { font-size: 14px; margin-left: 4px; opacity: 0.8; white-space: nowrap; }
         .warning-icon { display: inline-block; margin-left: 6px; font-size: 16px; animation: warn-flash 0.8s infinite; flex-shrink: 0; }
+        
         @keyframes warn-flash { 0%, 100% { opacity: 1; scale: 1; } 50% { opacity: 0.5; scale: 1.1; } }
         @keyframes flash { 0%, 100% { opacity: 1; color: #fff; } 50% { opacity: 0.3; } }
         .flash-anim { animation: flash 0.5s step-end 10; }
-        .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-block; margin-top: 8px; border: 2px solid; color: inherit; }
+
+        .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-block; margin-top: 8px; border: 2px solid; }
+
         .chat-section { margin-top: 40px; border-top: 2px solid #222; padding-top: 20px; display: none; }
         .chat-box { background: #080808; height: 120px; overflow-y: auto; padding: 10px; border-radius: 8px; font-size: 13px; margin-bottom: 10px; border: 1px solid #111; }
         .msg-name { color: #0f0; font-weight: bold; }
@@ -65,12 +75,13 @@
     <div id="app">
         <div id="modalOverlay" class="modal-overlay" onclick="toggleManual()"></div>
         <div id="manualModal" class="modal">
-            <h3 style="color:#0f0; margin-top:0;">📜 格式分流說明</h3>
+            <h3 style="color:#0f0; margin-top:0;">📜 使用說明</h3>
             <div style="font-size:13px; line-height:1.5; color:#ccc; white-space: pre-wrap;">
-1. 階段：**必須**以 00 開頭（例：001, 001.2）。
-2. 時間：純數字或冒號（例：30, 12:50）一律視為計時。
-3. NEXT：1.x 點擊必跳 002，以此類推。
-4. 閃爍：只有 004 或 ON 會閃爍與叮聲。
+1. 排序：重生區、地圖區皆提供排序切換。
+2. 閒置區：依 [階段高低] > [超時時間] 排序。
+3. 地圖等級：自動識別地圖名稱中的數字進行排序。
+4. 叮聲提醒：進入 階段 4 或 ON 時會發聲。
+5. 數據清理：房間 24H 閒置後自動銷毀。
             </div>
             <button class="btn-solid" style="width:100%; margin-top:10px; padding:10px;" onclick="toggleManual()">確認</button>
         </div>
@@ -90,12 +101,14 @@
                 <div class="room-info">
                     <span class="room-id" id="displayID"></span>
                     <svg class="copy-icon" onclick="copyRoomID()" viewBox="0 0 24 24" fill="none" stroke="#0f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                    <button class="btn-toggle" style="font-size:10px;" onclick="toggleManual()">[說明]</button>
+                    <button class="btn-toggle" style="font-size:10px;" onclick="toggleManual()">[使用說明]</button>
+                    
                     <div class="audio-controls">
                         <button id="voiceBtn" class="audio-btn" onclick="toggleVoice()">🔊</button>
                         <input type="range" id="volRange" class="vol-range" min="0" max="1" step="0.05" value="0.5">
                         <button id="sfxBtn" class="audio-btn" onclick="toggleSfx()">🔔</button>
                     </div>
+
                     <button class="btn-toggle" style="font-size:10px;" onclick="toggleChat()">[留言板]</button>
                 </div>
                 <div class="room-info">
@@ -104,12 +117,9 @@
                 </div>
             </div>
 
-            <div id="userListBar" class="user-list-bar">
+            <div class="user-list-bar">
                 在線:<span id="onlineCount" style="color:#0f0;">0</span> | <span id="onlineUsers">載入中...</span>
             </div>
-
-            <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 00X(階段) / 分鐘(計時)">
-            <div id="duplicateWarn"></div>
 
             <div class="sort-row">
                 <button id="sortGroupBtn" class="btn-toggle active" onclick="setSort('group')">群組排序</button>
@@ -118,6 +128,7 @@
                 <button id="sortMapBtn" class="btn-toggle" onclick="setSort('map')">地圖排序</button>
             </div>
 
+            <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 分鐘/00X/XX數字">
             <div id="sectionsContainer"></div>
 
             <div id="chatSection" class="chat-section">
@@ -137,26 +148,21 @@
         let currentRoom = '', timers = {}, currentSort = 'group';
         let isVoiceEnabled = false, isSfxEnabled = false;
         let myName = '無名戰友', colorMode = 1, showWarningIcon = true, audioCtx = null, playedAlerts = new Set();
-        window.currentData = {};
+        let timerPriority = 'overtime'; // overtime: 已超時優先, countdown: 計時中優先
+        let mapOrder = 'desc'; // desc: 大到小, asc: 小到大
 
-        function unlockAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); }
+        function unlockAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
         function speak(text) { if (isVoiceEnabled) { window.speechSynthesis.cancel(); const msg = new SpeechSynthesisUtterance(text); msg.volume = parseFloat(document.getElementById('volRange').value); msg.lang = 'zh-TW'; msg.rate = 1.1; window.speechSynthesis.speak(msg); } }
         function playDing() { if (isSfxEnabled) { unlockAudio(); const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'sine'; osc.frequency.setValueAtTime(880, audioCtx.currentTime); osc.connect(gain); gain.connect(audioCtx.destination); gain.gain.setValueAtTime(0, audioCtx.currentTime); gain.gain.linearRampToValueAtTime(0.3 * parseFloat(document.getElementById('volRange').value), audioCtx.currentTime + 0.01); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3); osc.start(); osc.stop(audioCtx.currentTime + 0.3); } }
 
         function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); if (isVoiceEnabled) { unlockAudio(); speak("語音功能已開啟"); } else window.speechSynthesis.cancel(); }
         function toggleSfx() { isSfxEnabled = !isSfxEnabled; document.getElementById('sfxBtn').classList.toggle('active', isSfxEnabled); if (isSfxEnabled) { unlockAudio(); playDing(); } }
-        function toggleColorMode() { colorMode = (colorMode === 1 ? 2 : 1); renderList(); }
-        function toggleWarning() { showWarningIcon = !showWarningIcon; renderList(); }
-        function toggleChat() { const c = document.getElementById('chatSection'); c.style.display = (c.style.display === 'block' ? 'none' : 'block'); }
-        function setSort(t) { currentSort = t; document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id === `sort${t.charAt(0).toUpperCase()+t.slice(1)}Btn`)); renderList(); }
-
-        document.getElementById('bossInput').addEventListener('input', function(e) {
-            const p = e.target.value.trim().split(/\s+/);
-            if (p.length >= 2 && window.currentData) {
-                const id = `${p[0]}_${p[1]}`;
-                document.getElementById('duplicateWarn').innerText = window.currentData[id] ? `⚠️ 警告：${p[0]} 分流 ${p[1]} 已存在資料` : '';
-            }
-        });
+        function setTimerPriority() { timerPriority = (timerPriority === 'overtime' ? 'countdown' : 'overtime'); renderList(); }
+        function toggleMapOrder() { mapOrder = (mapOrder === 'desc' ? 'asc' : 'desc'); renderList(); }
 
         function startSession(id) {
             currentRoom = id; myName = document.getElementById('userNameInput').value.trim() || '無名戰友';
@@ -164,20 +170,15 @@
             document.getElementById('displayID').innerText = id;
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
             document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+            const myPresenceRef = db.ref(`rooms/${currentRoom}/users`).push(); myPresenceRef.set({ name: myName }); myPresenceRef.onDisconnect().remove();
+            db.ref(`rooms/${currentRoom}/users`).on('value', s => { const users = Object.values(s.val() || {}); document.getElementById('onlineCount').innerText = users.length; document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', '); });
             
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
                 const newData = s.val() || {};
-                Object.keys(newData).forEach(key => { if (newData[key].isFlash && (!window.currentData[key] || !window.currentData[key].isFlash)) playDing(); });
-                window.currentData = newData; renderList(); 
+                Object.keys(newData).forEach(key => { if (newData[key].isFlash && (!window.currentData || !window.currentData[key] || !window.currentData[key].isFlash)) playDing(); });
+                window.currentData = newData; 
+                renderList(); 
             });
-
-            db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
-            db.ref(`rooms/${currentRoom}/users`).on('value', s => { 
-                const users = Object.values(s.val() || {}); 
-                document.getElementById('onlineCount').innerText = users.length; 
-                document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', '); 
-            });
-
             db.ref(`rooms/${currentRoom}/messages`).limitToLast(15).on('value', s => {
                 const chatBox = document.getElementById('chatBox'); chatBox.innerHTML = '';
                 Object.values(s.val() || {}).forEach(m => { chatBox.innerHTML += `<div><span class="msg-name">${m.user}</span>: ${m.text}</div>`; });
@@ -185,129 +186,109 @@
             });
         }
 
-        // 💡 關鍵：嚴格區分「計時」與「階段」
         function saveBoss(map, ch, val) {
-            const id = `${map}_${ch}`;
-            let dv = val, tt = 0, flash = false;
-            const raw = String(val).toUpperCase().trim();
-            
-            // 優先判定：必須以 00 開頭才是階段，或者是 XX 開頭
-            if (raw.startsWith("00") || raw === "ON") {
-                if (raw === "ON") {
-                    dv = "ON"; flash = true;
-                } else {
-                    const nStr = raw.substring(2);
-                    dv = "階段" + (nStr.includes('.') ? nStr : nStr.split('').join('.'));
-                    // 只有純 004 會閃爍
-                    if (nStr === "4") flash = true;
-                }
-            } else if (raw.startsWith("XX")) {
-                dv = "階段" + (raw.substring(2) || "1");
-            } else {
-                // 純數字或時間格式一律視為計時
-                tt = Date.now() + (parseTime(val) * 60000);
-            }
-            
-            db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: String(val), displayValue: dv, startTime: Date.now(), isFlash: flash });
+            const id = `${map}_${ch}`, old = window.currentData ? window.currentData[id] : null;
+            let dv = val, tt = 0, flash = false; playedAlerts.delete(id);
+            if (val.toUpperCase().startsWith("XX")) { const num = val.substring(2); dv = "階段" + (num ? num : "1"); tt = 0; }
+            else if (val.toUpperCase() === "ON") { dv = "ON"; flash = true; }
+            else if (val.startsWith("00")) { const n = val.substring(2); dv = "階段" + (n.length > 1 ? n.split('').join('.') : n); if (val.startsWith("004")) flash = true; }
+            else tt = Date.now() + (parseTime(val) * 60000);
+            db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash });
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 5000);
         }
 
         function renderList() {
             const container = document.getElementById('sectionsContainer'); container.innerHTML = ''; 
             Object.values(timers).forEach(clearInterval); timers = {};
-            if (!window.currentData) return;
-            const all = Object.entries(window.currentData), now = Date.now();
+            const all = Object.entries(window.currentData || {}), now = Date.now(), oneHour = 3600000;
             const stages = [], timersList = [], idleList = [];
             
             all.forEach(([id, b]) => {
-                const isOverdue = b.targetTime > 0 && (now - b.targetTime > 3600000);
-                const isIdle = b.targetTime === 0 && (now - b.startTime > 3600000);
-                if (String(b.lastInput).toUpperCase().startsWith("XX") || isOverdue || isIdle) idleList.push([id, b]);
+                const isOverdue = b.targetTime > 0 && (now - b.targetTime > oneHour);
+                const isIdle = b.targetTime === 0 && (now - b.startTime > oneHour);
+                if (b.lastInput.toUpperCase().startsWith("XX") || isOverdue || isIdle) idleList.push([id, b]);
                 else if (b.targetTime > 0) timersList.push([id, b]); else stages.push([id, b]);
             });
 
-            const getWeight = (v) => v.displayValue === "ON" ? 100 : (parseFloat(String(v.displayValue).replace(/[^\d.]/g, "")) || 0);
+            const getSortWeight = (v) => v.displayValue === "ON" ? 100 : (parseFloat(v.displayValue.match(/[\d.]+/)) || 0);
+            const getMapLevel = (name) => { const m = name.match(/\d+/); return m ? parseInt(m[0]) : 0; };
 
-            const render = (items, label, type) => {
-                if (items.length === 0 && type !== 'stages') return;
+            const render = (items, label, sectionType) => {
+                if (items.length === 0 && sectionType !== 'stages') return;
                 const sec = document.createElement('div'); sec.className = 'grid-section';
                 let ctrls = '';
-                if (type === 'stages') ctrls = `<button class="btn-switch ${colorMode === 1 ? 'active' : ''}" onclick="toggleColorMode()">${colorMode === 1 ? '漸層模式' : '簡易模式'}</button><button class="btn-switch ${showWarningIcon ? 'active' : ''}" onclick="toggleWarning()">⚠️${showWarningIcon ? '開' : '關'}</button>`;
+                if (sectionType === 'timers') ctrls = `<button class="btn-switch" onclick="setTimerPriority()">${timerPriority === 'overtime' ? '已超時優先' : '計時中優先'}</button>`;
+                else if (sectionType === 'stages') ctrls = `<button class="btn-switch" onclick="toggleColorMode()">${colorMode === 1 ? '漸層' : '模式2'}</button><button class="btn-switch ${!showWarningIcon ? 'muted-btn' : ''}" onclick="toggleWarning()">${showWarningIcon ? '⚠️開' : '⚠️關'}</button>`;
+                else if (sectionType === 'all') ctrls = `<button class="btn-switch" onclick="toggleMapOrder()">等級：${mapOrder === 'desc' ? '大到小' : '小到大'}</button>`;
                 
                 sec.innerHTML = `<div class="section-header"><div class="section-label">${label}</div>${ctrls}</div><div class="grid"></div>`;
                 container.appendChild(sec); const grid = sec.querySelector('.grid');
                 
                 items.sort((a,b) => {
-                    if (currentSort === 'map') return (parseInt(b[1].map.match(/\d+/)) || 0) - (parseInt(a[1].map.match(/\d+/)) || 0);
-                    if (type === 'timers') return a[1].targetTime - b[1].targetTime;
-                    return getWeight(b[1]) - getWeight(a[1]);
+                    if (sectionType === 'all') {
+                        const lvlA = getMapLevel(a[1].map), lvlB = getMapLevel(b[1].map);
+                        return mapOrder === 'desc' ? (lvlB - lvlA || a[1].ch - b[1].ch) : (lvlA - lvlB || a[1].ch - b[1].ch);
+                    }
+                    if (sectionType === 'timers') {
+                        const getC = (v) => v.targetTime > now ? (timerPriority === 'overtime' ? 2 : 1) : (timerPriority === 'overtime' ? 1 : 2);
+                        return getC(a[1]) - getC(b[1]) || a[1].targetTime - b[1].targetTime;
+                    }
+                    if (sectionType === 'idle') {
+                        const weightA = getSortWeight(a[1]), weightB = getSortWeight(b[1]);
+                        if (weightA !== weightB) return weightB - weightA;
+                        const overdueA = a[1].targetTime > 0 ? (now - a[1].targetTime) : (now - a[1].startTime);
+                        const overdueB = b[1].targetTime > 0 ? (now - b[1].targetTime) : (now - b[1].startTime);
+                        return overdueB - overdueA;
+                    }
+                    return getSortWeight(b[1]) - getSortWeight(a[1]);
                 }).forEach(([id, b]) => {
-                    const card = document.createElement('div'); card.className = `card ${type === 'idle' ? 'idle-card' : ''}`;
+                    const card = document.createElement('div'); card.className = `card ${sectionType === 'idle' ? 'idle-card' : ''}`;
                     card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button><h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - 分流${b.ch}</h3>
                         <div class="timer-container"><div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}">...</div>
-                        ${(b.targetTime === 0 && type !== 'idle') ? `<button class="btn-next" onclick="triggerNext('${id}')">NEXT</button>` : ''}</div>`;
-                    grid.appendChild(card);
-                    
-                    const up = () => {
-                        const el = card.querySelector('.timer'); if (!el) return;
-                        if (b.targetTime > 0) {
-                            const d = Math.floor((b.targetTime - Date.now()) / 1000), a = Math.abs(d);
-                            el.innerText = `${Math.floor(a/3600)}:${Math.floor((a%3600)/60).toString().padStart(2,'0')}:${(a%60).toString().padStart(2,'0')}`;
-                            if (type !== 'idle') el.style.color = d <= 0 ? '#ff3300' : '#0f0';
-                        } else {
-                            const diff = (Date.now() - b.startTime) / 60000;
-                            const w = getWeight(b);
-                            const isW = (w < 2 && diff >= 12) || (w < 3 && w >= 2 && diff >= 7) || (w < 4 && w >= 3 && diff >= 5) || (w >= 4 && diff >= 3);
-                            el.innerHTML = `<span class="timer-label">${b.displayValue}</span><span class="timer-sub">(${Math.floor(diff)}:${Math.floor(((Date.now()-b.startTime)%60000)/1000).toString().padStart(2,'0')})</span>${(showWarningIcon && isW && type !== 'idle') ? '<span class="warning-icon">⚠️</span>' : ''}`;
-                            if (type !== 'idle') {
-                                let c = '#fff';
-                                if (colorMode === 1) { 
-                                    if (w >= 99) c = '#ff0000'; else if (w >= 4) c = '#ff6600'; else if (w >= 3) c = '#ffcc00'; else if (w >= 2) c = '#ffff00'; else if (w >= 1) c = '#adff2f';
-                                } else { 
-                                    if (w >= 99) c = '#ff0000'; else if (w >= 4) c = '#ff9900'; else c = '#ffff00';
-                                }
-                                el.style.color = c;
-                            }
-                        }
-                    }; timers[id] = setInterval(up, 1000); up();
+                        ${(b.targetTime === 0 && sectionType !== 'idle') ? `<button class="btn-next" id="btn_${id}" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>` : ''}</div>`;
+                    grid.appendChild(card); startTimer(id, b, sectionType === 'idle');
                 });
             };
-            render(stages, "階段追蹤區", 'stages');
-            render(timersList, "重生計時區", 'timers');
-            render(idleList, "超時閒置區", 'idle');
+
+            if (currentSort === 'map') render(all, "所有 BOSS (地圖等級排序)", 'all');
+            else { render(stages, "階段追蹤區", 'stages'); render(timersList, "重生計時區", 'timers'); render(idleList, "超時閒置區", 'idle'); }
         }
 
-        function parseTime(v) { const p = String(v).split(/[:.：]/); if (p.length === 2) return parseInt(p[0])*60 + parseInt(p[1]); return parseFloat(v) || 0; }
-        function addBoss() { const i = document.getElementById('bossInput'), p = i.value.trim().split(/\s+/); if (p.length >= 3) saveBoss(p[0], p[1], p[2]); i.value = ''; unlockAudio(); }
-        
-        // 💡 修正後的 NEXT：確保小數點正確進位
-        function triggerNext(id) { 
-            const b = window.currentData[id]; if (!b) return;
-            const l = String(b.lastInput).toUpperCase().trim(); 
-            if (l === "ON" || l === "") {
-                saveBoss(b.map, b.ch, "001");
-            } else {
-                const match = l.match(/[\d.]+/);
-                if (!match) { saveBoss(b.map, b.ch, "ON"); } 
-                else {
-                    const val = parseFloat(match[0]);
-                    if (val < 1.99) saveBoss(b.map, b.ch, "002");
-                    else if (val < 2.99) saveBoss(b.map, b.ch, "003");
-                    else if (val < 3.99) saveBoss(b.map, b.ch, "004");
-                    else saveBoss(b.map, b.ch, "ON");
+        function startTimer(id, b, isIdle) {
+            const el = document.getElementById(`t_${id}`), btn = document.getElementById(`btn_${id}`);
+            const up = () => {
+                const now = Date.now();
+                if (b.targetTime > 0) {
+                    const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
+                    el.innerText = `${Math.floor(a/3600)}:${Math.floor((a%3600)/60).toString().padStart(2,'0')}:${(a%60).toString().padStart(2,'0')}`;
+                    if (!isIdle) el.style.color = d <= 0 ? '#ff3300' : '#0f0';
+                    if (d === 0 && !playedAlerts.has(id)) { playedAlerts.add(id); speak(`${b.map}, 分流 ${b.ch}, 已重生`); }
+                } else {
+                    const m = Math.floor((now - b.startTime) / 60000), s = Math.floor(((now - b.startTime) % 60000) / 1000);
+                    const rawVal = b.lastInput.toUpperCase().startsWith("XX") ? b.lastInput.substring(2) : b.lastInput.substring(2);
+                    const lv = b.displayValue === "ON" ? 99 : (parseFloat(rawVal) || 0);
+                    const isW = (lv < 2 && m >= 12) || (lv < 3 && lv >= 2 && m >= 7) || (lv < 4 && lv >= 3 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
+                    el.innerHTML = `<span class="timer-label">${b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isIdle) ? '<span class="warning-icon">⚠️</span>' : ''}`;
+                    if (!isIdle) { let c = (colorMode === 1) ? (lv < 2 ? '#0f0' : lv < 3 ? '#adff2f' : lv < 4 ? '#ff0' : lv < 5 ? '#f90' : '#f00') : (lv >= 99 ? '#f00' : lv >= 4 ? '#f90' : '#ff0'); el.style.color = c; if (btn) { btn.style.color = c; btn.style.borderColor = c; } }
                 }
-            }
-            unlockAudio(); 
+            }; up(); timers[id] = setInterval(up, 1000);
         }
-        
-        function sendMessage() { const i = document.getElementById('chatInput'); if (!i.value.trim()) return; db.ref(`rooms/${currentRoom}/messages`).push({ user: myName, text: i.value.trim(), time: Date.now() }); i.value = ''; unlockAudio(); }
+
+        function parseTime(v) { const p = v.split(/[:.：]/); if (p.length === 3) return parseInt(p[0])*60 + parseInt(p[1]) + parseInt(p[2])/60; if (p.length === 2) return parseInt(p[0])*60 + parseInt(p[1]); return parseFloat(v) || 0; }
+        function addBoss() { const i = document.getElementById('bossInput'), p = i.value.trim().split(/\s+/); if (p.length >= 3) saveBoss(p[0], p[1], p[2]); i.value = ''; unlockAudio(); }
+        function triggerNext(m, c) { db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => { const l = s.val().lastInput; if (l.toUpperCase()==="ON") saveBoss(m,c,""); else if (l.startsWith("00")) { let v = parseInt(l.substring(2,3)); saveBoss(m,c,v>=4?"ON":"00"+(v+1)); } }); unlockAudio(); }
         function deleteBoss(id) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
-        function clearAllBosses() { if(confirm("確定一鍵清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
+        function clearAllBosses() { if(confirm("確定清除此房間所有資料？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
         function copyRoomID() { const t = document.createElement('textarea'); t.value = currentRoom; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); alert('房號已複製'); }
         function joinRoom() { const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
         function createRoom() { const i = Math.random().toString(36).substring(2, 8).toUpperCase(); startSession(i); }
+        function setSort(t) { currentSort = t; document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id === `sort${t.charAt(0).toUpperCase()+t.slice(1)}Btn`)); renderList(); }
+        function toggleColorMode() { colorMode = colorMode === 1 ? 2 : 1; renderList(); }
+        function toggleWarning() { showWarningIcon = !showWarningIcon; renderList(); }
+        function toggleManual() { const m = document.getElementById('manualModal'); const o = document.getElementById('modalOverlay'); const isShow = m.style.display === 'block'; m.style.display = isShow ? 'none' : 'block'; o.style.display = isShow ? 'none' : 'block'; }
+        function toggleChat() { const c = document.getElementById('chatSection'); c.style.display = c.style.display === 'block' ? 'none' : 'block'; }
         function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); i.setSelectionRange(m.length + c.length + 2, i.value.length); }
-        function toggleManual() { const m = document.getElementById('manualModal'), o = document.getElementById('modalOverlay'); m.style.display = (m.style.display === 'block' ? 'none' : 'block'); o.style.display = (o.style.display === 'block' ? 'none' : 'block'); }
+        function sendMessage() { const i = document.getElementById('chatInput'); if (!i.value.trim()) return; db.ref(`rooms/${currentRoom}/messages`).push({ user: myName, text: i.value.trim(), time: Date.now() }); i.value = ''; unlockAudio(); }
     </script>
 </body>
 </html>
