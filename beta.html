@@ -39,6 +39,7 @@
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
         .card.idle-card h3 { color: #444; border-bottom: 1px dashed #222; }
+        .card.idle-card .timer { color: #555 !important; }
         .del { position: absolute; top: 6px; right: 10px; color: #444; background: none; border: none; font-size: 14px; cursor: pointer; }
         .timer { font-size: 18px; font-weight: bold; margin-top: 8px; font-family: monospace; display: flex; align-items: center; flex-wrap: nowrap; overflow: hidden; }
         .timer-label { font-size: 18px; white-space: nowrap; }
@@ -115,20 +116,25 @@
             document.getElementById('loginView').style.display = 'none'; document.getElementById('mainView').style.display = 'block';
             document.getElementById('displayID').innerText = id;
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
+            
             db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
             db.ref(`rooms/${currentRoom}/users`).on('value', s => { 
                 const users = Object.values(s.val() || {});
                 document.getElementById('onlineCount').innerText = users.length;
                 document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', ');
             });
+
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
                 const newData = s.val() || {};
-                Object.keys(newData).forEach(key => { if (newData[key].isFlash && (!window.currentData[key] || !window.currentData[key].isFlash)) playDing(); });
-                window.currentData = newData; renderList(); 
+                // 修正：確保全域變數同步更新
+                window.currentData = newData;
+                Object.keys(newData).forEach(key => { 
+                    if (newData[key].isFlash) playDing(); 
+                });
+                renderList(); 
             });
         }
 
-        // 核心狀態與權重判斷 (結合階段色彩)
         function getBossStatus(b) {
             const now = Date.now();
             const oneHour = 3600000;
@@ -145,24 +151,30 @@
             else if (b.targetTime > 0) weight = (b.targetTime > now) ? 1 : 0; 
 
             const colors = {
-                6: '#FF0000', // 正紅 (ON)
-                5: '#800000', // 酒紅 (4)
-                4: '#FF4500', // 橘紅 (3)
-                3: '#FFA500', // 橙 (2)
-                2: '#FFFF00', // 黃 (1)
-                1: '#00FF00', // 計時中 (綠)
-                0: '#FF3300'  // 已重生 (紅)
+                6: '#FF0000', // ON 正紅
+                5: '#800000', // 階4 酒紅
+                4: '#FF4500', // 階3 橘紅
+                3: '#FFA500', // 階2 橙
+                2: '#FFFF00', // 階1 黃
+                1: '#00FF00', // 計時 綠
+                0: '#FF3300'  // 超時 紅
             };
 
             return { isGrey, weight, color: colors[weight] || '#fff', mapLv: parseInt(b.map.match(/\d+/)) || 0 };
         }
 
         function renderList() {
-            const container = document.getElementById('sectionsContainer'); container.innerHTML = ''; 
-            Object.values(timers).forEach(clearInterval); timers = {};
-            const all = Object.entries(window.currentData || {}), now = Date.now();
+            const container = document.getElementById('sectionsContainer'); 
+            container.innerHTML = ''; 
+            Object.values(timers).forEach(clearInterval); 
+            timers = {};
+            
+            const all = Object.entries(window.currentData || {});
+            const now = Date.now();
+            const oneHour = 3600000;
 
             const renderBox = (items, label) => {
+                if (items.length === 0 && currentSort === 'group') return;
                 const sec = document.createElement('div'); sec.className = 'grid-section';
                 sec.innerHTML = `<div class="section-header"><div class="section-label">${label}</div></div><div class="grid"></div>`;
                 container.appendChild(sec); const grid = sec.querySelector('.grid');
@@ -183,7 +195,7 @@
                     if (sA.weight !== sB.weight) return sB.weight - sA.weight;
                     return sB.mapLv - sA.mapLv;
                 });
-                renderBox(sorted, "全域時間排序 (ON > 階段 > 計時 > 超時)");
+                renderBox(sorted, "全域時間排序 (ON > 階段 > 計時)");
             } 
             else if (currentSort === 'map') {
                 const sorted = all.sort((a,b) => getBossStatus(b[1]).mapLv - getBossStatus(a[1]).mapLv || a[1].ch - b[1].ch);
@@ -194,7 +206,8 @@
                 all.forEach(([id, b]) => {
                     const st = getBossStatus(b);
                     if (st.isGrey) idleList.push([id, b]);
-                    else if (b.targetTime > 0) timersList.push([id, b]); else stages.push([id, b]);
+                    else if (b.targetTime > 0) timersList.push([id, b]); 
+                    else stages.push([id, b]);
                 });
                 renderBox(stages.sort((a,b)=>getBossStatus(b[1]).weight - getBossStatus(a[1]).weight), "階段追蹤區");
                 renderBox(timersList.sort((a,b)=>a[1].targetTime - b[1].targetTime), "重生計時區");
