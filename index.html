@@ -148,8 +148,8 @@
         let currentRoom = '', timers = {}, currentSort = 'group';
         let isVoiceEnabled = false, isSfxEnabled = false;
         let myName = '無名戰友', colorMode = 1, showWarningIcon = true, audioCtx = null, playedAlerts = new Set();
-        let timerPriority = 'overtime'; // overtime: 已超時優先, countdown: 計時中優先
-        let mapOrder = 'desc'; // desc: 大到小, asc: 小到大
+        let timerPriority = 'overtime'; 
+        let mapOrder = 'desc'; 
 
         function unlockAudio() {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -187,11 +187,11 @@
         }
 
         function saveBoss(map, ch, val) {
-            const id = `${map}_${ch}`, old = window.currentData ? window.currentData[id] : null;
+            const id = `${map}_${ch}`;
             let dv = val, tt = 0, flash = false; playedAlerts.delete(id);
             if (val.toUpperCase().startsWith("XX")) { const num = val.substring(2); dv = "階段" + (num ? num : "1"); tt = 0; }
             else if (val.toUpperCase() === "ON") { dv = "ON"; flash = true; }
-            else if (val.startsWith("00")) { const n = val.substring(2); dv = "階段" + (n.length > 1 ? n.split('').join('.') : n); if (val.startsWith("004")) flash = true; }
+            else if (val.startsWith("00")) { const n = val.substring(2); dv = "階段" + (n.length > 1 && !n.includes('.') ? n.split('').join('.') : n); if (val.startsWith("004")) flash = true; }
             else tt = Date.now() + (parseTime(val) * 60000);
             db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash });
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 5000);
@@ -265,18 +265,39 @@
                     if (d === 0 && !playedAlerts.has(id)) { playedAlerts.add(id); speak(`${b.map}, 分流 ${b.ch}, 已重生`); }
                 } else {
                     const m = Math.floor((now - b.startTime) / 60000), s = Math.floor(((now - b.startTime) % 60000) / 1000);
-                    const rawVal = b.lastInput.toUpperCase().startsWith("XX") ? b.lastInput.substring(2) : b.lastInput.substring(2);
-                    const lv = b.displayValue === "ON" ? 99 : (parseFloat(rawVal) || 0);
-                    const isW = (lv < 2 && m >= 12) || (lv < 3 && lv >= 2 && m >= 7) || (lv < 4 && lv >= 3 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
-                    el.innerHTML = `<span class="timer-label">${b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isIdle) ? '<span class="warning-icon">⚠️</span>' : ''}`;
-                    if (!isIdle) { let c = (colorMode === 1) ? (lv < 2 ? '#0f0' : lv < 3 ? '#adff2f' : lv < 4 ? '#ff0' : lv < 5 ? '#f90' : '#f00') : (lv >= 99 ? '#f00' : lv >= 4 ? '#f90' : '#ff0'); el.style.color = c; if (btn) { btn.style.color = c; btn.style.borderColor = c; } }
+                    const labelText = b.displayValue;
+                    // 修正顏色邏輯：抓取「階段」後面的數字，並取整數部分決定顏色
+                    const matchNum = labelText.match(/[\d.]+/);
+                    const baseLv = matchNum ? Math.floor(parseFloat(matchNum[0])) : 0;
+                    const lvForColor = labelText === "ON" ? 99 : baseLv;
+
+                    const isW = (lvForColor < 2 && m >= 12) || (lvForColor < 3 && lvForColor >= 2 && m >= 7) || (lvForColor < 4 && lvForColor >= 3 && m >= 5) || (lvForColor === 4 && m >= 3) || (lvForColor === 99 && m >= 3);
+                    el.innerHTML = `<span class="timer-label">${labelText}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isIdle) ? '<span class="warning-icon">⚠️</span>' : ''}`;
+                    
+                    if (!isIdle) { 
+                        let c = (colorMode === 1) ? 
+                            (lvForColor < 2 ? '#0f0' : lvForColor < 3 ? '#adff2f' : lvForColor < 4 ? '#ff0' : lvForColor < 5 ? '#f90' : '#f00') : 
+                            (lvForColor >= 99 ? '#f00' : lvForColor >= 4 ? '#f90' : '#ff0'); 
+                        el.style.color = c; 
+                        if (btn) { btn.style.color = c; btn.style.borderColor = c; } 
+                    }
                 }
             }; up(); timers[id] = setInterval(up, 1000);
         }
 
         function parseTime(v) { const p = v.split(/[:.：]/); if (p.length === 3) return parseInt(p[0])*60 + parseInt(p[1]) + parseInt(p[2])/60; if (p.length === 2) return parseInt(p[0])*60 + parseInt(p[1]); return parseFloat(v) || 0; }
         function addBoss() { const i = document.getElementById('bossInput'), p = i.value.trim().split(/\s+/); if (p.length >= 3) saveBoss(p[0], p[1], p[2]); i.value = ''; unlockAudio(); }
-        function triggerNext(m, c) { db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => { const l = s.val().lastInput; if (l.toUpperCase()==="ON") saveBoss(m,c,""); else if (l.startsWith("00")) { let v = parseInt(l.substring(2,3)); saveBoss(m,c,v>=4?"ON":"00"+(v+1)); } }); unlockAudio(); }
+        function triggerNext(m, c) { 
+            db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => { 
+                const l = s.val().lastInput; 
+                if (l.toUpperCase()==="ON") saveBoss(m,c,""); 
+                else if (l.startsWith("00")) { 
+                    let v = parseInt(l.substring(2,3)); 
+                    saveBoss(m,c,v>=4?"ON":"00"+(v+1)); 
+                } 
+            }); 
+            unlockAudio(); 
+        }
         function deleteBoss(id) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
         function clearAllBosses() { if(confirm("確定清除此房間所有資料？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
         function copyRoomID() { const t = document.createElement('textarea'); t.value = currentRoom; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); alert('房號已複製'); }
