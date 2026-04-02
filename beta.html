@@ -30,8 +30,10 @@
         .vol-range { -webkit-appearance: none; width: 50px; height: 4px; background: #0f0; border-radius: 2px; outline: none; margin: 0 5px; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: #0f0; border-radius: 50%; border: 2px solid #111; cursor: pointer; }
         .user-list-bar { font-size: 12px; color: #555; margin-bottom: 20px; border-bottom: 1px solid #222; padding-bottom: 8px; }
-        .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; margin-bottom: 5px; font-size: 16px; color: #fff; padding: 8px 0; box-sizing: border-box; }
+        .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; margin-bottom: 5px; font-size: 16px; color: #fff; padding: 8px 0; box-sizing: border-box; transition: color 0.2s, border-color 0.2s; }
+        .main-input.duplicate { color: #f66; border-bottom-color: #f66; }
         .input-hint { font-size: 11px; color: #444; margin-bottom: 15px; }
+        .input-hint.duplicate-warn { color: #f66; }
         .sort-row { margin-bottom: 15px; display: flex; gap: 8px; flex-wrap: wrap; }
         .grid-section { margin-bottom: 30px; }
         .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
@@ -73,6 +75,8 @@
                         <button id="voiceBtn" class="audio-btn" onclick="toggleVoice()">🔊</button>
                         <input type="range" id="volRange" class="vol-range" min="0" max="1" step="0.05" value="0.5">
                         <button id="sfxBtn" class="audio-btn" onclick="toggleSfx()">🔔</button>
+                        <button id="warnBtn" class="audio-btn active" onclick="toggleWarn()" title="警告符號開關">⚠️</button>
+                        <button id="colorModeBtn" class="audio-btn active" onclick="toggleColorMode()" title="色彩模式 I（多色）">🎨</button>
                     </div>
                 </div>
                 <div class="room-info">
@@ -92,7 +96,7 @@
             </div>
 
             <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 分鐘/00X/XX數字">
-            <div class="input-hint">格式範例：地城80 3 12:30 ｜ 地城80 3 ON ｜ 地城80 3 001 ｜ 地城80 3 XX</div>
+            <div class="input-hint" id="inputHint">格式範例：80 3 12:30 ｜ 80 3 ON ｜ 80 3 001 ｜ 80 3 XX</div>
             <div id="sectionsContainer"></div>
         </div>
     </div>
@@ -103,8 +107,22 @@
         const db = firebase.database();
         let currentRoom = '', timers = {}, currentSort = 'time';
         let isVoiceEnabled = false, isSfxEnabled = false;
-        let myName = '無名戰友', showWarningIcon = true, audioCtx = null, playedAlerts = new Set();
+        let myName = '無名戰友', showWarningIcon = true, colorMode = 1, audioCtx = null;
         window.currentData = {};
+
+        // ── 修正5：色彩模式 ──
+        function getStatusColor(weight) {
+            if (colorMode === 1) {
+                const colors = { 6:'#FF0000', 5:'#800000', 4:'#FF4500', 3:'#FFA500', 2:'#FFFF00', 1:'#00FF00', 0:'#FF3300' };
+                return colors[weight] || '#fff';
+            } else {
+                if (weight === 6) return '#FF0000';            // ON 紅
+                if (weight >= 2 && weight <= 5) return '#FFA500'; // 階段1~4 同橙色
+                if (weight === 1) return '#00FF00';             // 計時中 綠
+                if (weight === 0) return '#FF3300';             // 超時 暗紅
+                return '#fff';
+            }
+        }
 
         function unlockAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); }
         function speak(text) { if (isVoiceEnabled) { window.speechSynthesis.cancel(); const msg = new SpeechSynthesisUtterance(text); msg.volume = parseFloat(document.getElementById('volRange').value); msg.lang = 'zh-TW'; msg.rate = 1.1; window.speechSynthesis.speak(msg); } }
@@ -113,11 +131,30 @@
         function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); if (isVoiceEnabled) unlockAudio(); }
         function toggleSfx() { isSfxEnabled = !isSfxEnabled; document.getElementById('sfxBtn').classList.toggle('active', isSfxEnabled); if (isSfxEnabled) unlockAudio(); }
 
+        // 修正4：警告符號開關
+        function toggleWarn() {
+            showWarningIcon = !showWarningIcon;
+            document.getElementById('warnBtn').classList.toggle('active', showWarningIcon);
+            renderList();
+        }
+
+        // 修正5：色彩模式切換
+        function toggleColorMode() {
+            colorMode = colorMode === 1 ? 2 : 1;
+            const btn = document.getElementById('colorModeBtn');
+            btn.innerText = colorMode === 1 ? '🎨' : '🖌️';
+            btn.title = colorMode === 1 ? '色彩模式 I（多色）' : '色彩模式 II（階段同色）';
+            renderList();
+        }
+
         function startSession(id) {
-            currentRoom = id; myName = document.getElementById('userNameInput').value.trim() || '無名戰友';
-            document.getElementById('loginView').style.display = 'none'; document.getElementById('mainView').style.display = 'block';
+            currentRoom = id;
+            myName = document.getElementById('userNameInput').value.trim() || '無名戰友';
+            document.getElementById('loginView').style.display = 'none';
+            document.getElementById('mainView').style.display = 'block';
             document.getElementById('displayID').innerText = id;
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
+            document.getElementById('bossInput').addEventListener('input', checkDuplicate);
 
             db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
             db.ref(`rooms/${currentRoom}/users`).on('value', s => {
@@ -126,32 +163,55 @@
                 document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', ');
             });
 
+            // 修正6：Firebase 對新建房間首次監聽會給 null，用 || {} 確保不清空
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
-                const newData = s.val() || {};
-                window.currentData = newData;
-                Object.keys(newData).forEach(key => {
-                    if (newData[key].isFlash) playDing();
-                });
+                const newData = s.val();
+                window.currentData = newData || {};
+                if (newData) {
+                    Object.keys(newData).forEach(key => {
+                        if (newData[key].isFlash) playDing();
+                    });
+                }
                 renderList();
             });
+        }
+
+        // 修正2：即時偵測輸入框是否為已存在的地圖-分流
+        function checkDuplicate() {
+            const input = document.getElementById('bossInput').value.trim();
+            const hintEl = document.getElementById('inputHint');
+            const inputEl = document.getElementById('bossInput');
+            const parts = input.split(/\s+/);
+            if (parts.length >= 2) {
+                const map = parts[0];
+                const ch = parts[1];
+                const id = `${map}_${ch}`;
+                if (window.currentData[id]) {
+                    inputEl.classList.add('duplicate');
+                    hintEl.textContent = `⚠️ ${map} 分流${ch} 已存在，按 Enter 將覆蓋更新`;
+                    hintEl.classList.add('duplicate-warn');
+                    return;
+                }
+            }
+            inputEl.classList.remove('duplicate');
+            hintEl.textContent = '格式範例：80 3 12:30 ｜ 80 3 ON ｜ 80 3 001 ｜ 80 3 XX';
+            hintEl.classList.remove('duplicate-warn');
         }
 
         function addBoss() {
             const input = document.getElementById('bossInput').value.trim();
             if (!input) return;
-
             const parts = input.split(/\s+/);
             if (parts.length < 3) {
-                alert('格式錯誤！\n請輸入：地圖 分流 時間/階段\n範例：地城80 3 12:30');
+                alert('格式錯誤！\n請輸入：地圖 分流 時間/階段\n範例：80 3 12:30');
                 return;
             }
-
             const map = parts[0];
             const ch = parts[1];
             const val = parts.slice(2).join('');
-
             saveBoss(map, ch, val);
             document.getElementById('bossInput').value = '';
+            checkDuplicate();
         }
 
         function getBossStatus(b) {
@@ -161,6 +221,7 @@
             const isIdle = b.targetTime === 0 && (now - b.startTime > oneHour);
             const isGrey = isOverdue || isIdle || b.lastInput.toUpperCase().startsWith("XX");
 
+            // 修正3：ON(6) > 階段4(5) > 階段3(4) > 階段2(3) > 階段1(2) > 計時中(1) > 超時(0)
             let weight = -1;
             if (b.displayValue === "ON") weight = 6;
             else if (b.displayValue.includes("階段4")) weight = 5;
@@ -169,17 +230,8 @@
             else if (b.displayValue.includes("階段1")) weight = 2;
             else if (b.targetTime > 0) weight = (b.targetTime > now) ? 1 : 0;
 
-            const colors = {
-                6: '#FF0000',
-                5: '#800000',
-                4: '#FF4500',
-                3: '#FFA500',
-                2: '#FFFF00',
-                1: '#00FF00',
-                0: '#FF3300'
-            };
-
-            return { isGrey, weight, color: colors[weight] || '#fff', mapLv: parseInt(b.map.match(/\d+/)) || 0 };
+            const color = getStatusColor(weight);
+            return { isGrey, weight, color, mapLv: parseInt((b.map || '').match(/\d+/)) || 0 };
         }
 
         function renderList() {
@@ -194,28 +246,37 @@
                 if (items.length === 0 && currentSort === 'group') return;
                 const sec = document.createElement('div'); sec.className = 'grid-section';
                 sec.innerHTML = `<div class="section-header"><div class="section-label">${label}</div></div><div class="grid"></div>`;
-                container.appendChild(sec); const grid = sec.querySelector('.grid');
+                container.appendChild(sec);
+                const grid = sec.querySelector('.grid');
                 items.forEach(([id, b]) => {
                     const status = getBossStatus(b);
                     const card = document.createElement('div');
                     card.className = `card ${status.isGrey ? 'idle-card' : ''}`;
-                    card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button><h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - 分流${b.ch}</h3>
-                        <div class="timer-container"><div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color: ${status.isGrey ? '#555' : status.color}">...</div>
-                        ${(b.targetTime === 0) ? `<button class="btn-next" id="btn_${id}" style="color: ${status.isGrey ? '#555' : status.color}; border-color: ${status.isGrey ? '#555' : status.color}" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>` : ''}</div>`;
-                    grid.appendChild(card); startTimer(id, b, status.isGrey, status.color);
+                    // 修正1：標題只顯示地圖數字 - 分流號，不顯示「地城」
+                    card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button>
+                        <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3>
+                        <div class="timer-container">
+                            <div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color: ${status.isGrey ? '#555' : status.color}">...</div>
+                            ${(b.targetTime === 0) ? `<button class="btn-next" id="btn_${id}" style="color: ${status.isGrey ? '#555' : status.color}; border-color: ${status.isGrey ? '#555' : status.color}" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>` : ''}
+                        </div>`;
+                    grid.appendChild(card);
+                    startTimer(id, b, status.isGrey, status.color);
                 });
             };
 
+            // 修正3：ON > 階段4321 > 計時中 > 超時/閒置
             if (currentSort === 'time') {
                 const sorted = all.sort((a, b) => {
                     const sA = getBossStatus(a[1]), sB = getBossStatus(b[1]);
-                    if (sA.weight !== sB.weight) return sB.weight - sA.weight;
+                    const effA = sA.isGrey ? -99 : sA.weight;
+                    const effB = sB.isGrey ? -99 : sB.weight;
+                    if (effA !== effB) return effB - effA;
                     return sB.mapLv - sA.mapLv;
                 });
-                renderBox(sorted, "全域時間排序 (ON > 階段 > 計時)");
+                renderBox(sorted, "全域排序：ON > 階段4→1 > 計時中 > 超時");
             }
             else if (currentSort === 'map') {
-                const sorted = all.sort((a,b) => getBossStatus(b[1]).mapLv - getBossStatus(a[1]).mapLv || a[1].ch - b[1].ch);
+                const sorted = all.sort((a, b) => getBossStatus(b[1]).mapLv - getBossStatus(a[1]).mapLv || a[1].ch - b[1].ch);
                 renderBox(sorted, "全域地圖等級排序");
             }
             else {
@@ -226,8 +287,8 @@
                     else if (b.targetTime > 0) timersList.push([id, b]);
                     else stages.push([id, b]);
                 });
-                renderBox(stages.sort((a,b)=>getBossStatus(b[1]).weight - getBossStatus(a[1]).weight), "階段追蹤區");
-                renderBox(timersList.sort((a,b)=>a[1].targetTime - b[1].targetTime), "重生計時區");
+                renderBox(stages.sort((a, b) => getBossStatus(b[1]).weight - getBossStatus(a[1]).weight), "階段追蹤區");
+                renderBox(timersList.sort((a, b) => a[1].targetTime - b[1].targetTime), "重生計時區");
                 renderBox(idleList, "超時閒置區");
             }
         }
@@ -244,14 +305,16 @@
                     const m = Math.floor((now - b.startTime) / 60000), s = Math.floor(((now - b.startTime) % 60000) / 1000);
                     const matchNum = b.displayValue.match(/[\d.]+/);
                     const lv = b.displayValue === "ON" ? 99 : (matchNum ? Math.floor(parseFloat(matchNum[0])) : 0);
-                    const isW = (lv < 2 && m >= 12) || (lv < 3 && lv >= 2 && m >= 7) || (lv < 4 && lv >= 3 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
+                    const isW = (lv < 2 && m >= 12) || (lv >= 2 && lv < 3 && m >= 7) || (lv >= 3 && lv < 4 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
+                    // 修正4：showWarningIcon 控制警告符號顯示
                     el.innerHTML = `<span class="timer-label">${b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isGrey) ? '<span class="warning-icon">⚠️</span>' : ''}`;
                     if (!isGrey) el.style.color = statusColor;
                 }
-            }; up(); timers[id] = setInterval(up, 1000);
+            };
+            up(); timers[id] = setInterval(up, 1000);
         }
 
-        function parseTime(v) { const p = v.split(/[:.：]/); if (p.length === 2) return parseInt(p[0])*60 + parseInt(p[1]); return parseFloat(v) || 0; }
+        function parseTime(v) { const p = v.split(/[:.：]/); if (p.length === 2) return parseInt(p[0]) * 60 + parseInt(p[1]); return parseFloat(v) || 0; }
 
         function saveBoss(map, ch, val) {
             const id = `${map}_${ch}`;
@@ -263,8 +326,11 @@
                 const n = val.substring(2);
                 dv = "階段" + (n.length > 1 && !n.includes('.') ? n.split('').join('.') : n);
                 if (parseFloat(n) >= 4) flash = true;
-            } else tt = Date.now() + (parseTime(val) * 60000);
-            db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash });
+            } else { tt = Date.now() + (parseTime(val) * 60000); }
+
+            db.ref(`rooms/${currentRoom}/bosses/${id}`).set({
+                map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash
+            });
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 5000);
         }
 
@@ -286,12 +352,12 @@
         }
 
         function deleteBoss(id) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
-        function clearAllBosses() { if(confirm("確定一鍵清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
+        function clearAllBosses() { if (confirm("確定一鍵清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
         function copyRoomID() { navigator.clipboard.writeText(currentRoom); alert('房號已複製'); }
         function joinRoom() { const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
         function createRoom() { const i = Math.random().toString(36).substring(2, 8).toUpperCase(); startSession(i); }
-        function setSort(t) { currentSort = t; document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id === `sort${t.charAt(0).toUpperCase()+t.slice(1)}Btn`)); renderList(); }
-        function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); }
+        function setSort(t) { currentSort = t; document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id === `sort${t.charAt(0).toUpperCase() + t.slice(1)}Btn`)); renderList(); }
+        function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); checkDuplicate(); }
     </script>
 </body>
 </html>
