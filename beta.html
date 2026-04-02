@@ -163,16 +163,17 @@
                 document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', ');
             });
 
-            // 修正6：Firebase 對新建房間首次監聽會給 null，用 || {} 確保不清空
+            // --- 核心修復部分 ---
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
-                const newData = s.val();
-                window.currentData = newData || {};
-                if (newData) {
-                    Object.keys(newData).forEach(key => {
-                        if (newData[key].isFlash) playDing();
-                    });
-                }
-                renderList();
+                const newData = s.val() || {}; // 確保 null 時變成空物件
+                window.currentData = newData; 
+                
+                // 只有在真的有資料時才檢查閃爍音效，避免對 null 跑 Object.keys 報錯
+                Object.keys(newData).forEach(key => {
+                    if (newData[key] && newData[key].isFlash) playDing();
+                });
+                
+                renderList(); // 觸發畫面渲染
             });
         }
 
