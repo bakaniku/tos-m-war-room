@@ -30,7 +30,8 @@
         .vol-range { -webkit-appearance: none; width: 50px; height: 4px; background: #0f0; border-radius: 2px; outline: none; margin: 0 5px; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: #0f0; border-radius: 50%; border: 2px solid #111; cursor: pointer; }
         .user-list-bar { font-size: 12px; color: #555; margin-bottom: 20px; border-bottom: 1px solid #222; padding-bottom: 8px; }
-        .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; margin-bottom: 5px; font-size: 16px; color: #fff; padding: 8px 0; }
+        .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; margin-bottom: 5px; font-size: 16px; color: #fff; padding: 8px 0; box-sizing: border-box; }
+        .input-hint { font-size: 11px; color: #444; margin-bottom: 15px; }
         .sort-row { margin-bottom: 15px; display: flex; gap: 8px; flex-wrap: wrap; }
         .grid-section { margin-bottom: 30px; }
         .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
@@ -91,6 +92,7 @@
             </div>
 
             <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 分鐘/00X/XX數字">
+            <div class="input-hint">格式範例：地城80 3 12:30 ｜ 地城80 3 ON ｜ 地城80 3 001 ｜ 地城80 3 XX</div>
             <div id="sectionsContainer"></div>
         </div>
     </div>
@@ -116,9 +118,9 @@
             document.getElementById('loginView').style.display = 'none'; document.getElementById('mainView').style.display = 'block';
             document.getElementById('displayID').innerText = id;
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
-            
+
             db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
-            db.ref(`rooms/${currentRoom}/users`).on('value', s => { 
+            db.ref(`rooms/${currentRoom}/users`).on('value', s => {
                 const users = Object.values(s.val() || {});
                 document.getElementById('onlineCount').innerText = users.length;
                 document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', ');
@@ -126,13 +128,30 @@
 
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
                 const newData = s.val() || {};
-                // 修正：確保全域變數同步更新
                 window.currentData = newData;
-                Object.keys(newData).forEach(key => { 
-                    if (newData[key].isFlash) playDing(); 
+                Object.keys(newData).forEach(key => {
+                    if (newData[key].isFlash) playDing();
                 });
-                renderList(); 
+                renderList();
             });
+        }
+
+        function addBoss() {
+            const input = document.getElementById('bossInput').value.trim();
+            if (!input) return;
+
+            const parts = input.split(/\s+/);
+            if (parts.length < 3) {
+                alert('格式錯誤！\n請輸入：地圖 分流 時間/階段\n範例：地城80 3 12:30');
+                return;
+            }
+
+            const map = parts[0];
+            const ch = parts[1];
+            const val = parts.slice(2).join('');
+
+            saveBoss(map, ch, val);
+            document.getElementById('bossInput').value = '';
         }
 
         function getBossStatus(b) {
@@ -148,30 +167,28 @@
             else if (b.displayValue.includes("階段3")) weight = 4;
             else if (b.displayValue.includes("階段2")) weight = 3;
             else if (b.displayValue.includes("階段1")) weight = 2;
-            else if (b.targetTime > 0) weight = (b.targetTime > now) ? 1 : 0; 
+            else if (b.targetTime > 0) weight = (b.targetTime > now) ? 1 : 0;
 
             const colors = {
-                6: '#FF0000', // ON 正紅
-                5: '#800000', // 階4 酒紅
-                4: '#FF4500', // 階3 橘紅
-                3: '#FFA500', // 階2 橙
-                2: '#FFFF00', // 階1 黃
-                1: '#00FF00', // 計時 綠
-                0: '#FF3300'  // 超時 紅
+                6: '#FF0000',
+                5: '#800000',
+                4: '#FF4500',
+                3: '#FFA500',
+                2: '#FFFF00',
+                1: '#00FF00',
+                0: '#FF3300'
             };
 
             return { isGrey, weight, color: colors[weight] || '#fff', mapLv: parseInt(b.map.match(/\d+/)) || 0 };
         }
 
         function renderList() {
-            const container = document.getElementById('sectionsContainer'); 
-            container.innerHTML = ''; 
-            Object.values(timers).forEach(clearInterval); 
+            const container = document.getElementById('sectionsContainer');
+            container.innerHTML = '';
+            Object.values(timers).forEach(clearInterval);
             timers = {};
-            
+
             const all = Object.entries(window.currentData || {});
-            const now = Date.now();
-            const oneHour = 3600000;
 
             const renderBox = (items, label) => {
                 if (items.length === 0 && currentSort === 'group') return;
@@ -196,7 +213,7 @@
                     return sB.mapLv - sA.mapLv;
                 });
                 renderBox(sorted, "全域時間排序 (ON > 階段 > 計時)");
-            } 
+            }
             else if (currentSort === 'map') {
                 const sorted = all.sort((a,b) => getBossStatus(b[1]).mapLv - getBossStatus(a[1]).mapLv || a[1].ch - b[1].ch);
                 renderBox(sorted, "全域地圖等級排序");
@@ -206,7 +223,7 @@
                 all.forEach(([id, b]) => {
                     const st = getBossStatus(b);
                     if (st.isGrey) idleList.push([id, b]);
-                    else if (b.targetTime > 0) timersList.push([id, b]); 
+                    else if (b.targetTime > 0) timersList.push([id, b]);
                     else stages.push([id, b]);
                 });
                 renderBox(stages.sort((a,b)=>getBossStatus(b[1]).weight - getBossStatus(a[1]).weight), "階段追蹤區");
@@ -235,17 +252,17 @@
         }
 
         function parseTime(v) { const p = v.split(/[:.：]/); if (p.length === 2) return parseInt(p[0])*60 + parseInt(p[1]); return parseFloat(v) || 0; }
-        
+
         function saveBoss(map, ch, val) {
             const id = `${map}_${ch}`;
             let dv = val, tt = 0, flash = false;
             const uv = val.toUpperCase();
             if (uv.startsWith("XX")) { dv = "階段" + (val.substring(2) || "1"); }
             else if (uv === "ON") { dv = "ON"; flash = true; }
-            else if (val.startsWith("00")) { 
-                const n = val.substring(2); 
-                dv = "階段" + (n.length > 1 && !n.includes('.') ? n.split('').join('.') : n); 
-                if (parseFloat(n) >= 4) flash = true; 
+            else if (val.startsWith("00")) {
+                const n = val.substring(2);
+                dv = "階段" + (n.length > 1 && !n.includes('.') ? n.split('').join('.') : n);
+                if (parseFloat(n) >= 4) flash = true;
             } else tt = Date.now() + (parseTime(val) * 60000);
             db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash });
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 5000);
