@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.2.1</title>
+    <title>TOS M FB TIME v1.2.3</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -102,7 +102,7 @@
                     </div>
                 </div>
                 <div class="room-info">
-                    <span class="version-tag">v1.2.1</span>
+                    <span class="version-tag">v1.2.3</span>
                     <button class="btn-danger" onclick="clearAllBosses()">一鍵清除</button>
                     <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
@@ -112,7 +112,7 @@
 
             <div class="info-bar">
                 <span class="info-icon">ℹ️</span>
-                <p class="info-text">優化提示：輸入 0015 會自動轉為 R1.5 (階段1.5)，若看到 R 字頭標記屬系統正常轉換，不影響操作。</p>
+                <p class="info-text">優化提示：輸入 0015 會自動轉為 R1.5；特定房間保護中，輸入指令可解鎖編輯權限。</p>
             </div>
 
             <div class="sort-row">
@@ -144,6 +144,17 @@
         let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
         let lastProcessedInput = {};
 
+        // --- 房間保護設定 ---
+        const protectedRooms = {
+            '000000': 'tosm'
+        };
+
+        function hasAuth() {
+            const pass = protectedRooms[currentRoom];
+            if (!pass) return true; 
+            return localStorage.getItem(`auth_${currentRoom}`) === pass;
+        }
+
         function updateVolBg(el) { const val = (el.value - el.min) / (el.max - el.min) * 100; el.style.backgroundSize = val + '% 100%'; }
         function getStatusColor(weight) {
             const colors = { 6:'#800000', 5:'#FF0000', 4:'#FF4500', 3:'#FFA500', 2:'#FFFF00', 1:'#00FF00', 0:'#FF3300' };
@@ -151,6 +162,7 @@
             return (weight === 6) ? '#800000' : (weight === 5) ? '#FF0000' : (weight >= 2 && weight <= 4) ? '#FFFF00' : (weight === 1) ? '#00FF00' : '#FF3300';
         }
         function unlockAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); }
+        
         function playDing(isTest = false) { 
             if (!isSfxEnabled && !isTest) return;
             unlockAudio(); 
@@ -191,13 +203,13 @@
             unlockAudio(); 
             if (isSfxEnabled) playDing(true); 
         }
+
         function toggleWarn() { showWarningIcon = !showWarningIcon; document.getElementById('warnBtn').classList.toggle('active', showWarningIcon); renderList(); }
         function toggleColorMode() { colorMode = colorMode === 1 ? 2 : 1; document.getElementById('colorModeBtn').innerText = colorMode === 1 ? '🎨' : '🖌️'; renderList(); }
         function toggleChat() { isChatOpen = !isChatOpen; document.getElementById('chatPanel').classList.toggle('chat-closed', !isChatOpen); document.getElementById('chatBtn').classList.toggle('active', isChatOpen); if (isChatOpen) { lastReadMsgTime = Date.now(); document.getElementById('chatDot').classList.remove('show'); scrollChat(); } }
         function scrollChat() { const el = document.getElementById('chatMsgs'); setTimeout(() => { el.scrollTop = el.scrollHeight; }, 100); }
         function sendMsg() { const i = document.getElementById('chatInput'); if (!i.value.trim()) return; db.ref(`rooms/${currentRoom}/chat`).push({ name: myName, text: i.value.trim(), t: Date.now() }); i.value = ''; }
 
-        // 核心邏輯：計算卡片狀態
         function getBossStatus(b, bossId) {
             const now = Date.now(), oneHour = 3600000;
             const isGrey = b.lastInput.toString().toUpperCase().startsWith("XX") || (b.targetTime > 0 && (now - b.targetTime > oneHour)) || (b.targetTime === 0 && (now - b.startTime > oneHour));
@@ -229,6 +241,8 @@
             container.innerHTML = '';
             Object.values(timers).forEach(clearInterval); timers = {};
             const all = Object.entries(window.currentData);
+            const auth = hasAuth();
+
             const renderBox = (items, label) => {
                 if (items.length === 0) return;
                 const sec = document.createElement('div'); sec.className = 'grid-section';
@@ -238,11 +252,12 @@
                 items.forEach(([id, b]) => {
                     const st = getBossStatus(b, id);
                     const card = document.createElement('div'); card.className = 'card';
-                    card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button>
+                    card.innerHTML = `${auth ? `<button class="del" onclick="deleteBoss('${id}')">×</button>` : ''}
                         <div class="card-title-row"><button class="pin-btn ${st.pinned?'pinned':''}" onclick="togglePin('${id}')">★</button>
                         <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3></div>
                         <div class="timer-container"><div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color: ${st.isGrey ? '#555' : st.color}">...</div>
-                        ${(b.targetTime === 0) ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color}; border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>` : ''}</div>`;
+                        ${(b.targetTime === 0 && auth) ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color}; border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>` : ''}</div>
+                        ${b.updater ? `<div style="font-size:10px; color:#444; text-align:right; margin-top:5px;">Last: ${b.updater}</div>` : ''}`;
                     grid.appendChild(card); startTimer(id, b, st.isGrey, st.color);
                 });
             };
@@ -283,6 +298,16 @@
         }
 
         function saveBoss(map, ch, val, doFocus = false) {
+            const pass = protectedRooms[currentRoom];
+            if (pass && map.toUpperCase() === "ADMIN" && ch === pass) {
+                localStorage.setItem(`auth_${currentRoom}`, pass);
+                alert("管理權限已解鎖！");
+                document.getElementById('bossInput').value = '';
+                renderList();
+                return;
+            }
+            if (!hasAuth()) { alert("此房間已保護，請輸入正確暗號解鎖。"); return; }
+
             const id = `${map}_${ch}`; 
             let dv = val, tt = 0, flash = false;
             let uv = val.toString().toUpperCase();
@@ -301,12 +326,16 @@
             } else {
                 tt = Date.now() + ((uv.split(/[:.：]/).length===2?parseInt(uv.split(/[:.：]/)[0])*60+parseInt(uv.split(/[:.：]/)[1]):parseFloat(uv)||0) * 60000);
             }
-            db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: uv, displayValue: dv, startTime: Date.now(), isFlash: flash });
+            db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ 
+                map, ch, targetTime: tt, lastInput: uv, displayValue: dv, 
+                startTime: Date.now(), isFlash: flash, updater: myName 
+            });
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 3000);
             if (doFocus) doEdit(map, ch, uv);
         }
 
         function triggerNext(m, c) {
+            if (!hasAuth()) return;
             db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => {
                 const d = s.val(); if (!d) return; 
                 let cur = d.lastInput.toString().toUpperCase();
@@ -343,12 +372,12 @@
                     if (inputVal !== lastProcessedInput[k] && boss.isFlash) {
                         if (inputVal === "ON") {
                             playDing();
-                            speak(`${boss.map}分流${boss.ch}重生`); // 加入這行
+                            speak(`${boss.map}分流${boss.ch}重生`);
                         } else if (inputVal.startsWith("R")) {
                             const num = parseFloat(inputVal.substring(1)) || 0;
                             if (num >= 4.0) {
                                 playDing();
-                                speak(`${boss.map}分流${boss.ch}階段${num}`); // 加入這行
+                                speak(`${boss.map}分流${boss.ch}階段${num}`);
                             }
                         }
                     }
@@ -370,8 +399,8 @@
             i.setSelectionRange(m.length + c.length + 2, i.value.length);
         }
         function addBoss() { const i = document.getElementById('bossInput'); const p = i.value.trim().split(/\s+/); if (p.length < 3) return; saveBoss(p[0], p[1], p.slice(2).join('')); i.value = ''; }
-        function deleteBoss(id) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
-        function clearAllBosses() { if (confirm("確定一鍵清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
+        function deleteBoss(id) { if (!hasAuth()) return; db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
+        function clearAllBosses() { if (!hasAuth()) { alert("無管理權限"); return; } if (confirm("確定一鍵清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
         function copyRoomID() { navigator.clipboard.writeText(currentRoom); alert('房號已複製'); }
         function joinRoom() { const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
         function createRoom() { const i = Math.random().toString(36).substring(2, 8).toUpperCase(); startSession(i); }
