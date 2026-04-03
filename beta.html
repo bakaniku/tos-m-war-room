@@ -3,30 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.2.3</title>
+    <title>TOS M FB TIME v1.2.4</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
         :root { --accent: #0f0; --bg: #000; --card-bg: #111; }
         body { margin: 0; background: var(--bg); color: #fff; font-family: sans-serif; overflow-x: hidden; }
         
-        /* 佈局設計 */
         #app { display: grid; min-height: 100vh; grid-template-columns: 1fr; }
         
-        /* 電腦版：左主內容，右聊天室 */
+        /* 電腦版佈局 */
         @media (min-width: 768px) {
             #app { grid-template-columns: 1fr 320px; }
             #sidePanel { border-left: 1px solid #222; height: 100vh; position: sticky; top: 0; }
             #mainContent { padding: 20px 40px; }
         }
 
-        /* 手機版：上下佈局 */
+        /* 手機版佈局 */
         @media (max-width: 767px) {
             #sidePanel { border-top: 1px solid #222; padding-bottom: 20px; }
             #mainContent { padding: 15px; }
         }
 
-        #mainContent { box-sizing: border-box; }
         .login-view { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh; }
         .title { color: var(--accent); font-size: 32px; font-weight: bold; margin-bottom: 40px; }
         .input-group { width: 220px; display: flex; flex-direction: column; gap: 15px; }
@@ -50,10 +48,8 @@
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: var(--accent); border-radius: 50%; cursor: pointer; border: 2px solid #111; }
 
         .user-list-bar { font-size: 12px; color: #555; margin-bottom: 8px; border-bottom: 1px solid #222; padding-bottom: 8px; }
-        .info-bar { background: #111; border-radius: 6px; padding: 8px 12px; border: 1px solid #333; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; }
-        .info-text { font-size: 12px; color: #888; margin: 0; }
-
-        .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid var(--accent); background: transparent; margin-bottom: 5px; font-size: 18px; color: #fff; padding: 10px 0; outline: none; }
+        .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid var(--accent); background: transparent; margin-bottom: 15px; font-size: 18px; color: #fff; padding: 10px 0; outline: none; }
+        
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         .card { background: var(--card-bg); padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
         .timer { font-size: 18px; font-weight: bold; margin-top: 8px; font-family: monospace; }
@@ -61,7 +57,6 @@
         @keyframes flash { 0%, 100% { opacity: 1; color: #fff; } 50% { opacity: 0.3; } }
         .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; margin-top: 8px; border: 2px solid; }
 
-        /* 側邊留言板佈置於右側 */
         #sidePanel { display: flex; flex-direction: column; background: #080808; overflow: hidden; }
         .chat-header { padding: 15px; font-weight: bold; color: #555; border-bottom: 1px solid #111; font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
         .chat-msgs { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
@@ -70,15 +65,13 @@
         .msg-text { font-size: 13px; color: #ccc; word-break: break-all; }
         .chat-input-row { padding: 10px; display: flex; gap: 5px; border-top: 1px solid #111; }
         .chat-input-row input { flex: 1; background: #111; border: 1px solid #222; color: #fff; padding: 8px; border-radius: 4px; font-size: 13px; outline: none; }
-        .chat-input-row button { background: var(--accent); color: #000; padding: 8px 12px; font-size: 12px; font-weight: bold; border-radius: 4px; }
-
+        
         .copy-icon { width: 18px; cursor: pointer; vertical-align: middle; }
         .version-tag { font-size: 10px; color: #333; margin-right: 5px; }
     </style>
 </head>
 <body>
     <div id="app">
-        <!-- 登入頁面 -->
         <div id="loginView" class="login-view">
             <div class="title">TOS M FB TIME</div>
             <div class="input-group">
@@ -89,7 +82,6 @@
             </div>
         </div>
 
-        <!-- 主操作區 (居左) -->
         <div id="mainContent" style="display:none;">
             <div class="header">
                 <div class="room-info">
@@ -104,37 +96,22 @@
                     </div>
                 </div>
                 <div class="room-info">
-                    <span class="version-tag">v1.2.3</span>
+                    <span class="version-tag">v1.2.4</span>
                     <button class="btn-danger" onclick="clearAllBosses()">一鍵清除</button>
                     <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
             </div>
-
             <div class="user-list-bar">在線:<span id="onlineCount" style="color:var(--accent);">0</span> | <span id="onlineUsers">載入中...</span></div>
-
-            <div class="info-bar">
-                <p class="info-text">💡 提示：點擊圖示可測試音量；0015 會自動轉為 R1.5。</p>
-            </div>
-
-            <div class="sort-row" style="margin-bottom:15px; display:flex; gap:8px;">
-                <button id="sortTimeBtn" class="btn-toggle active" onclick="setSort('time')">時間排序</button>
-                <button id="sortMapBtn" class="btn-toggle" onclick="setSort('map')">地圖排序</button>
-            </div>
-
             <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 階段(R)/分鐘">
             <div id="sectionsContainer"></div>
         </div>
 
-        <!-- 聊天室 (居右) -->
         <div id="sidePanel" style="display:none;">
-            <div class="chat-header">
-                <span>💬 戰友留言板</span>
-                <span id="chatCount" style="color:var(--accent)">0</span>
-            </div>
+            <div class="chat-header"><span>💬 戰友留言板</span><span id="chatCount" style="color:var(--accent)">0</span></div>
             <div class="chat-msgs" id="chatMsgs"></div>
             <div class="chat-input-row">
                 <input type="text" id="chatInput" placeholder="輸入訊息..." maxlength="80">
-                <button onclick="sendMsg()">送出</button>
+                <button onclick="sendMsg()" class="btn-solid" style="padding:8px 12px; font-size:12px;">送出</button>
             </div>
         </div>
     </div>
@@ -144,118 +121,64 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        let currentRoom = '', timers = {}, currentSort = 'time', isVoiceEnabled = false, isSfxEnabled = false;
+        let currentRoom = '', timers = {}, isVoiceEnabled = false, isSfxEnabled = false;
         let myName = '無名戰友', showWarningIcon = true, colorMode = 1, audioCtx = null, globalVol = 0.5;
         window.currentData = {};
-        let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
         let lastProcessedInput = {};
 
-        // --- 音量與功能 ---
-        function updateVol(el) {
-            globalVol = parseFloat(el.value);
-            const val = (globalVol - el.min) / (el.max - el.min) * 100;
-            el.style.backgroundSize = val + '% 100%';
-        }
-
-        function unlockAudio() {
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-        }
-
+        // --- 音效與語音 ---
+        function updateVol(el) { globalVol = parseFloat(el.value); el.style.backgroundSize = (globalVol*100) + '% 100%'; }
+        function unlockAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); }
+        
         function playDing(test = false) {
             if (!isSfxEnabled && !test) return;
             unlockAudio();
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
+            osc.type = 'sine'; osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+            osc.connect(gain); gain.connect(audioCtx.destination);
             gain.gain.setValueAtTime(0, audioCtx.currentTime);
             gain.gain.linearRampToValueAtTime(globalVol * 0.3, audioCtx.currentTime + 0.01);
-            osc.start();
-            osc.stop(audioCtx.currentTime + 0.2);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.2);
         }
 
         function speak(text, test = false) {
             if (!isVoiceEnabled && !test) return;
             window.speechSynthesis.cancel();
             const msg = new SpeechSynthesisUtterance(text);
-            msg.volume = globalVol;
-            msg.lang = 'zh-TW';
-            msg.rate = 1.2;
+            msg.volume = globalVol; msg.lang = 'zh-TW'; msg.rate = 1.2;
             window.speechSynthesis.speak(msg);
         }
 
-        function toggleVoice() {
-            isVoiceEnabled = !isVoiceEnabled;
-            document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled);
-            if(isVoiceEnabled) speak("語音開啟", true);
-        }
+        function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); if(isVoiceEnabled) speak("語音開啟", true); }
+        function toggleSfx() { isSfxEnabled = !isSfxEnabled; document.getElementById('sfxBtn').classList.toggle('active', isSfxEnabled); if(isSfxEnabled) playDing(true); }
 
-        function toggleSfx() {
-            isSfxEnabled = !isSfxEnabled;
-            document.getElementById('sfxBtn').classList.toggle('active', isSfxEnabled);
-            if(isSfxEnabled) playDing(true);
-        }
-
-        // --- 核心 ---
-        function startSession(id) {
-            currentRoom = id.toUpperCase();
-            myName = document.getElementById('userNameInput').value.trim() || '無名戰友';
-            document.getElementById('loginView').style.display = 'none';
-            document.getElementById('mainContent').style.display = 'block';
-            document.getElementById('sidePanel').style.display = 'flex';
-            document.getElementById('displayID').innerText = currentRoom;
-            
-            db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
-            db.ref(`rooms/${currentRoom}/users`).on('value', s => {
-                const users = Object.values(s.val() || {});
-                document.getElementById('onlineCount').innerText = users.length;
-                document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', ');
-            });
-
-            db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
-                const data = s.val() || {};
-                Object.keys(data).forEach(k => {
-                    const boss = data[k];
-                    const input = boss.lastInput.toUpperCase();
-                    if (input !== lastProcessedInput[k] && boss.isFlash) {
-                        if (input === "ON") {
-                            playDing();
-                            speak(boss.map + "分流" + boss.ch + " 重生");
-                        } else if (input.startsWith("R")) {
-                            const num = parseFloat(input.substring(1)) || 0;
-                            if (num >= 4.0) {
-                                playDing();
-                                speak(boss.map + "分流" + boss.ch + " 階段" + num);
-                            }
-                        }
-                    }
-                    lastProcessedInput[k] = input;
-                });
-                window.currentData = data;
-                renderList();
-            });
-
-            initChat();
-            document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
+        // --- 核心邏輯 ---
+        function getBossStatus(b) {
+            const now = Date.now();
+            const isGrey = b.lastInput.toString().toUpperCase().startsWith("XX") || (b.targetTime > 0 && (now - b.targetTime > 3600000)) || (b.targetTime === 0 && (now - b.startTime > 3600000));
+            let weight = -1;
+            if (b.displayValue === "ON") weight = 6;
+            else if (b.displayValue.includes("階段4")) weight = 5;
+            else if (b.displayValue.includes("階段3")) weight = 4;
+            else if (b.displayValue.includes("階段2")) weight = 3;
+            else if (b.displayValue.includes("階段1")) weight = 2;
+            else if (b.targetTime > 0) weight = (b.targetTime > now) ? 1 : 0;
+            const colors = { 6:'#800000', 5:'#FF0000', 4:'#FF4500', 3:'#FFA500', 2:'#FFFF00', 1:'#00FF00', 0:'#FF3300' };
+            return { isGrey, weight, color: colors[weight] || '#fff' };
         }
 
         function saveBoss(map, ch, val) {
             const id = `${map}_${ch}`;
             let uv = val.toString().toUpperCase();
             let dv = val, tt = 0, flash = false;
-
             if (uv.startsWith("00")) {
                 let raw = uv.replace("00", "");
                 uv = (raw.length === 2 && !raw.includes('.')) ? "R" + raw[0] + "." + raw[1] : "R" + raw;
             }
-
             if (uv === "ON") { dv = "ON"; flash = true; }
             else if (uv.startsWith("R")) {
-                const num = uv.substring(1);
-                dv = "階段" + num;
+                const num = uv.substring(1); dv = "階段" + num;
                 if (parseFloat(num) >= 4.0) flash = true;
             } else {
                 tt = Date.now() + ((uv.split(/[:.：]/).length===2?parseInt(uv.split(/[:.：]/)[0])*60+parseInt(uv.split(/[:.：]/)[1]):parseFloat(uv)||0) * 60000);
@@ -264,9 +187,39 @@
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 3000);
         }
 
+        function renderList() {
+            const container = document.getElementById('sectionsContainer');
+            container.innerHTML = ''; Object.values(timers).forEach(clearInterval);
+            const all = Object.entries(window.currentData);
+            const sorted = all.sort((a,b) => getBossStatus(b[1]).weight - getBossStatus(a[1]).weight);
+
+            const grid = document.createElement('div'); grid.className = 'grid';
+            container.appendChild(grid);
+
+            sorted.forEach(([id, b]) => {
+                const st = getBossStatus(b);
+                const card = document.createElement('div'); card.className = 'card';
+                card.innerHTML = `<button onclick="deleteBoss('${id}')" style="position:absolute;right:8px;top:8px;background:none;color:#444;border:none;cursor:pointer;">×</button>
+                    <div style="font-weight:bold;color:#aaa;cursor:pointer;font-size:14px;" onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</div>
+                    <div class="timer ${b.isFlash?'flash-anim':''}" id="t_${id}" style="color:${st.color}">...</div>
+                    ${b.targetTime===0?`<button class="btn-next" style="color:${st.color};border-color:${st.color}" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>`:''}`;
+                grid.appendChild(card);
+                const up = () => {
+                    const now = Date.now(); const el = document.getElementById(`t_${id}`); if (!el) return;
+                    if (b.targetTime > 0) {
+                        const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
+                        el.innerText = `${Math.floor(a/3600)}:${Math.floor((a%3600)/60).toString().padStart(2,'0')}:${(a%60).toString().padStart(2,'0')}`;
+                    } else {
+                        const m = Math.floor((now - b.startTime) / 60000), s = Math.floor(((now - b.startTime) % 60000) / 1000);
+                        el.innerHTML = `<span>${b.displayValue}</span><span style="font-size:11px;opacity:0.5;margin-left:4px;">(${m}:${s.toString().padStart(2,'0')})</span>`;
+                    }
+                };
+                up(); timers[id] = setInterval(up, 1000);
+            });
+        }
+
         function triggerNext(m, c) {
-            const d = window.currentData[`${m}_${c}`];
-            if (!d) return;
+            const d = window.currentData[`${m}_${c}`]; if (!d) return;
             let cur = d.lastInput.toUpperCase();
             if (cur === "ON") saveBoss(m, c, "R1");
             else if (cur.startsWith("R")) {
@@ -276,7 +229,7 @@
             unlockAudio();
         }
 
-        // --- 留言板 ---
+        // --- 聊天室 ---
         function initChat() {
             db.ref(`rooms/${currentRoom}/chat`).limitToLast(50).on('value', s => {
                 const list = Object.values(s.val() || {}).sort((a,b) => a.t - b.t);
@@ -287,67 +240,51 @@
             });
             document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMsg(); });
         }
-
         function sendMsg() {
-            const i = document.getElementById('chatInput');
-            if (!i.value.trim()) return;
-            db.ref(`rooms/${currentRoom}/chat`).push({ name: myName, text: i.value.trim(), t: Date.now() });
-            i.value = '';
+            const i = document.getElementById('chatInput'); if (!i.value.trim()) return;
+            db.ref(`rooms/${currentRoom}/chat`).push({ name: myName, text: i.value.trim(), t: Date.now() }); i.value = '';
         }
 
-        // --- 渲染 ---
-        function getBossStatus(b, bossId) {
-            const now = Date.now();
-            const isGrey = b.lastInput.toString().toUpperCase().startsWith("XX") || (b.targetTime > 0 && (now - b.targetTime > 3600000)) || (b.targetTime === 0 && (now - b.startTime > 3600000));
-            let weight = -1;
-            const stageVal = parseFloat((b.displayValue || '').match(/[\d.]+/)) || 0;
-            if (b.displayValue === "ON") weight = 6;
-            else if (b.displayValue.includes("階段4")) weight = 5;
-            else if (b.displayValue.includes("階段3")) weight = 4;
-            else if (b.displayValue.includes("階段2")) weight = 3;
-            else if (b.displayValue.includes("階段1")) weight = 2;
-            else if (b.targetTime > 0) weight = (b.targetTime > now) ? 1 : 0;
-            return { isGrey, weight, stageVal, color: getStatusColor(weight) };
-        }
-
-        function getStatusColor(w) {
-            const c = { 6:'#800000', 5:'#FF0000', 4:'#FF4500', 3:'#FFA500', 2:'#FFFF00', 1:'#00FF00', 0:'#FF3300' };
-            return c[w] || '#fff';
-        }
-
-        function renderList() {
-            const container = document.getElementById('sectionsContainer');
-            container.innerHTML = '';
-            Object.values(timers).forEach(clearInterval);
-            const all = Object.entries(window.currentData);
-            
-            const sorted = all.sort((a,b) => {
-                const sA = getBossStatus(a[1], a[0]);
-                const sB = getBossStatus(b[1], b[0]);
-                if (sA.weight !== sB.weight) return sB.weight - sA.weight;
-                return b[1].startTime - a[1].startTime;
+        // --- 房間進入 ---
+        function startSession(id) {
+            currentRoom = id.toUpperCase();
+            document.getElementById('loginView').style.display = 'none';
+            document.getElementById('mainContent').style.display = 'block';
+            document.getElementById('sidePanel').style.display = 'flex';
+            document.getElementById('displayID').innerText = currentRoom;
+            db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
+            db.ref(`rooms/${currentRoom}/users`).on('value', s => {
+                const users = Object.values(s.val() || {});
+                document.getElementById('onlineCount').innerText = users.length;
+                document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', ');
             });
+            db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
+                const data = s.val() || {};
+                Object.keys(data).forEach(k => {
+                    const b = data[k]; const inp = b.lastInput.toUpperCase();
+                    if (inp !== lastProcessedInput[k] && b.isFlash) {
+                        if (inp === "ON") { playDing(); speak(b.map + "分流" + b.ch + " 重生"); }
+                        else if (inp.startsWith("R")) {
+                            const n = parseFloat(inp.substring(1)); if (n >= 4.0) { playDing(); speak(b.map + "分流" + b.ch + " 階段" + n); }
+                        }
+                    }
+                    lastProcessedInput[k] = inp;
+                });
+                window.currentData = data; renderList();
+            });
+            initChat();
+            document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
+        }
 
-            const grid = document.createElement('div');
-            grid.className = 'grid';
-            container.appendChild(grid);
-
-            sorted.forEach(([id, b]) => {
-                const st = getBossStatus(b, id);
-                const card = document.createElement('div'); card.className = 'card';
-                card.innerHTML = `<button onclick="deleteBoss('${id}')" style="position:absolute;right:8px;top:8px;background:none;color:#444;border:none;cursor:pointer;">×</button>
-                    <div style="font-weight:bold;color:#aaa;cursor:pointer;font-size:15px;" onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</div>
-                    <div class="timer ${b.isFlash?'flash-anim':''}" id="t_${id}" style="color:${st.color}">...</div>
-                    ${b.targetTime===0?`<button class="btn-next" style="color:${st.color};border-color:${st.color}" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>`:''}`;
-                grid.appendChild(card);
-                
-                const up = () => {
-                    const now = Date.now();
-                    const el = document.getElementById(`t_${id}`);
-                    if (!el) return;
-                    if (b.targetTime > 0) {
-                        const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
-                        el.innerText = `${Math.floor(a/3600)}:${Math.floor((a%3600)/60).toString().padStart(2,'0')}:${(a%60).toString().padStart(2,'0')}`;
-                    } else {
-                        const m = Math.floor((now - b.startTime) / 60000), s = Math.floor(((now - b.startTime) % 60000) / 1000);
-                        el.innerHTML =
+        function joinRoom() { myName = document.getElementById('userNameInput').value.trim() || '無名戰友'; const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
+        function createRoom() { myName = document.getElementById('userNameInput').value.trim() || '無名戰友'; const i = Math.random().toString(36).substring(2, 8).toUpperCase(); startSession(i); }
+        function addBoss() { const i = document.getElementById('bossInput'); const p = i.value.trim().split(/\s+/); if(p.length>=3) { saveBoss(p[0],p[1],p.slice(2).join('')); i.value=''; } }
+        function deleteBoss(id) { if(confirm("刪除？")) db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
+        function clearAllBosses() { if(confirm("清除全部？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
+        function copyRoomID() { navigator.clipboard.writeText(currentRoom); alert('房號已複製'); }
+        function doEdit(m,c,l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); }
+        function toggleWarn() { showWarningIcon = !showWarningIcon; renderList(); }
+        function toggleColorMode() { colorMode = (colorMode===1?2:1); renderList(); }
+    </script>
+</body>
+</html>
