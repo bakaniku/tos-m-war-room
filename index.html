@@ -139,7 +139,7 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
         let currentRoom = '', timers = {}, currentSort = 'time', isVoiceEnabled = false, isSfxEnabled = false;
-        let myName = '無名戰友', showWarningIcon = true, colorMode = 1, audioCtx = null, isChatOpen = true, lastReadMsgTime = 0;
+        let myName = 'No Name', showWarningIcon = true, colorMode = 1, audioCtx = null, isChatOpen = true, lastReadMsgTime = 0;
         window.currentData = {};
         let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
         let lastProcessedInput = {};
@@ -288,7 +288,7 @@
         }
 
         function startSession(id) {
-            currentRoom = id.toUpperCase(); myName = document.getElementById('userNameInput').value.trim() || '無名戰友';
+            currentRoom = id.toUpperCase(); myName = document.getElementById('userNameInput').value.trim() || 'No Name';
             document.getElementById('loginView').style.display = 'none'; document.getElementById('mainView').style.display = 'block';
             document.getElementById('displayID').innerText = currentRoom; updateVolBg(document.getElementById('volRange'));
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
