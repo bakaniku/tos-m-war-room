@@ -30,7 +30,7 @@
         .vol-range { -webkit-appearance: none; width: 50px; height: 4px; background: #0f0; border-radius: 2px; outline: none; margin: 0 5px; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: #0f0; border-radius: 50%; border: 2px solid #111; cursor: pointer; }
         .user-list-bar { font-size: 12px; color: #555; margin-bottom: 20px; border-bottom: 1px solid #222; padding-bottom: 8px; }
-        .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; margin-bottom: 5px; font-size: 16px; color: #fff; padding: 8px 0; box-sizing: border-box; transition: color 0.2s, border-color 0.2s; }
+        .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; margin-bottom: 5px; font-size: 16px; color: #fff; padding: 8px 0; box-sizing: border-box; }
         .main-input.duplicate { color: #f66; border-bottom-color: #f66; }
         .input-hint { font-size: 11px; color: #444; margin-bottom: 15px; }
         .input-hint.duplicate-warn { color: #f66; }
@@ -53,20 +53,20 @@
         .flash-anim { animation: flash 0.5s step-end 10; }
         .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-block; margin-top: 8px; border: 2px solid; }
 
-        /* ── 留言板 ── */
+        /* ── 留言板優化 ── */
         .chat-wrap { position: relative; display: inline-block; }
         .chat-dot { position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; background: #f00; border-radius: 50%; display: none; pointer-events: none; }
         .chat-dot.show { display: block; }
         #chatPanel {
-            margin-bottom: 20px;
+            margin-top: 20px;
             background: #0a0a0a;
             border: 1px solid #1a1a1a;
             border-radius: 10px;
             overflow: hidden;
-            transition: opacity 0.3s, max-height 0.3s;
-            max-height: 320px;
+            transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s;
+            max-height: 400px;
         }
-        #chatPanel.chat-closed { opacity: 0.25; pointer-events: none; }
+        #chatPanel.chat-closed { max-height: 0; border: none; opacity: 0; margin-top: 0; }
         .chat-msgs {
             height: 220px;
             overflow-y: auto;
@@ -74,19 +74,15 @@
             display: flex;
             flex-direction: column;
             gap: 6px;
-            scroll-behavior: smooth;
         }
-        .chat-msgs::-webkit-scrollbar { width: 4px; }
-        .chat-msgs::-webkit-scrollbar-thumb { background: #222; border-radius: 2px; }
         .msg-row { display: flex; gap: 8px; align-items: flex-start; }
-        .msg-name { font-size: 11px; color: #0f0; white-space: nowrap; min-width: 48px; padding-top: 2px; }
+        .msg-name { font-size: 11px; color: #0f0; white-space: nowrap; min-width: 48px; }
         .msg-name.self { color: #0af; }
-        .msg-bubble { font-size: 13px; color: #ccc; background: #141414; border-radius: 6px; padding: 5px 9px; max-width: 80%; word-break: break-all; line-height: 1.4; }
-        .msg-time { font-size: 10px; color: #333; white-space: nowrap; padding-top: 5px; }
+        .msg-bubble { font-size: 13px; color: #ccc; background: #141414; border-radius: 6px; padding: 5px 9px; max-width: 80%; word-break: break-all; }
+        .msg-time { font-size: 10px; color: #333; padding-top: 5px; }
         .chat-input-row { display: flex; border-top: 1px solid #1a1a1a; }
-        .chat-input-row input { flex: 1; background: #0a0a0a; border: none; color: #fff; padding: 9px 12px; font-size: 13px; outline: none; }
-        .chat-input-row button { background: #0f0; color: #000; border: none; padding: 0 16px; font-weight: bold; font-size: 13px; cursor: pointer; border-radius: 0 0 10px 0; }
-        .chat-input-row button:active { background: #0c0; }
+        .chat-input-row input { flex: 1; background: #0a0a0a; border: none; color: #fff; padding: 12px; font-size: 13px; outline: none; }
+        .chat-input-row button { background: #0f0; color: #000; border: none; padding: 0 20px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -110,11 +106,10 @@
                         <button id="voiceBtn" class="audio-btn" onclick="toggleVoice()">🔊</button>
                         <input type="range" id="volRange" class="vol-range" min="0" max="1" step="0.05" value="0.5">
                         <button id="sfxBtn" class="audio-btn" onclick="toggleSfx()">🔔</button>
-                        <button id="warnBtn" class="audio-btn active" onclick="toggleWarn()" title="警告符號開關">⚠️</button>
-                        <button id="colorModeBtn" class="audio-btn active" onclick="toggleColorMode()" title="色彩模式 I（多色）">🎨</button>
-                        <!-- 留言板開關，含小紅點 -->
+                        <button id="warnBtn" class="audio-btn active" onclick="toggleWarn()">⚠️</button>
+                        <button id="colorModeBtn" class="audio-btn active" onclick="toggleColorMode()">🎨</button>
                         <span class="chat-wrap">
-                            <button id="chatBtn" class="audio-btn active" onclick="toggleChat()" title="留言板">💬</button>
+                            <button id="chatBtn" class="audio-btn active" onclick="toggleChat()">💬</button>
                             <span id="chatDot" class="chat-dot"></span>
                         </span>
                     </div>
@@ -129,15 +124,6 @@
                 在線:<span id="onlineCount" style="color:#0f0;">0</span> | <span id="onlineUsers">載入中...</span>
             </div>
 
-            <!-- 留言板面板 -->
-            <div id="chatPanel">
-                <div class="chat-msgs" id="chatMsgs"></div>
-                <div class="chat-input-row">
-                    <input type="text" id="chatInput" placeholder="輸入訊息…" maxlength="80">
-                    <button onclick="sendMsg()">送出</button>
-                </div>
-            </div>
-
             <div class="sort-row">
                 <button id="sortTimeBtn" class="btn-toggle active" onclick="setSort('time')">時間排序</button>
                 <button id="sortGroupBtn" class="btn-toggle" onclick="setSort('group')">分組排序</button>
@@ -146,7 +132,18 @@
 
             <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 分鐘/00X/XX數字">
             <div class="input-hint" id="inputHint">格式範例：80 3 12:30 ｜ 80 3 ON ｜ 80 3 001 ｜ 80 3 XX</div>
+            
+            <!-- 卡片區域 -->
             <div id="sectionsContainer"></div>
+
+            <!-- 留言板已移至下方 -->
+            <div id="chatPanel">
+                <div class="chat-msgs" id="chatMsgs"></div>
+                <div class="chat-input-row">
+                    <input type="text" id="chatInput" placeholder="輸入訊息…" maxlength="80">
+                    <button onclick="sendMsg()">送出</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -160,7 +157,6 @@
         let isChatOpen = true, lastReadMsgTime = 0;
         window.currentData = {};
 
-        // ── 色彩模式 ──
         function getStatusColor(weight) {
             if (colorMode === 1) {
                 const colors = { 6:'#FF0000', 5:'#800000', 4:'#FF4500', 3:'#FFA500', 2:'#FFFF00', 1:'#00FF00', 0:'#FF3300' };
@@ -168,9 +164,7 @@
             } else {
                 if (weight === 6) return '#FF0000';
                 if (weight >= 2 && weight <= 5) return '#FFA500';
-                if (weight === 1) return '#00FF00';
-                if (weight === 0) return '#FF3300';
-                return '#fff';
+                return weight === 1 ? '#00FF00' : '#FF3300';
             }
         }
 
@@ -181,21 +175,14 @@
         function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); if (isVoiceEnabled) unlockAudio(); }
         function toggleSfx() { isSfxEnabled = !isSfxEnabled; document.getElementById('sfxBtn').classList.toggle('active', isSfxEnabled); if (isSfxEnabled) unlockAudio(); }
         function toggleWarn() { showWarningIcon = !showWarningIcon; document.getElementById('warnBtn').classList.toggle('active', showWarningIcon); renderList(); }
-        function toggleColorMode() {
-            colorMode = colorMode === 1 ? 2 : 1;
-            const btn = document.getElementById('colorModeBtn');
-            btn.innerText = colorMode === 1 ? '🎨' : '🖌️';
-            btn.title = colorMode === 1 ? '色彩模式 I（多色）' : '色彩模式 II（階段同色）';
-            renderList();
-        }
+        function toggleColorMode() { colorMode = colorMode === 1 ? 2 : 1; document.getElementById('colorModeBtn').innerText = colorMode === 1 ? '🎨' : '🖌️'; renderList(); }
 
-        // ── 留言板 ──
         function toggleChat() {
             isChatOpen = !isChatOpen;
-            document.getElementById('chatPanel').classList.toggle('chat-closed', !isChatOpen);
+            const panel = document.getElementById('chatPanel');
+            panel.classList.toggle('chat-closed', !isChatOpen);
             document.getElementById('chatBtn').classList.toggle('active', isChatOpen);
             if (isChatOpen) {
-                // 打開時清除小紅點，更新已讀時間
                 lastReadMsgTime = Date.now();
                 document.getElementById('chatDot').classList.remove('show');
                 scrollChat();
@@ -204,59 +191,35 @@
 
         function scrollChat() {
             const el = document.getElementById('chatMsgs');
-            setTimeout(() => { el.scrollTop = el.scrollHeight; }, 50);
+            setTimeout(() => { el.scrollTop = el.scrollHeight; }, 100);
         }
 
         function sendMsg() {
             const input = document.getElementById('chatInput');
             const text = input.value.trim();
             if (!text) return;
-            db.ref(`rooms/${currentRoom}/chat`).push({
-                name: myName,
-                text,
-                t: Date.now()
-            });
+            db.ref(`rooms/${currentRoom}/chat`).push({ name: myName, text, t: Date.now() });
             input.value = '';
         }
 
         function initChat() {
             document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMsg(); });
-            lastReadMsgTime = Date.now();
-
-            db.ref(`rooms/${currentRoom}/chat`).limitToLast(80).on('value', s => {
-                const msgs = s.val() || {};
+            db.ref(`rooms/${currentRoom}/chat`).limitToLast(50).on('value', s => {
                 const container = document.getElementById('chatMsgs');
                 container.innerHTML = '';
-                const list = Object.values(msgs).sort((a, b) => a.t - b.t);
-
+                const list = Object.values(s.val() || {}).sort((a,b) => a.t - b.t);
                 list.forEach(m => {
-                    const isSelf = m.name === myName;
+                    const d = new Date(m.t);
                     const row = document.createElement('div');
                     row.className = 'msg-row';
-                    const d = new Date(m.t);
-                    const timeStr = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
-                    row.innerHTML = `
-                        <span class="msg-name ${isSelf ? 'self' : ''}">${m.name}</span>
-                        <span class="msg-bubble">${escHtml(m.text)}</span>
-                        <span class="msg-time">${timeStr}</span>`;
+                    row.innerHTML = `<span class="msg-name ${m.name===myName?'self':''}">${m.name}</span><span class="msg-bubble">${m.text}</span><span class="msg-time">${d.getHours()}:${d.getMinutes().toString().padStart(2,'0')}</span>`;
                     container.appendChild(row);
                 });
-
-                // 小紅點邏輯：若留言板關閉，且有比上次已讀更新的訊息 → 顯示紅點
-                const latest = list.length > 0 ? list[list.length - 1] : null;
-                if (!isChatOpen && latest && latest.t > lastReadMsgTime && latest.name !== myName) {
+                if (!isChatOpen && list.length > 0 && list[list.length-1].t > lastReadMsgTime && list[list.length-1].name !== myName) {
                     document.getElementById('chatDot').classList.add('show');
-                } else if (isChatOpen) {
-                    lastReadMsgTime = Date.now();
-                    document.getElementById('chatDot').classList.remove('show');
                 }
-
                 scrollChat();
             });
-        }
-
-        function escHtml(t) {
-            return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         }
 
         function startSession(id) {
@@ -266,77 +229,39 @@
             document.getElementById('mainView').style.display = 'block';
             document.getElementById('displayID').innerText = id;
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
-            document.getElementById('bossInput').addEventListener('input', checkDuplicate);
-
             db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
             db.ref(`rooms/${currentRoom}/users`).on('value', s => {
                 const users = Object.values(s.val() || {});
                 document.getElementById('onlineCount').innerText = users.length;
                 document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', ');
             });
-
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
-                const newData = s.val();
-                window.currentData = newData || {};
-                if (newData) {
-                    Object.keys(newData).forEach(key => {
-                        if (newData[key].isFlash) playDing();
-                    });
-                }
+                window.currentData = s.val() || {};
+                Object.keys(window.currentData).forEach(key => { if (window.currentData[key].isFlash) playDing(); });
                 renderList();
             });
-
             initChat();
-        }
-
-        function checkDuplicate() {
-            const input = document.getElementById('bossInput').value.trim();
-            const hintEl = document.getElementById('inputHint');
-            const inputEl = document.getElementById('bossInput');
-            const parts = input.split(/\s+/);
-            if (parts.length >= 2) {
-                const map = parts[0];
-                const ch = parts[1];
-                const id = `${map}_${ch}`;
-                if (window.currentData[id]) {
-                    inputEl.classList.add('duplicate');
-                    hintEl.textContent = `⚠️ ${map} 分流${ch} 已存在，按 Enter 將覆蓋更新`;
-                    hintEl.classList.add('duplicate-warn');
-                    return;
-                }
-            }
-            inputEl.classList.remove('duplicate');
-            hintEl.textContent = '格式範例：80 3 12:30 ｜ 80 3 ON ｜ 80 3 001 ｜ 80 3 XX';
-            hintEl.classList.remove('duplicate-warn');
-        }
-
-        function addBoss() {
-            const input = document.getElementById('bossInput').value.trim();
-            if (!input) return;
-            const parts = input.split(/\s+/);
-            if (parts.length < 3) { alert('格式錯誤！\n請輸入：地圖 分流 時間/階段\n範例：80 3 12:30'); return; }
-            saveBoss(parts[0], parts[1], parts.slice(2).join(''));
-            document.getElementById('bossInput').value = '';
-            checkDuplicate();
         }
 
         function getBossStatus(b) {
             const now = Date.now();
-            const isGrey = b.lastInput.toUpperCase().startsWith("XX");
+            const oneHour = 3600000;
+            // 修正判斷：XX 是手動閒置，或是階段超過1小時。
+            const isManualIdle = b.lastInput.toUpperCase().startsWith("XX");
+            const isTimeIdle = (b.targetTime > 0 && (now - b.targetTime > oneHour)); // 計時超時滿1小時
+            const isStageIdle = (b.targetTime === 0 && (now - b.startTime > oneHour)); // 階段滿1小時
+            
+            const isGrey = isManualIdle || isStageIdle || isTimeIdle;
 
-            // 權重：ON=6, 階段4=5, 階段3=4, 階段2=3, 階段1=2, 計時中=1, 計時超時=0
-            // 超時 / 閒置（XX 或超過1小時）才設 isGrey
-            // 注意：計時超時（weight=0）不等於 isGrey，XX才是 isGrey
             let weight = -1;
             if (b.displayValue === "ON") weight = 6;
             else if (b.displayValue.includes("階段4")) weight = 5;
             else if (b.displayValue.includes("階段3")) weight = 4;
             else if (b.displayValue.includes("階段2")) weight = 3;
             else if (b.displayValue.includes("階段1")) weight = 2;
-            else if (b.targetTime > 0) weight = (b.targetTime > now) ? 1 : 0;
+            else if (b.targetTime > 0) weight = (b.targetTime > now) ? 1 : 0; // 0 是剛超時，1 是計時中
 
-            const color = getStatusColor(weight);
-            return { isGrey, weight, color, mapLv: parseInt((b.map || '').match(/\d+/)) || 0 };
+            return { isGrey, weight, color: getStatusColor(weight), mapLv: parseInt((b.map || '').match(/\d+/)) || 0 };
         }
 
         function renderList() {
@@ -344,8 +269,7 @@
             container.innerHTML = '';
             Object.values(timers).forEach(clearInterval);
             timers = {};
-
-            const all = Object.entries(window.currentData || {});
+            const all = Object.entries(window.currentData);
             const now = Date.now();
 
             const renderBox = (items, label) => {
@@ -358,11 +282,10 @@
                     const status = getBossStatus(b);
                     const card = document.createElement('div');
                     card.className = `card ${status.isGrey ? 'idle-card' : ''}`;
-                    card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button>
-                        <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3>
+                    card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button><h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3>
                         <div class="timer-container">
                             <div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color: ${status.isGrey ? '#555' : status.color}">...</div>
-                            ${(b.targetTime === 0) ? `<button class="btn-next" id="btn_${id}" style="color: ${status.isGrey ? '#555' : status.color}; border-color: ${status.isGrey ? '#555' : status.color}" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>` : ''}
+                            ${(b.targetTime === 0) ? `<button class="btn-next" style="color:${status.isGrey?'#555':status.color}; border-color:${status.isGrey?'#555':status.color}" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>` : ''}
                         </div>`;
                     grid.appendChild(card);
                     startTimer(id, b, status.isGrey, status.color);
@@ -370,47 +293,30 @@
             };
 
             if (currentSort === 'time') {
-                // ── 時間排序邏輯 ──
-                // 1. XX閒置（isGrey）永遠最後
-                // 2. 其餘依 weight 降序（ON > 階段4321 > 計時中 > 計時超時）
-                // 3. 同 weight 時：
-                //    - 計時中（weight=1）、計時超時（weight=0）→ 依 targetTime 低到高（最快到期的在前）
-                //    - 階段（weight 2~5）→ 依 mapLv 降序
-                //    - ON（weight=6）→ 依 mapLv 降序
                 const sorted = all.sort((a, b) => {
                     const sA = getBossStatus(a[1]), sB = getBossStatus(b[1]);
-                    // XX閒置最後
+                    // 1. 閒置（isGrey）永遠最後
                     if (sA.isGrey !== sB.isGrey) return sA.isGrey ? 1 : -1;
-                    // weight 不同：高的在前
+                    // 2. 權重排序 (ON > 階 > 計時 > 剛超時)
                     if (sA.weight !== sB.weight) return sB.weight - sA.weight;
-                    // 同 weight
-                    if (sA.weight <= 1) {
-                        // 計時中 / 超時：targetTime 低到高（最快到期的排前）
-                        return a[1].targetTime - b[1].targetTime;
-                    }
-                    // 階段 / ON：地圖等級高的排前
+                    // 3. 同權重：計時類看時間，階段類看等級
+                    if (sA.weight <= 1) return a[1].targetTime - b[1].targetTime;
                     return sB.mapLv - sA.mapLv;
                 });
-                renderBox(sorted, "全域排序：ON > 階段4→1 > 計時中(最快到期) > 超時");
-            }
-            else if (currentSort === 'map') {
-                const sorted = all.sort((a, b) => getBossStatus(b[1]).mapLv - getBossStatus(a[1]).mapLv || a[1].ch - b[1].ch);
+                renderBox(sorted, "全域時間排序 (閒置區置底)");
+            } else if (currentSort === 'map') {
+                const sorted = all.sort((a,b) => getBossStatus(b[1]).mapLv - getBossStatus(a[1]).mapLv || a[1].ch - b[1].ch);
                 renderBox(sorted, "全域地圖等級排序");
-            }
-            else {
-                // 分組排序：XX才進閒置區，超過1小時計時也進閒置
+            } else {
                 const stages = [], timersList = [], idleList = [];
                 all.forEach(([id, b]) => {
                     const st = getBossStatus(b);
-                    const oneHour = 3600000;
-                    const isOverdue = b.targetTime > 0 && (now - b.targetTime > oneHour);
-                    const isStageIdle = b.targetTime === 0 && (now - b.startTime > oneHour);
-                    if (st.isGrey || isOverdue || isStageIdle) idleList.push([id, b]);
+                    if (st.isGrey) idleList.push([id, b]);
                     else if (b.targetTime > 0) timersList.push([id, b]);
                     else stages.push([id, b]);
                 });
-                renderBox(stages.sort((a, b) => getBossStatus(b[1]).weight - getBossStatus(a[1]).weight), "階段追蹤區");
-                renderBox(timersList.sort((a, b) => a[1].targetTime - b[1].targetTime), "重生計時區");
+                renderBox(stages.sort((a,b)=>getBossStatus(b[1]).weight - getBossStatus(a[1]).weight), "階段追蹤區");
+                renderBox(timersList.sort((a,b)=>a[1].targetTime - b[1].targetTime), "重生計時區");
                 renderBox(idleList, "超時閒置區");
             }
         }
@@ -428,26 +334,26 @@
                     const matchNum = b.displayValue.match(/[\d.]+/);
                     const lv = b.displayValue === "ON" ? 99 : (matchNum ? Math.floor(parseFloat(matchNum[0])) : 0);
                     const isW = (lv < 2 && m >= 12) || (lv >= 2 && lv < 3 && m >= 7) || (lv >= 3 && lv < 4 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
-                    el.innerHTML = `<span class="timer-label">${b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isGrey) ? '<span class="warning-icon">⚠️</span>' : ''}`;
+                    el.innerHTML = `<span>${b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isGrey) ? '⚠️' : ''}`;
                     if (!isGrey) el.style.color = statusColor;
                 }
             };
             up(); timers[id] = setInterval(up, 1000);
         }
 
-        function parseTime(v) { const p = v.split(/[:.：]/); if (p.length === 2) return parseInt(p[0]) * 60 + parseInt(p[1]); return parseFloat(v) || 0; }
+        function parseTime(v) { const p = v.split(/[:.：]/); return p.length === 2 ? parseInt(p[0]) * 60 + parseInt(p[1]) : parseFloat(v) || 0; }
 
         function saveBoss(map, ch, val) {
             const id = `${map}_${ch}`;
             let dv = val, tt = 0, flash = false;
             const uv = val.toUpperCase();
-            if (uv.startsWith("XX")) { dv = "階段" + (val.substring(2) || "1"); }
+            if (uv.startsWith("XX")) dv = "階段" + (val.substring(2) || "1");
             else if (uv === "ON") { dv = "ON"; flash = true; }
             else if (val.startsWith("00")) {
                 const n = val.substring(2);
                 dv = "階段" + (n.length > 1 && !n.includes('.') ? n.split('').join('.') : n);
                 if (parseFloat(n) >= 4) flash = true;
-            } else { tt = Date.now() + (parseTime(val) * 60000); }
+            } else tt = Date.now() + (parseTime(val) * 60000);
             db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash });
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 5000);
         }
@@ -460,13 +366,32 @@
                 else if (l.startsWith("00")) {
                     const match = l.match(/00(\d+)/);
                     if (match) {
-                        const currentLv = parseInt(match[1]);
-                        if (currentLv >= 4) saveBoss(m, c, "ON");
-                        else saveBoss(m, c, "00" + (currentLv + 1));
+                        const next = parseInt(match[1]) + 1;
+                        saveBoss(m, c, next >= 5 ? "ON" : "00" + next);
                     }
                 } else saveBoss(m, c, "ON");
             });
             unlockAudio();
+        }
+
+        function checkDuplicate() {
+            const parts = document.getElementById('bossInput').value.trim().split(/\s+/);
+            const hint = document.getElementById('inputHint');
+            if (parts.length >= 2 && window.currentData[`${parts[0]}_${parts[1]}`]) {
+                hint.textContent = `⚠️ ${parts[0]} 分流${parts[1]} 已存在，Enter 將更新`;
+                hint.style.color = '#f66';
+            } else {
+                hint.textContent = '格式範例：80 3 12:30 ｜ 80 3 ON ｜ 80 3 001 ｜ 80 3 XX';
+                hint.style.color = '#444';
+            }
+        }
+
+        function addBoss() {
+            const i = document.getElementById('bossInput');
+            const p = i.value.trim().split(/\s+/);
+            if (p.length < 3) return;
+            saveBoss(p[0], p[1], p.slice(2).join(''));
+            i.value = '';
         }
 
         function deleteBoss(id) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
