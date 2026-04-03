@@ -40,13 +40,29 @@
         .section-label { color: #555; font-size: 11px; border-left: 2px solid #333; padding-left: 8px; text-transform: uppercase; margin-bottom: 10px; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         
-        /* 卡片與星星符號 */
+        /* 卡片佈局 */
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
-        .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; display: inline-block; border-bottom: 1px dashed #444; }
-        .pin-btn { position: absolute; top: 8px; left: 8px; background: none; border: none; color: #333; font-size: 16px; cursor: pointer; padding: 0; transition: color 0.2s; }
-        .pin-btn.pinned { color: #ffca28; }
-        .del { position: absolute; top: 6px; right: 8px; color: #444; background: none; border: none; font-size: 14px; cursor: pointer; }
+        .card-title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 0; }
+        .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; border-bottom: 1px dashed #444; line-height: 1.2; }
         
+        /* 圓框星星按鈕 */
+        .pin-btn { 
+            width: 22px; height: 22px; 
+            border-radius: 50%; 
+            border: 1.5px solid #444; 
+            background: #1a1a1a; 
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; padding: 0; font-size: 12px; color: #666;
+            transition: 0.2s; flex-shrink: 0;
+        }
+        .pin-btn.pinned { 
+            border-color: #ffca28; 
+            background: #2a2200; /* 點亮時的底色 */
+            color: #ffca28; 
+            box-shadow: 0 0 5px rgba(255, 202, 40, 0.3);
+        }
+        
+        .del { position: absolute; top: 18px; right: 8px; color: #444; background: none; border: none; font-size: 14px; cursor: pointer; }
         .timer { font-size: 18px; font-weight: bold; margin-top: 8px; font-family: monospace; display: flex; align-items: center; }
         .timer-sub { font-size: 14px; margin-left: 4px; opacity: 0.8; }
         .flash-anim { animation: flash 0.5s step-end 10; }
@@ -142,7 +158,11 @@
         function getStatusColor(weight) {
             const colors = { 6:'#800000', 5:'#FF0000', 4:'#FF4500', 3:'#FFA500', 2:'#FFFF00', 1:'#00FF00', 0:'#FF3300' };
             if (colorMode === 1) return colors[weight] || '#fff';
-            return weight === 6 ? '#800000' : (weight >= 2 && weight <= 5 ? '#FF0000' : (weight === 1 ? '#00FF00' : '#FF3300'));
+            // 色彩模式 II 修正：階段 1, 2, 3 (weight 2, 3, 4) 改為黃色
+            if (weight === 6) return '#800000'; // ON 酒紅
+            if (weight === 5) return '#FF0000'; // 階4 正紅
+            if (weight >= 2 && weight <= 4) return '#FFFF00'; // 階1~3 黃色
+            return weight === 1 ? '#00FF00' : '#FF3300';
         }
 
         function unlockAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); }
@@ -238,9 +258,11 @@
                     const card = document.createElement('div');
                     card.className = `card ${status.isGrey ? 'idle-card' : ''}`;
                     card.innerHTML = `
-                        <button class="pin-btn ${status.pinned?'pinned':''}" onclick="togglePin('${id}', ${status.pinned})">★</button>
                         <button class="del" onclick="deleteBoss('${id}')">×</button>
-                        <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3>
+                        <div class="card-title-row">
+                            <button class="pin-btn ${status.pinned?'pinned':''}" onclick="togglePin('${id}', ${status.pinned})">★</button>
+                            <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3>
+                        </div>
                         <div class="timer-container">
                             <div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color: ${status.isGrey ? '#555' : status.color}">...</div>
                             ${(b.targetTime === 0) ? `<button class="btn-next" style="color:${status.isGrey?'#555':status.color}; border-color:${status.isGrey?'#555':status.color}" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>` : ''}
@@ -249,16 +271,11 @@
                 });
             };
 
-            // 1. 過濾置頂項
             const pinnedItems = all.filter(item => getBossStatus(item[1]).pinned);
             const otherItems = all.filter(item => !getBossStatus(item[1]).pinned);
 
-            // 2. 先渲染置頂區
-            if (pinnedItems.length > 0) {
-                renderBox(pinnedItems, "置頂追蹤區 ★");
-            }
+            if (pinnedItems.length > 0) renderBox(pinnedItems, "置頂追蹤區 ★");
 
-            // 3. 根據排序模式渲染其他項目
             if (currentSort === 'time') {
                 const sorted = otherItems.sort((a, b) => {
                     const sA = getBossStatus(a[1]), sB = getBossStatus(b[1]);
@@ -312,21 +329,17 @@
 
         function saveBoss(map, ch, val, doFocus = false) {
             const id = `${map}_${ch}`;
-            let dv = val, tt = 0, flash = false, uv = val.toUpperCase();
-            if (uv.startsWith("XX")) dv = "階段" + (val.substring(2) || "1");
-            else if (uv === "ON") { dv = "ON"; flash = true; }
+            let dv = val, tt = 0, flash = false;
+            if (val.toUpperCase().startsWith("XX")) dv = "階段" + (val.substring(2) || "1");
+            else if (val.toUpperCase() === "ON") { dv = "ON"; flash = true; }
             else if (val.startsWith("00")) {
                 const n = val.substring(2);
                 dv = "階段" + (n.length > 1 && !n.includes('.') ? n.split('').join('.') : n);
                 if (parseFloat(n) >= 4) flash = true;
             } else tt = Date.now() + ((val.split(/[:.：]/).length===2?parseInt(val.split(/[:.：]/)[0])*60+parseInt(val.split(/[:.：]/)[1]):parseFloat(val)||0) * 60000);
             
-            // 存儲時保留現有的 pinned 狀態
             const existingPin = (window.currentData[id] && window.currentData[id].pinned) || false;
-            db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ 
-                map, ch, targetTime: tt, lastInput: val, displayValue: dv, 
-                startTime: Date.now(), isFlash: flash, pinned: existingPin 
-            });
+            db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash, pinned: existingPin });
             if (doFocus) doEdit(map, ch, val);
         }
 
@@ -348,10 +361,8 @@
 
         function doEdit(m, c, l) {
             const i = document.getElementById('bossInput');
-            i.value = `${m} ${c} ${l}`;
-            i.focus();
-            const start = m.length + c.length + 2; 
-            i.setSelectionRange(start, i.value.length);
+            i.value = `${m} ${c} ${l}`; i.focus();
+            i.setSelectionRange(m.length + c.length + 2, i.value.length);
         }
 
         function addBoss() {
