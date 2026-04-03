@@ -31,12 +31,21 @@
         .vol-range { -webkit-appearance: none; width: 60px; height: 4px; background: #333; border-radius: 2px; outline: none; margin: 0 5px; background-image: linear-gradient(#0f0, #0f0); background-repeat: no-repeat; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: #0f0; border-radius: 50%; cursor: pointer; border: 2px solid #111; }
 
-        .user-list-bar { font-size: 12px; color: #555; margin-bottom: 8px; border-bottom: 1px solid #222; padding-bottom: 8px; }
+        .user-list-bar { font-size: 12px; color: #555; margin-bottom: 10px; border-bottom: 1px solid #222; padding-bottom: 8px; }
         
-        /* ── 公告欄樣式 ── */
-        .announcement-bar { background: #2a2200; border-radius: 6px; padding: 8px 12px; border: 1px solid #ffca28; margin-bottom: 20px; display: flex; align-items: flex-start; gap: 10px; }
-        .announcement-icon { color: #ffca28; font-size: 16px; font-weight: bold; }
-        .announcement-text { font-size: 12px; color: #ffca28; line-height: 1.5; }
+        /* ── 公告欄修正：垂直居中對齊 ── */
+        .announcement-bar { 
+            background: #2a2200; 
+            border-radius: 8px; 
+            padding: 12px 16px; 
+            border: 1px solid #ffca28; 
+            margin-bottom: 25px; 
+            display: flex; 
+            align-items: center; /* 關鍵：垂直置中 */
+            gap: 12px; 
+        }
+        .announcement-icon { color: #ffca28; font-size: 16px; font-weight: bold; flex-shrink: 0; }
+        .announcement-text { font-size: 13px; color: #ffca28; line-height: 1; margin: 0; }
 
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; margin-bottom: 5px; font-size: 16px; color: #fff; padding: 8px 0; box-sizing: border-box; }
         .input-hint { font-size: 11px; color: #444; margin-bottom: 15px; }
@@ -107,7 +116,7 @@
                     </div>
                 </div>
                 <div class="room-info">
-                    <span class="version-tag">v1.1.6</span>
+                    <span class="version-tag">v1.1.7</span>
                     <button class="btn-danger" onclick="clearAllBosses()">一鍵清除</button>
                     <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
@@ -117,10 +126,9 @@
                 在線:<span id="onlineCount" style="color:#0f0;">0</span> | <span id="onlineUsers">載入中...</span>
             </div>
 
-            <!-- ── 公告欄 ── -->
             <div class="announcement-bar">
                 <span class="announcement-icon">⚠️ 公告：</span>
-                <span class="announcement-text">已知有小數點的階段會有閃爍異常、NEXT跳階異常狀況，請暫時先不使用小數點的階段。</span>
+                <p class="announcement-text">已知有小數點的階段會有閃爍異常、NEXT跳階異常狀況，請暫時先不使用小數點的階段。</p>
             </div>
 
             <div class="sort-row">
