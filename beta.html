@@ -52,6 +52,41 @@
         @keyframes flash { 0%, 100% { opacity: 1; color: #fff; } 50% { opacity: 0.3; } }
         .flash-anim { animation: flash 0.5s step-end 10; }
         .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-block; margin-top: 8px; border: 2px solid; }
+
+        /* ── 留言板 ── */
+        .chat-wrap { position: relative; display: inline-block; }
+        .chat-dot { position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; background: #f00; border-radius: 50%; display: none; pointer-events: none; }
+        .chat-dot.show { display: block; }
+        #chatPanel {
+            margin-bottom: 20px;
+            background: #0a0a0a;
+            border: 1px solid #1a1a1a;
+            border-radius: 10px;
+            overflow: hidden;
+            transition: opacity 0.3s, max-height 0.3s;
+            max-height: 320px;
+        }
+        #chatPanel.chat-closed { opacity: 0.25; pointer-events: none; }
+        .chat-msgs {
+            height: 220px;
+            overflow-y: auto;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            scroll-behavior: smooth;
+        }
+        .chat-msgs::-webkit-scrollbar { width: 4px; }
+        .chat-msgs::-webkit-scrollbar-thumb { background: #222; border-radius: 2px; }
+        .msg-row { display: flex; gap: 8px; align-items: flex-start; }
+        .msg-name { font-size: 11px; color: #0f0; white-space: nowrap; min-width: 48px; padding-top: 2px; }
+        .msg-name.self { color: #0af; }
+        .msg-bubble { font-size: 13px; color: #ccc; background: #141414; border-radius: 6px; padding: 5px 9px; max-width: 80%; word-break: break-all; line-height: 1.4; }
+        .msg-time { font-size: 10px; color: #333; white-space: nowrap; padding-top: 5px; }
+        .chat-input-row { display: flex; border-top: 1px solid #1a1a1a; }
+        .chat-input-row input { flex: 1; background: #0a0a0a; border: none; color: #fff; padding: 9px 12px; font-size: 13px; outline: none; }
+        .chat-input-row button { background: #0f0; color: #000; border: none; padding: 0 16px; font-weight: bold; font-size: 13px; cursor: pointer; border-radius: 0 0 10px 0; }
+        .chat-input-row button:active { background: #0c0; }
     </style>
 </head>
 <body>
@@ -77,6 +112,11 @@
                         <button id="sfxBtn" class="audio-btn" onclick="toggleSfx()">🔔</button>
                         <button id="warnBtn" class="audio-btn active" onclick="toggleWarn()" title="警告符號開關">⚠️</button>
                         <button id="colorModeBtn" class="audio-btn active" onclick="toggleColorMode()" title="色彩模式 I（多色）">🎨</button>
+                        <!-- 留言板開關，含小紅點 -->
+                        <span class="chat-wrap">
+                            <button id="chatBtn" class="audio-btn active" onclick="toggleChat()" title="留言板">💬</button>
+                            <span id="chatDot" class="chat-dot"></span>
+                        </span>
                     </div>
                 </div>
                 <div class="room-info">
@@ -87,6 +127,15 @@
 
             <div class="user-list-bar">
                 在線:<span id="onlineCount" style="color:#0f0;">0</span> | <span id="onlineUsers">載入中...</span>
+            </div>
+
+            <!-- 留言板面板 -->
+            <div id="chatPanel">
+                <div class="chat-msgs" id="chatMsgs"></div>
+                <div class="chat-input-row">
+                    <input type="text" id="chatInput" placeholder="輸入訊息…" maxlength="80">
+                    <button onclick="sendMsg()">送出</button>
+                </div>
             </div>
 
             <div class="sort-row">
@@ -108,18 +157,19 @@
         let currentRoom = '', timers = {}, currentSort = 'time';
         let isVoiceEnabled = false, isSfxEnabled = false;
         let myName = '無名戰友', showWarningIcon = true, colorMode = 1, audioCtx = null;
+        let isChatOpen = true, lastReadMsgTime = 0;
         window.currentData = {};
 
-        // ── 修正5：色彩模式 ──
+        // ── 色彩模式 ──
         function getStatusColor(weight) {
             if (colorMode === 1) {
                 const colors = { 6:'#FF0000', 5:'#800000', 4:'#FF4500', 3:'#FFA500', 2:'#FFFF00', 1:'#00FF00', 0:'#FF3300' };
                 return colors[weight] || '#fff';
             } else {
-                if (weight === 6) return '#FF0000';            // ON 紅
-                if (weight >= 2 && weight <= 5) return '#FFA500'; // 階段1~4 同橙色
-                if (weight === 1) return '#00FF00';             // 計時中 綠
-                if (weight === 0) return '#FF3300';             // 超時 暗紅
+                if (weight === 6) return '#FF0000';
+                if (weight >= 2 && weight <= 5) return '#FFA500';
+                if (weight === 1) return '#00FF00';
+                if (weight === 0) return '#FF3300';
                 return '#fff';
             }
         }
@@ -130,21 +180,83 @@
 
         function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); if (isVoiceEnabled) unlockAudio(); }
         function toggleSfx() { isSfxEnabled = !isSfxEnabled; document.getElementById('sfxBtn').classList.toggle('active', isSfxEnabled); if (isSfxEnabled) unlockAudio(); }
-
-        // 修正4：警告符號開關
-        function toggleWarn() {
-            showWarningIcon = !showWarningIcon;
-            document.getElementById('warnBtn').classList.toggle('active', showWarningIcon);
-            renderList();
-        }
-
-        // 修正5：色彩模式切換
+        function toggleWarn() { showWarningIcon = !showWarningIcon; document.getElementById('warnBtn').classList.toggle('active', showWarningIcon); renderList(); }
         function toggleColorMode() {
             colorMode = colorMode === 1 ? 2 : 1;
             const btn = document.getElementById('colorModeBtn');
             btn.innerText = colorMode === 1 ? '🎨' : '🖌️';
             btn.title = colorMode === 1 ? '色彩模式 I（多色）' : '色彩模式 II（階段同色）';
             renderList();
+        }
+
+        // ── 留言板 ──
+        function toggleChat() {
+            isChatOpen = !isChatOpen;
+            document.getElementById('chatPanel').classList.toggle('chat-closed', !isChatOpen);
+            document.getElementById('chatBtn').classList.toggle('active', isChatOpen);
+            if (isChatOpen) {
+                // 打開時清除小紅點，更新已讀時間
+                lastReadMsgTime = Date.now();
+                document.getElementById('chatDot').classList.remove('show');
+                scrollChat();
+            }
+        }
+
+        function scrollChat() {
+            const el = document.getElementById('chatMsgs');
+            setTimeout(() => { el.scrollTop = el.scrollHeight; }, 50);
+        }
+
+        function sendMsg() {
+            const input = document.getElementById('chatInput');
+            const text = input.value.trim();
+            if (!text) return;
+            db.ref(`rooms/${currentRoom}/chat`).push({
+                name: myName,
+                text,
+                t: Date.now()
+            });
+            input.value = '';
+        }
+
+        function initChat() {
+            document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMsg(); });
+            lastReadMsgTime = Date.now();
+
+            db.ref(`rooms/${currentRoom}/chat`).limitToLast(80).on('value', s => {
+                const msgs = s.val() || {};
+                const container = document.getElementById('chatMsgs');
+                container.innerHTML = '';
+                const list = Object.values(msgs).sort((a, b) => a.t - b.t);
+
+                list.forEach(m => {
+                    const isSelf = m.name === myName;
+                    const row = document.createElement('div');
+                    row.className = 'msg-row';
+                    const d = new Date(m.t);
+                    const timeStr = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+                    row.innerHTML = `
+                        <span class="msg-name ${isSelf ? 'self' : ''}">${m.name}</span>
+                        <span class="msg-bubble">${escHtml(m.text)}</span>
+                        <span class="msg-time">${timeStr}</span>`;
+                    container.appendChild(row);
+                });
+
+                // 小紅點邏輯：若留言板關閉，且有比上次已讀更新的訊息 → 顯示紅點
+                const latest = list.length > 0 ? list[list.length - 1] : null;
+                if (!isChatOpen && latest && latest.t > lastReadMsgTime && latest.name !== myName) {
+                    document.getElementById('chatDot').classList.add('show');
+                } else if (isChatOpen) {
+                    lastReadMsgTime = Date.now();
+                    document.getElementById('chatDot').classList.remove('show');
+                }
+
+                scrollChat();
+            });
+        }
+
+        function escHtml(t) {
+            return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
         }
 
         function startSession(id) {
@@ -163,21 +275,20 @@
                 document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', ');
             });
 
-            // --- 核心修復部分 ---
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
-                const newData = s.val() || {}; // 確保 null 時變成空物件
-                window.currentData = newData; 
-                
-                // 只有在真的有資料時才檢查閃爍音效，避免對 null 跑 Object.keys 報錯
-                Object.keys(newData).forEach(key => {
-                    if (newData[key] && newData[key].isFlash) playDing();
-                });
-                
-                renderList(); // 觸發畫面渲染
+                const newData = s.val();
+                window.currentData = newData || {};
+                if (newData) {
+                    Object.keys(newData).forEach(key => {
+                        if (newData[key].isFlash) playDing();
+                    });
+                }
+                renderList();
             });
+
+            initChat();
         }
 
-        // 修正2：即時偵測輸入框是否為已存在的地圖-分流
         function checkDuplicate() {
             const input = document.getElementById('bossInput').value.trim();
             const hintEl = document.getElementById('inputHint');
@@ -203,26 +314,19 @@
             const input = document.getElementById('bossInput').value.trim();
             if (!input) return;
             const parts = input.split(/\s+/);
-            if (parts.length < 3) {
-                alert('格式錯誤！\n請輸入：地圖 分流 時間/階段\n範例：80 3 12:30');
-                return;
-            }
-            const map = parts[0];
-            const ch = parts[1];
-            const val = parts.slice(2).join('');
-            saveBoss(map, ch, val);
+            if (parts.length < 3) { alert('格式錯誤！\n請輸入：地圖 分流 時間/階段\n範例：80 3 12:30'); return; }
+            saveBoss(parts[0], parts[1], parts.slice(2).join(''));
             document.getElementById('bossInput').value = '';
             checkDuplicate();
         }
 
         function getBossStatus(b) {
             const now = Date.now();
-            const oneHour = 3600000;
-            const isOverdue = b.targetTime > 0 && (now - b.targetTime > oneHour);
-            const isIdle = b.targetTime === 0 && (now - b.startTime > oneHour);
-            const isGrey = isOverdue || isIdle || b.lastInput.toUpperCase().startsWith("XX");
+            const isGrey = b.lastInput.toUpperCase().startsWith("XX");
 
-            // 修正3：ON(6) > 階段4(5) > 階段3(4) > 階段2(3) > 階段1(2) > 計時中(1) > 超時(0)
+            // 權重：ON=6, 階段4=5, 階段3=4, 階段2=3, 階段1=2, 計時中=1, 計時超時=0
+            // 超時 / 閒置（XX 或超過1小時）才設 isGrey
+            // 注意：計時超時（weight=0）不等於 isGrey，XX才是 isGrey
             let weight = -1;
             if (b.displayValue === "ON") weight = 6;
             else if (b.displayValue.includes("階段4")) weight = 5;
@@ -242,6 +346,7 @@
             timers = {};
 
             const all = Object.entries(window.currentData || {});
+            const now = Date.now();
 
             const renderBox = (items, label) => {
                 if (items.length === 0 && currentSort === 'group') return;
@@ -253,7 +358,6 @@
                     const status = getBossStatus(b);
                     const card = document.createElement('div');
                     card.className = `card ${status.isGrey ? 'idle-card' : ''}`;
-                    // 修正1：標題只顯示地圖數字 - 分流號，不顯示「地城」
                     card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button>
                         <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3>
                         <div class="timer-container">
@@ -265,26 +369,43 @@
                 });
             };
 
-            // 修正3：ON > 階段4321 > 計時中 > 超時/閒置
             if (currentSort === 'time') {
+                // ── 時間排序邏輯 ──
+                // 1. XX閒置（isGrey）永遠最後
+                // 2. 其餘依 weight 降序（ON > 階段4321 > 計時中 > 計時超時）
+                // 3. 同 weight 時：
+                //    - 計時中（weight=1）、計時超時（weight=0）→ 依 targetTime 低到高（最快到期的在前）
+                //    - 階段（weight 2~5）→ 依 mapLv 降序
+                //    - ON（weight=6）→ 依 mapLv 降序
                 const sorted = all.sort((a, b) => {
                     const sA = getBossStatus(a[1]), sB = getBossStatus(b[1]);
-                    const effA = sA.isGrey ? -99 : sA.weight;
-                    const effB = sB.isGrey ? -99 : sB.weight;
-                    if (effA !== effB) return effB - effA;
+                    // XX閒置最後
+                    if (sA.isGrey !== sB.isGrey) return sA.isGrey ? 1 : -1;
+                    // weight 不同：高的在前
+                    if (sA.weight !== sB.weight) return sB.weight - sA.weight;
+                    // 同 weight
+                    if (sA.weight <= 1) {
+                        // 計時中 / 超時：targetTime 低到高（最快到期的排前）
+                        return a[1].targetTime - b[1].targetTime;
+                    }
+                    // 階段 / ON：地圖等級高的排前
                     return sB.mapLv - sA.mapLv;
                 });
-                renderBox(sorted, "全域排序：ON > 階段4→1 > 計時中 > 超時");
+                renderBox(sorted, "全域排序：ON > 階段4→1 > 計時中(最快到期) > 超時");
             }
             else if (currentSort === 'map') {
                 const sorted = all.sort((a, b) => getBossStatus(b[1]).mapLv - getBossStatus(a[1]).mapLv || a[1].ch - b[1].ch);
                 renderBox(sorted, "全域地圖等級排序");
             }
             else {
+                // 分組排序：XX才進閒置區，超過1小時計時也進閒置
                 const stages = [], timersList = [], idleList = [];
                 all.forEach(([id, b]) => {
                     const st = getBossStatus(b);
-                    if (st.isGrey) idleList.push([id, b]);
+                    const oneHour = 3600000;
+                    const isOverdue = b.targetTime > 0 && (now - b.targetTime > oneHour);
+                    const isStageIdle = b.targetTime === 0 && (now - b.startTime > oneHour);
+                    if (st.isGrey || isOverdue || isStageIdle) idleList.push([id, b]);
                     else if (b.targetTime > 0) timersList.push([id, b]);
                     else stages.push([id, b]);
                 });
@@ -307,7 +428,6 @@
                     const matchNum = b.displayValue.match(/[\d.]+/);
                     const lv = b.displayValue === "ON" ? 99 : (matchNum ? Math.floor(parseFloat(matchNum[0])) : 0);
                     const isW = (lv < 2 && m >= 12) || (lv >= 2 && lv < 3 && m >= 7) || (lv >= 3 && lv < 4 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
-                    // 修正4：showWarningIcon 控制警告符號顯示
                     el.innerHTML = `<span class="timer-label">${b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isGrey) ? '<span class="warning-icon">⚠️</span>' : ''}`;
                     if (!isGrey) el.style.color = statusColor;
                 }
@@ -328,10 +448,7 @@
                 dv = "階段" + (n.length > 1 && !n.includes('.') ? n.split('').join('.') : n);
                 if (parseFloat(n) >= 4) flash = true;
             } else { tt = Date.now() + (parseTime(val) * 60000); }
-
-            db.ref(`rooms/${currentRoom}/bosses/${id}`).set({
-                map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash
-            });
+            db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash });
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 5000);
         }
 
