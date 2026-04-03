@@ -101,7 +101,7 @@
                     </div>
                 </div>
                 <div class="room-info">
-                    <span class="version-tag">v1.1.1</span>
+                    <span class="version-tag">v1.1.2</span>
                     <button class="btn-danger" onclick="clearAllBosses()">一鍵清除</button>
                     <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
@@ -136,6 +136,8 @@
         let myName = '無名戰友', showWarningIcon = true, colorMode = 1, audioCtx = null, isChatOpen = true, lastReadMsgTime = 0;
         window.currentData = {};
         let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
+        // 用來追蹤每個 Boss 最後被處理的時間戳，防止重複閃爍
+        let lastProcessedTime = {};
 
         function updateVolBg(el) { const val = (el.value - el.min) / (el.max - el.min) * 100; el.style.backgroundSize = val + '% 100%'; }
         function getStatusColor(weight) {
@@ -183,12 +185,22 @@
             });
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
                 const incomingData = s.val() || {};
-                // 重要：修正「任何編輯都會閃爍」的問題，只在本地收到新資料且包含 isFlash 時播放一次音效
+                
+                // 檢查是否有「新的」變動需要閃爍與播放音效
                 Object.keys(incomingData).forEach(k => {
-                    if (incomingData[k].isFlash && (!window.currentData[k] || window.currentData[k].startTime !== incomingData[k].startTime)) {
-                        playDing();
+                    const boss = incomingData[k];
+                    // 條件1：資料標記為 isFlash
+                    // 條件2：這是一個新的變更 (startTime 大於我們上次記錄的時間)
+                    if (boss.isFlash && (!lastProcessedTime[k] || boss.startTime > lastProcessedTime[k])) {
+                        // 雙重確認閃爍條件：只有階段 4 以上或 ON 才觸發
+                        const num = parseFloat(boss.lastInput.replace('00', '')) || 0;
+                        if (boss.displayValue === "ON" || num >= 4) {
+                            playDing();
+                            lastProcessedTime[k] = boss.startTime; // 更新處理時間
+                        }
                     }
                 });
+                
                 window.currentData = incomingData;
                 renderList();
             });
@@ -209,7 +221,6 @@
             const isStageIdle = (b.targetTime === 0 && (now - b.startTime > oneHour));
             const isGrey = isManualIdle || isStageIdle || isTimeIdle;
             let weight = -1;
-            // 提取階段的小數點數值用於排序
             const stageVal = parseFloat((b.displayValue || '').match(/[\d.]+/)) || 0;
 
             if (b.displayValue === "ON") weight = 6;
@@ -227,7 +238,6 @@
                 if (sA.isGrey !== sB.isGrey) return sA.isGrey ? 1 : -1;
                 const sw = (w) => (w === 0 ? 1.5 : w);
                 if (sA.weight !== sB.weight) return sw(sB.weight) - sw(sA.weight);
-                // 4. 階段內部排序修正：小數點由高到低
                 if (sA.weight >= 2 && sA.weight <= 5) return sB.stageVal - sA.stageVal;
                 if (sA.weight <= 1.5) return a[1].targetTime - b[1].targetTime;
                 return sB.mapLv - sA.mapLv;
@@ -261,12 +271,9 @@
             const otherItems = all.filter(i => !getBossStatus(i[1], i[0]).pinned);
 
             if (pinnedItems.length > 0) renderBox(pinnedItems, "置頂追蹤區 ★");
-
-            if (currentSort === 'time') {
-                renderBox(sortItems(otherItems), "全域時間排序 (閒置置底)");
-            } else if (currentSort === 'map') {
-                renderBox(otherItems.sort((a,b) => getBossStatus(b[1], b[0]).mapLv - getBossStatus(a[1], a[0]).mapLv || a[1].ch - b[1].ch), "全域地圖等級排序");
-            } else {
+            if (currentSort === 'time') { renderBox(sortItems(otherItems), "全域時間排序 (閒置置底)"); } 
+            else if (currentSort === 'map') { renderBox(otherItems.sort((a,b) => getBossStatus(b[1], b[0]).mapLv - getBossStatus(a[1], a[0]).mapLv || a[1].ch - b[1].ch), "全域地圖等級排序"); } 
+            else {
                 const stages = [], timersList = [], idleList = [];
                 otherItems.forEach(([id, b]) => {
                     const st = getBossStatus(b, id);
@@ -305,12 +312,14 @@
             else if (val.startsWith("00")) {
                 const n = val.substring(2); 
                 dv = "階段" + (n.length > 1 && !n.includes('.') ? n.split('').join('.') : n); 
-                // 2. 判定修正：僅階段 >= 4 才觸發閃爍
                 if (parseFloat(n) >= 4) flash = true;
             } else tt = Date.now() + ((val.split(/[:.：]/).length===2?parseInt(val.split(/[:.：]/)[0])*60+parseInt(val.split(/[:.：]/)[1]):parseFloat(val)||0) * 60000);
-            db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash });
-            // 動畫播放一段時間後清除 Flash 狀態，避免重新渲染時重複播放
-            setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 5000);
+            
+            const now = Date.now();
+            db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: now, isFlash: flash });
+            // 更新本地最後處理時間，防止自己存檔後立刻觸發閃爍
+            lastProcessedTime[id] = now;
+            setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 3000);
             if (doFocus) doEdit(map, ch, val);
         }
 
@@ -318,13 +327,16 @@
             db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => {
                 const d = s.val(); if (!d) return; 
                 const l = d.lastInput.toUpperCase();
-                // 1. NEXT 失靈判定修正：支援 00X.X 格式
                 if (l === "ON") saveBoss(m, c, "001", true);
                 else if (l.startsWith("00")) {
                     const numMatch = l.match(/00([\d.]+)/); 
                     if (numMatch) {
-                        const next = parseFloat(numMatch[1]) + 1;
-                        saveBoss(m, c, next >= 5 ? "ON" : "00" + next);
+                        const currentNum = parseFloat(numMatch[1]);
+                        // 如果是小數點階段 (例如 1.5)，直接進到下一個整數 (2)
+                        // 如果是整數，跳到下一個整數
+                        let nextNum = Math.floor(currentNum) + 1;
+                        if (nextNum >= 5) saveBoss(m, c, "ON");
+                        else saveBoss(m, c, "00" + nextNum);
                     }
                 } else saveBoss(m, c, "ON");
             }); unlockAudio();
