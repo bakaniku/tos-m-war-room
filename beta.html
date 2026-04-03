@@ -101,7 +101,7 @@
                     </div>
                 </div>
                 <div class="room-info">
-                    <span class="version-tag">v1.1.3</span>
+                    <span class="version-tag">v1.1.4</span>
                     <button class="btn-danger" onclick="clearAllBosses()">一鍵清除</button>
                     <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
@@ -136,23 +136,16 @@
         let myName = '無名戰友', showWarningIcon = true, colorMode = 1, audioCtx = null, isChatOpen = true, lastReadMsgTime = 0;
         window.currentData = {};
         let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
-        
-        // v1.1.3 改用 lastProcessedInput 來判定「內容是否真的改變」
         let lastProcessedInput = {};
 
         function updateVolBg(el) { const val = (el.value - el.min) / (el.max - el.min) * 100; el.style.backgroundSize = val + '% 100%'; }
         function getStatusColor(weight) {
             const colors = { 6:'#800000', 5:'#FF0000', 4:'#FF4500', 3:'#FFA500', 2:'#FFFF00', 1:'#00FF00', 0:'#FF3300' };
             if (colorMode === 1) return colors[weight] || '#fff';
-            if (weight === 6) return '#800000';
-            if (weight === 5) return '#FF0000';
-            if (weight >= 2 && weight <= 4) return '#FFFF00';
-            return weight === 1 ? '#00FF00' : '#FF3300';
+            return (weight === 6) ? '#800000' : (weight === 5) ? '#FF0000' : (weight >= 2 && weight <= 4) ? '#FFFF00' : (weight === 1) ? '#00FF00' : '#FF3300';
         }
-
         function unlockAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); }
         function playDing() { if (isSfxEnabled) { unlockAudio(); const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'sine'; osc.frequency.setValueAtTime(880, audioCtx.currentTime); osc.connect(gain); gain.connect(audioCtx.destination); gain.gain.setValueAtTime(0, audioCtx.currentTime); gain.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.01); osc.start(); osc.stop(audioCtx.currentTime + 0.3); } }
-
         function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); unlockAudio(); }
         function toggleSfx() { isSfxEnabled = !isSfxEnabled; document.getElementById('sfxBtn').classList.toggle('active', isSfxEnabled); unlockAudio(); }
         function toggleWarn() { showWarningIcon = !showWarningIcon; document.getElementById('warnBtn').classList.toggle('active', showWarningIcon); renderList(); }
@@ -160,17 +153,6 @@
         function toggleChat() { isChatOpen = !isChatOpen; document.getElementById('chatPanel').classList.toggle('chat-closed', !isChatOpen); document.getElementById('chatBtn').classList.toggle('active', isChatOpen); if (isChatOpen) { lastReadMsgTime = Date.now(); document.getElementById('chatDot').classList.remove('show'); scrollChat(); } }
         function scrollChat() { const el = document.getElementById('chatMsgs'); setTimeout(() => { el.scrollTop = el.scrollHeight; }, 100); }
         function sendMsg() { const i = document.getElementById('chatInput'); if (!i.value.trim()) return; db.ref(`rooms/${currentRoom}/chat`).push({ name: myName, text: i.value.trim(), t: Date.now() }); i.value = ''; }
-
-        function initChat() {
-            document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMsg(); });
-            db.ref(`rooms/${currentRoom}/chat`).limitToLast(50).on('value', s => {
-                const container = document.getElementById('chatMsgs'); container.innerHTML = '';
-                const list = Object.values(s.val() || {}).sort((a,b) => a.t - b.t);
-                list.forEach(m => { container.innerHTML += `<div class="msg-row"><span class="msg-name ${m.name===myName?'self':''}">${m.name}</span><span class="msg-bubble">${m.text}</span></div>`; });
-                if (!isChatOpen && list.length > 0 && list[list.length-1].t > lastReadMsgTime && list[list.length-1].name !== myName) document.getElementById('chatDot').classList.add('show');
-                scrollChat();
-            });
-        }
 
         function startSession(id) {
             currentRoom = id.toUpperCase(); myName = document.getElementById('userNameInput').value.trim() || '無名戰友';
@@ -185,45 +167,25 @@
             });
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
                 const incomingData = s.val() || {};
-                
                 Object.keys(incomingData).forEach(k => {
                     const boss = incomingData[k];
-                    const inputVal = boss.lastInput.toUpperCase();
-                    
-                    // 核心閃爍邏輯：
-                    // 1. 內容確實改變了 (避免 startTime 微差干擾)
-                    // 2. 被標記為 Flash
+                    const inputVal = boss.lastInput.toString().toUpperCase();
                     if (inputVal !== lastProcessedInput[k] && boss.isFlash) {
-                        const num = parseFloat(inputVal.replace('00', '')) || 0;
-                        if (inputVal === "ON" || num >= 4) {
-                            playDing();
-                        }
+                        const num = parseFloat(inputVal.replace("00", "")) || 0;
+                        if (inputVal === "ON" || num >= 4) playDing();
                     }
                     lastProcessedInput[k] = inputVal;
                 });
-                
-                window.currentData = incomingData;
-                renderList();
+                window.currentData = incomingData; renderList();
             });
             initChat();
         }
 
-        function togglePin(bossId) {
-            const key = `${currentRoom}_${bossId}`;
-            if (localPinned[key]) delete localPinned[key]; else localPinned[key] = true;
-            localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned));
-            renderList();
-        }
-
         function getBossStatus(b, bossId) {
             const now = Date.now(), oneHour = 3600000;
-            const isManualIdle = b.lastInput.toUpperCase().startsWith("XX");
-            const isTimeIdle = (b.targetTime > 0 && (now - b.targetTime > oneHour));
-            const isStageIdle = (b.targetTime === 0 && (now - b.startTime > oneHour));
-            const isGrey = isManualIdle || isStageIdle || isTimeIdle;
+            const isGrey = b.lastInput.toString().toUpperCase().startsWith("XX") || (b.targetTime > 0 && (now - b.targetTime > oneHour)) || (b.targetTime === 0 && (now - b.startTime > oneHour));
             let weight = -1;
             const stageVal = parseFloat((b.displayValue || '').match(/[\d.]+/)) || 0;
-
             if (b.displayValue === "ON") weight = 6;
             else if (b.displayValue.includes("階段4")) weight = 5;
             else if (b.displayValue.includes("階段3")) weight = 4;
@@ -249,7 +211,6 @@
             const container = document.getElementById('sectionsContainer'); container.innerHTML = '';
             Object.values(timers).forEach(clearInterval); timers = {};
             const all = Object.entries(window.currentData);
-            
             const renderBox = (items, label) => {
                 if (items.length === 0) return;
                 const sec = document.createElement('div'); sec.className = 'grid-section';
@@ -258,7 +219,7 @@
                 const grid = sec.querySelector('.grid');
                 items.forEach(([id, b]) => {
                     const st = getBossStatus(b, id);
-                    const card = document.createElement('div'); card.className = `card ${st.isGrey ? 'idle-card' : ''}`;
+                    const card = document.createElement('div'); card.className = 'card';
                     card.innerHTML = `<button class="del" onclick="deleteBoss('${id}')">×</button>
                         <div class="card-title-row"><button class="pin-btn ${st.pinned?'pinned':''}" onclick="togglePin('${id}')">★</button>
                         <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3></div>
@@ -267,13 +228,11 @@
                     grid.appendChild(card); startTimer(id, b, st.isGrey, st.color);
                 });
             };
-
             const pinnedItems = sortItems(all.filter(i => getBossStatus(i[1], i[0]).pinned));
             const otherItems = all.filter(i => !getBossStatus(i[1], i[0]).pinned);
-
             if (pinnedItems.length > 0) renderBox(pinnedItems, "置頂追蹤區 ★");
-            if (currentSort === 'time') { renderBox(sortItems(otherItems), "全域時間排序 (閒置置底)"); } 
-            else if (currentSort === 'map') { renderBox(otherItems.sort((a,b) => getBossStatus(b[1], b[0]).mapLv - getBossStatus(a[1], a[0]).mapLv || a[1].ch - b[1].ch), "全域地圖等級排序"); } 
+            if (currentSort === 'time') renderBox(sortItems(otherItems), "全域時間排序 (閒置置底)");
+            else if (currentSort === 'map') renderBox(otherItems.sort((a,b) => getBossStatus(b[1], b[0]).mapLv - getBossStatus(a[1], a[0]).mapLv || a[1].ch - b[1].ch), "全域地圖等級排序");
             else {
                 const stages = [], timersList = [], idleList = [];
                 otherItems.forEach(([id, b]) => {
@@ -307,14 +266,22 @@
 
         function saveBoss(map, ch, val, doFocus = false) {
             const id = `${map}_${ch}`; let dv = val, tt = 0, flash = false;
-            const uv = val.toUpperCase();
-            if (uv.startsWith("XX")) dv = "階段" + (val.substring(2) || "1");
-            else if (uv === "ON") { dv = "ON"; flash = true; }
-            else if (val.startsWith("00")) {
-                const n = val.substring(2); 
-                dv = "階段" + (n.length > 1 && !n.includes('.') ? n.split('').join('.') : n); 
-                if (parseFloat(n) >= 4) flash = true;
-            } else tt = Date.now() + ((val.split(/[:.：]/).length===2?parseInt(val.split(/[:.：]/)[0])*60+parseInt(val.split(/[:.：]/)[1]):parseFloat(val)||0) * 60000);
+            const inputStr = val.toString();
+            const uv = inputStr.toUpperCase();
+            
+            if (uv.startsWith("XX")) {
+                dv = "階段" + (inputStr.substring(2) || "1");
+            } else if (uv === "ON") {
+                dv = "ON"; flash = true;
+            } else if (inputStr.startsWith("00")) {
+                const nStr = inputStr.replace("00", "");
+                const nNum = parseFloat(nStr) || 0;
+                dv = "階段" + (nStr.length > 1 && !nStr.includes('.') ? nStr.split('').join('.') : nStr); 
+                // 1. 修正閃爍判斷：只有 >= 4 才給閃
+                if (nNum >= 4) flash = true; else flash = false;
+            } else {
+                tt = Date.now() + ((inputStr.split(/[:.：]/).length===2?parseInt(inputStr.split(/[:.：]/)[0])*60+parseInt(inputStr.split(/[:.：]/)[1]):parseFloat(inputStr)||0) * 60000);
+            }
             
             db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash });
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 3000);
@@ -324,23 +291,19 @@
         function triggerNext(m, c) {
             db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => {
                 const d = s.val(); if (!d) return; 
-                const l = d.lastInput.toUpperCase();
+                const l = d.lastInput.toString().toUpperCase();
                 
                 if (l === "ON") {
                     saveBoss(m, c, "001", true);
                 } else if (l.startsWith("00")) {
                     const rawNum = l.replace("00", "");
                     const currentNum = parseFloat(rawNum);
-                    
-                    // 修正跳階邏輯：
-                    // 1. 如果是小數點 (例如 1.5)，無條件進位到下一個整數 (2)
-                    // 2. 如果已經是整數，則加 1
-                    let nextNum = Math.floor(currentNum) + 1;
-                    
-                    if (nextNum >= 5) {
+                    // 2. 修正跳階邏輯：確保 next 永遠是字串且帶有 00
+                    let nextInt = Math.floor(currentNum) + 1;
+                    if (nextInt >= 5) {
                         saveBoss(m, c, "ON");
                     } else {
-                        saveBoss(m, c, "00" + nextNum);
+                        saveBoss(m, c, "00" + nextInt);
                     }
                 } else {
                     saveBoss(m, c, "ON");
@@ -352,7 +315,6 @@
             const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus();
             i.setSelectionRange(m.length + c.length + 2, i.value.length);
         }
-
         function addBoss() { const i = document.getElementById('bossInput'); const p = i.value.trim().split(/\s+/); if (p.length < 3) return; saveBoss(p[0], p[1], p.slice(2).join('')); i.value = ''; }
         function deleteBoss(id) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
         function clearAllBosses() { if (confirm("確定一鍵清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
@@ -360,6 +322,16 @@
         function joinRoom() { const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
         function createRoom() { const i = Math.random().toString(36).substring(2, 8).toUpperCase(); startSession(i); }
         function setSort(t) { currentSort = t; document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id === `sort${t.charAt(0).toUpperCase() + t.slice(1)}Btn`)); renderList(); }
+        function initChat() {
+            document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMsg(); });
+            db.ref(`rooms/${currentRoom}/chat`).limitToLast(50).on('value', s => {
+                const container = document.getElementById('chatMsgs'); container.innerHTML = '';
+                const list = Object.values(s.val() || {}).sort((a,b) => a.t - b.t);
+                list.forEach(m => { container.innerHTML += `<div class="msg-row"><span class="msg-name ${m.name===myName?'self':''}">${m.name}</span><span class="msg-bubble">${m.text}</span></div>`; });
+                if (!isChatOpen && list.length > 0 && list[list.length-1].t > lastReadMsgTime && list[list.length-1].name !== myName) document.getElementById('chatDot').classList.add('show');
+                scrollChat();
+            });
+        }
     </script>
 </body>
 </html>
