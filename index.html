@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.1.9</title>
+    <title>TOS M FB TIME v1.2.1</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -31,8 +31,11 @@
         .vol-range { -webkit-appearance: none; width: 60px; height: 4px; background: #333; border-radius: 2px; outline: none; margin: 0 5px; background-image: linear-gradient(#0f0, #0f0); background-repeat: no-repeat; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: #0f0; border-radius: 50%; cursor: pointer; border: 2px solid #111; }
 
-        .user-list-bar { font-size: 12px; color: #555; margin-bottom: 20px; border-bottom: 1px solid #222; padding-bottom: 8px; }
-        
+        .user-list-bar { font-size: 12px; color: #555; margin-bottom: 8px; border-bottom: 1px solid #222; padding-bottom: 8px; }
+        .info-bar { background: #111; border-radius: 6px; padding: 8px 12px; border: 1px solid #333; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; }
+        .info-icon { color: #0af; font-size: 14px; }
+        .info-text { font-size: 12px; color: #888; margin: 0; line-height: 1.4; }
+
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; margin-bottom: 5px; font-size: 16px; color: #fff; padding: 8px 0; box-sizing: border-box; }
         .input-hint { font-size: 11px; color: #444; margin-bottom: 15px; }
         .sort-row { margin-bottom: 15px; display: flex; gap: 8px; flex-wrap: wrap; }
@@ -44,10 +47,7 @@
         .card-title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 0; }
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; border-bottom: 1px dashed #444; line-height: 1.2; }
         
-        .pin-btn { 
-            width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid #444; background: #1a1a1a; 
-            display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; font-size: 12px; color: #666; transition: 0.2s; flex-shrink: 0;
-        }
+        .pin-btn { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid #444; background: #1a1a1a; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; font-size: 12px; color: #666; transition: 0.2s; flex-shrink: 0; }
         .pin-btn.pinned { border-color: #ffca28; background: #2a2200; color: #ffca28; box-shadow: 0 0 5px rgba(255, 202, 40, 0.3); }
         
         .del { position: absolute; top: 18px; right: 8px; color: #444; background: none; border: none; font-size: 14px; cursor: pointer; }
@@ -102,7 +102,7 @@
                     </div>
                 </div>
                 <div class="room-info">
-                    <span class="version-tag">v1.1.9</span>
+                    <span class="version-tag">v1.2.1</span>
                     <button class="btn-danger" onclick="clearAllBosses()">一鍵清除</button>
                     <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
@@ -110,14 +110,19 @@
 
             <div class="user-list-bar">在線:<span id="onlineCount" style="color:#0f0;">0</span> | <span id="onlineUsers">載入中...</span></div>
 
+            <div class="info-bar">
+                <span class="info-icon">ℹ️</span>
+                <p class="info-text">優化提示：輸入 0015 會自動轉為 R1.5 (階段1.5)，若看到 R 字頭標記屬系統正常轉換，不影響操作。</p>
+            </div>
+
             <div class="sort-row">
                 <button id="sortTimeBtn" class="btn-toggle active" onclick="setSort('time')">時間排序</button>
                 <button id="sortGroupBtn" class="btn-toggle" onclick="setSort('group')">分組排序</button>
                 <button id="sortMapBtn" class="btn-toggle" onclick="setSort('map')">地圖排序</button>
             </div>
 
-            <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 R數字/分鐘">
-            <div class="input-hint" id="inputHint">範例：80 3 R1.5 ｜ 80 3 001 ｜ 80 3 12:30 ｜ 80 3 XX</div>
+            <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 階段(R)/分鐘">
+            <div class="input-hint" id="inputHint">範例：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 12:30 ｜ 80 3 ON</div>
             <div id="sectionsContainer"></div>
             <div id="chatPanel">
                 <div class="chat-msgs" id="chatMsgs"></div>
@@ -155,36 +160,7 @@
         function scrollChat() { const el = document.getElementById('chatMsgs'); setTimeout(() => { el.scrollTop = el.scrollHeight; }, 100); }
         function sendMsg() { const i = document.getElementById('chatInput'); if (!i.value.trim()) return; db.ref(`rooms/${currentRoom}/chat`).push({ name: myName, text: i.value.trim(), t: Date.now() }); i.value = ''; }
 
-        function startSession(id) {
-            currentRoom = id.toUpperCase(); myName = document.getElementById('userNameInput').value.trim() || '無名戰友';
-            document.getElementById('loginView').style.display = 'none'; document.getElementById('mainView').style.display = 'block';
-            document.getElementById('displayID').innerText = currentRoom; updateVolBg(document.getElementById('volRange'));
-            document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
-            db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
-            db.ref(`rooms/${currentRoom}/users`).on('value', s => {
-                const users = Object.values(s.val() || {});
-                document.getElementById('onlineCount').innerText = users.length;
-                document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', ');
-            });
-            db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
-                const incomingData = s.val() || {};
-                Object.keys(incomingData).forEach(k => {
-                    const boss = incomingData[k];
-                    const inputVal = boss.lastInput.toString().toUpperCase();
-                    if (inputVal !== lastProcessedInput[k] && boss.isFlash) {
-                        if (inputVal === "ON") playDing();
-                        else if (inputVal.startsWith("R")) {
-                            const num = parseFloat(inputVal.substring(1)) || 0;
-                            if (num >= 4.0) playDing();
-                        }
-                    }
-                    lastProcessedInput[k] = inputVal;
-                });
-                window.currentData = incomingData; renderList();
-            });
-            initChat();
-        }
-
+        // 核心邏輯：計算卡片狀態
         function getBossStatus(b, bossId) {
             const now = Date.now(), oneHour = 3600000;
             const isGrey = b.lastInput.toString().toUpperCase().startsWith("XX") || (b.targetTime > 0 && (now - b.targetTime > oneHour)) || (b.targetTime === 0 && (now - b.startTime > oneHour));
@@ -212,7 +188,8 @@
         }
 
         function renderList() {
-            const container = document.getElementById('sectionsContainer'); container.innerHTML = '';
+            const container = document.getElementById('sectionsContainer'); if(!container) return;
+            container.innerHTML = '';
             Object.values(timers).forEach(clearInterval); timers = {};
             const all = Object.entries(window.currentData);
             const renderBox = (items, label) => {
@@ -272,22 +249,14 @@
             const id = `${map}_${ch}`; 
             let dv = val, tt = 0, flash = false;
             let uv = val.toString().toUpperCase();
-            
-            // 進化版靜默轉型：支援 001 (R1) 與 0015 (R1.5)
             if (uv.startsWith("00")) {
                 let raw = uv.replace("00", "");
-                if (raw.length === 2 && !raw.includes('.')) { 
-                    uv = "R" + raw[0] + "." + raw[1];
-                } else {
-                    uv = "R" + raw;
-                }
+                if (raw.length === 2 && !raw.includes('.')) { uv = "R" + raw[0] + "." + raw[1]; }
+                else { uv = "R" + raw; }
             }
-
-            if (uv.startsWith("XX")) {
-                dv = "階段" + (uv.substring(2) || "1");
-            } else if (uv === "ON") {
-                dv = "ON"; flash = true;
-            } else if (uv.startsWith("R")) {
+            if (uv.startsWith("XX")) { dv = "階段" + (uv.substring(2) || "1"); }
+            else if (uv === "ON") { dv = "ON"; flash = true; }
+            else if (uv.startsWith("R")) {
                 const rawNum = uv.substring(1);
                 const numericVal = parseFloat(rawNum) || 0;
                 dv = "階段" + rawNum; 
@@ -295,11 +264,7 @@
             } else {
                 tt = Date.now() + ((uv.split(/[:.：]/).length===2?parseInt(uv.split(/[:.：]/)[0])*60+parseInt(uv.split(/[:.：]/)[1]):parseFloat(uv)||0) * 60000);
             }
-            
-            db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ 
-                map, ch, targetTime: tt, lastInput: uv, 
-                displayValue: dv, startTime: Date.now(), isFlash: flash 
-            });
+            db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: uv, displayValue: dv, startTime: Date.now(), isFlash: flash });
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 3000);
             if (doFocus) doEdit(map, ch, uv);
         }
@@ -308,24 +273,48 @@
             db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => {
                 const d = s.val(); if (!d) return; 
                 let cur = d.lastInput.toString().toUpperCase();
-                
-                // 相容舊資料轉型
                 if (cur.startsWith("00")) {
                     let raw = cur.replace("00", "");
                     cur = (raw.length === 2) ? "R" + raw[0] + "." + raw[1] : "R" + raw;
                 }
-
-                if (cur === "ON") {
-                    saveBoss(m, c, "R1", true);
-                } else if (cur.startsWith("R")) {
+                if (cur === "ON") { saveBoss(m, c, "R1", true); }
+                else if (cur.startsWith("R")) {
                     const num = parseFloat(cur.substring(1)) || 0;
                     let next = Math.floor(num) + 1;
                     if (next >= 5) saveBoss(m, c, "ON");
                     else saveBoss(m, c, "R" + next);
-                } else {
-                    saveBoss(m, c, "ON");
-                }
+                } else { saveBoss(m, c, "ON"); }
             }); unlockAudio();
+        }
+
+        function startSession(id) {
+            currentRoom = id.toUpperCase(); myName = document.getElementById('userNameInput').value.trim() || '無名戰友';
+            document.getElementById('loginView').style.display = 'none'; document.getElementById('mainView').style.display = 'block';
+            document.getElementById('displayID').innerText = currentRoom; updateVolBg(document.getElementById('volRange'));
+            document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
+            db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
+            db.ref(`rooms/${currentRoom}/users`).on('value', s => {
+                const users = Object.values(s.val() || {});
+                document.getElementById('onlineCount').innerText = users.length;
+                document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', ');
+            });
+            db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
+                const incomingData = s.val() || {};
+                Object.keys(incomingData).forEach(k => {
+                    const boss = incomingData[k];
+                    const inputVal = boss.lastInput.toString().toUpperCase();
+                    if (inputVal !== lastProcessedInput[k] && boss.isFlash) {
+                        if (inputVal === "ON") playDing();
+                        else if (inputVal.startsWith("R")) {
+                            const num = parseFloat(inputVal.substring(1)) || 0;
+                            if (num >= 4.0) playDing();
+                        }
+                    }
+                    lastProcessedInput[k] = inputVal;
+                });
+                window.currentData = incomingData; renderList();
+            });
+            initChat();
         }
 
         function togglePin(bossId) {
