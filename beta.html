@@ -68,6 +68,7 @@
         .chat-input-row button { background: #0f0; color: #000; border: none; padding: 0 20px; font-weight: bold; cursor: pointer; }
         .chat-dot { position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; background: #f00; border-radius: 50%; display: none; }
         .chat-dot.show { display: block; }
+        .version-tag { font-size: 10px; color: #333; margin-right: 10px; }
     </style>
 </head>
 <body>
@@ -100,6 +101,7 @@
                     </div>
                 </div>
                 <div class="room-info">
+                    <span class="version-tag">v1.1.1</span>
                     <button class="btn-danger" onclick="clearAllBosses()">一鍵清除</button>
                     <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
@@ -180,8 +182,14 @@
                 document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', ');
             });
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
-                window.currentData = s.val() || {};
-                Object.keys(window.currentData).forEach(k => { if (window.currentData[k].isFlash) playDing(); });
+                const incomingData = s.val() || {};
+                // 重要：修正「任何編輯都會閃爍」的問題，只在本地收到新資料且包含 isFlash 時播放一次音效
+                Object.keys(incomingData).forEach(k => {
+                    if (incomingData[k].isFlash && (!window.currentData[k] || window.currentData[k].startTime !== incomingData[k].startTime)) {
+                        playDing();
+                    }
+                });
+                window.currentData = incomingData;
                 renderList();
             });
             initChat();
@@ -201,22 +209,26 @@
             const isStageIdle = (b.targetTime === 0 && (now - b.startTime > oneHour));
             const isGrey = isManualIdle || isStageIdle || isTimeIdle;
             let weight = -1;
+            // 提取階段的小數點數值用於排序
+            const stageVal = parseFloat((b.displayValue || '').match(/[\d.]+/)) || 0;
+
             if (b.displayValue === "ON") weight = 6;
             else if (b.displayValue.includes("階段4")) weight = 5;
             else if (b.displayValue.includes("階段3")) weight = 4;
             else if (b.displayValue.includes("階段2")) weight = 3;
             else if (b.displayValue.includes("階段1")) weight = 2;
             else if (b.targetTime > 0) weight = (b.targetTime > now) ? 1 : 0;
-            return { isGrey, weight, color: getStatusColor(weight), mapLv: parseInt((b.map || '').match(/\d+/)) || 0, pinned: !!localPinned[`${currentRoom}_${bossId}`] };
+            return { isGrey, weight, stageVal, color: getStatusColor(weight), mapLv: parseInt((b.map || '').match(/\d+/)) || 0, pinned: !!localPinned[`${currentRoom}_${bossId}`] };
         }
 
-        // 核心排序函數 (置頂區與普通區通用)
         function sortItems(items) {
             return items.sort((a, b) => {
                 const sA = getBossStatus(a[1], a[0]), sB = getBossStatus(b[1], b[0]);
                 if (sA.isGrey !== sB.isGrey) return sA.isGrey ? 1 : -1;
-                const sw = (w) => (w === 0 ? 1.5 : w); // 超時權重調高
+                const sw = (w) => (w === 0 ? 1.5 : w);
                 if (sA.weight !== sB.weight) return sw(sB.weight) - sw(sA.weight);
+                // 4. 階段內部排序修正：小數點由高到低
+                if (sA.weight >= 2 && sA.weight <= 5) return sB.stageVal - sA.stageVal;
                 if (sA.weight <= 1.5) return a[1].targetTime - b[1].targetTime;
                 return sB.mapLv - sA.mapLv;
             });
@@ -248,7 +260,7 @@
             const pinnedItems = sortItems(all.filter(i => getBossStatus(i[1], i[0]).pinned));
             const otherItems = all.filter(i => !getBossStatus(i[1], i[0]).pinned);
 
-            if (pinnedItems.length > 0) renderBox(pinnedItems, "置頂追蹤區 ★ (依照時間排序)");
+            if (pinnedItems.length > 0) renderBox(pinnedItems, "置頂追蹤區 ★");
 
             if (currentSort === 'time') {
                 renderBox(sortItems(otherItems), "全域時間排序 (閒置置底)");
@@ -260,7 +272,7 @@
                     const st = getBossStatus(b, id);
                     if (st.isGrey) idleList.push([id, b]); else if (b.targetTime > 0) timersList.push([id, b]); else stages.push([id, b]);
                 });
-                renderBox(stages.sort((a,b)=>getBossStatus(b[1], b[0]).weight - getBossStatus(a[1], a[0]).weight), "階段追蹤區");
+                renderBox(sortItems(stages), "階段追蹤區");
                 renderBox(timersList.sort((a,b)=>a[1].targetTime - b[1].targetTime), "重生計時區");
                 renderBox(idleList, "超時閒置區");
             }
@@ -287,21 +299,33 @@
 
         function saveBoss(map, ch, val, doFocus = false) {
             const id = `${map}_${ch}`; let dv = val, tt = 0, flash = false;
-            if (val.toUpperCase().startsWith("XX")) dv = "階段" + (val.substring(2) || "1");
-            else if (val.toUpperCase() === "ON") { dv = "ON"; flash = true; }
+            const uv = val.toUpperCase();
+            if (uv.startsWith("XX")) dv = "階段" + (val.substring(2) || "1");
+            else if (uv === "ON") { dv = "ON"; flash = true; }
             else if (val.startsWith("00")) {
-                const n = val.substring(2); dv = "階段" + (n.length > 1 && !n.includes('.') ? n.split('').join('.') : n); if (parseFloat(n) >= 4) flash = true;
+                const n = val.substring(2); 
+                dv = "階段" + (n.length > 1 && !n.includes('.') ? n.split('').join('.') : n); 
+                // 2. 判定修正：僅階段 >= 4 才觸發閃爍
+                if (parseFloat(n) >= 4) flash = true;
             } else tt = Date.now() + ((val.split(/[:.：]/).length===2?parseInt(val.split(/[:.：]/)[0])*60+parseInt(val.split(/[:.：]/)[1]):parseFloat(val)||0) * 60000);
             db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash });
+            // 動畫播放一段時間後清除 Flash 狀態，避免重新渲染時重複播放
+            setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 5000);
             if (doFocus) doEdit(map, ch, val);
         }
 
         function triggerNext(m, c) {
             db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => {
-                const d = s.val(); if (!d) return; const l = d.lastInput.toUpperCase();
+                const d = s.val(); if (!d) return; 
+                const l = d.lastInput.toUpperCase();
+                // 1. NEXT 失靈判定修正：支援 00X.X 格式
                 if (l === "ON") saveBoss(m, c, "001", true);
                 else if (l.startsWith("00")) {
-                    const m = l.match(/00(\d+)/); if (m) { const n = parseInt(m[1]) + 1; saveBoss(m, c, n >= 5 ? "ON" : "00" + n); }
+                    const numMatch = l.match(/00([\d.]+)/); 
+                    if (numMatch) {
+                        const next = parseFloat(numMatch[1]) + 1;
+                        saveBoss(m, c, next >= 5 ? "ON" : "00" + next);
+                    }
                 } else saveBoss(m, c, "ON");
             }); unlockAudio();
         }
