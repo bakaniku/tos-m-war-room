@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.2.1</title>
+    <title>TOS M FB TIME v1.2.2</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -151,9 +151,46 @@
             return (weight === 6) ? '#800000' : (weight === 5) ? '#FF0000' : (weight >= 2 && weight <= 4) ? '#FFFF00' : (weight === 1) ? '#00FF00' : '#FF3300';
         }
         function unlockAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); }
-        function playDing() { if (isSfxEnabled) { unlockAudio(); const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); osc.type = 'sine'; osc.frequency.setValueAtTime(880, audioCtx.currentTime); osc.connect(gain); gain.connect(audioCtx.destination); gain.gain.setValueAtTime(0, audioCtx.currentTime); gain.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.01); osc.start(); osc.stop(audioCtx.currentTime + 0.3); } }
-        function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); unlockAudio(); }
-        function toggleSfx() { isSfxEnabled = !isSfxEnabled; document.getElementById('sfxBtn').classList.toggle('active', isSfxEnabled); unlockAudio(); }
+        function playDing(isTest = false) { 
+            if (!isSfxEnabled && !isTest) return;
+            unlockAudio(); 
+            const vol = parseFloat(document.getElementById('volRange').value);
+            const osc = audioCtx.createOscillator(); 
+            const gain = audioCtx.createGain(); 
+            osc.type = 'sine'; 
+            osc.frequency.setValueAtTime(880, audioCtx.currentTime); 
+            osc.connect(gain); 
+            gain.connect(audioCtx.destination); 
+            gain.gain.setValueAtTime(0, audioCtx.currentTime); 
+            gain.gain.linearRampToValueAtTime(vol * 0.3, audioCtx.currentTime + 0.01); 
+            osc.start(); 
+            osc.stop(audioCtx.currentTime + 0.3); 
+        }
+
+        function speak(text, isTest = false) {
+            if (!isVoiceEnabled && !isTest) return;
+            window.speechSynthesis.cancel();
+            const vol = parseFloat(document.getElementById('volRange').value);
+            const msg = new SpeechSynthesisUtterance(text);
+            msg.volume = vol;
+            msg.lang = 'zh-TW';
+            msg.rate = 1.1;
+            window.speechSynthesis.speak(msg);
+        }
+
+        function toggleVoice() { 
+            isVoiceEnabled = !isVoiceEnabled; 
+            document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); 
+            unlockAudio(); 
+            if (isVoiceEnabled) speak("語音開啟", true); 
+        }
+
+        function toggleSfx() { 
+            isSfxEnabled = !isSfxEnabled; 
+            document.getElementById('sfxBtn').classList.toggle('active', isSfxEnabled); 
+            unlockAudio(); 
+            if (isSfxEnabled) playDing(true); 
+        }
         function toggleWarn() { showWarningIcon = !showWarningIcon; document.getElementById('warnBtn').classList.toggle('active', showWarningIcon); renderList(); }
         function toggleColorMode() { colorMode = colorMode === 1 ? 2 : 1; document.getElementById('colorModeBtn').innerText = colorMode === 1 ? '🎨' : '🖌️'; renderList(); }
         function toggleChat() { isChatOpen = !isChatOpen; document.getElementById('chatPanel').classList.toggle('chat-closed', !isChatOpen); document.getElementById('chatBtn').classList.toggle('active', isChatOpen); if (isChatOpen) { lastReadMsgTime = Date.now(); document.getElementById('chatDot').classList.remove('show'); scrollChat(); } }
@@ -304,10 +341,15 @@
                     const boss = incomingData[k];
                     const inputVal = boss.lastInput.toString().toUpperCase();
                     if (inputVal !== lastProcessedInput[k] && boss.isFlash) {
-                        if (inputVal === "ON") playDing();
-                        else if (inputVal.startsWith("R")) {
+                        if (inputVal === "ON") {
+                            playDing();
+                            speak(`${boss.map}分流${boss.ch}重生`); // 加入這行
+                        } else if (inputVal.startsWith("R")) {
                             const num = parseFloat(inputVal.substring(1)) || 0;
-                            if (num >= 4.0) playDing();
+                            if (num >= 4.0) {
+                                playDing();
+                                speak(`${boss.map}分流${boss.ch}階段${num}`); // 加入這行
+                            }
                         }
                     }
                     lastProcessedInput[k] = inputVal;
