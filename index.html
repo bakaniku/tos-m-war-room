@@ -45,7 +45,7 @@
         .card-title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 0; }
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; border-bottom: 1px dashed #444; line-height: 1.2; }
         
-        /* 圓框星星按鈕 */
+        /* 圓框星星按鈕 (個人置頂) */
         .pin-btn { 
             width: 22px; height: 22px; 
             border-radius: 50%; 
@@ -57,7 +57,7 @@
         }
         .pin-btn.pinned { 
             border-color: #ffca28; 
-            background: #2a2200; /* 點亮時的底色 */
+            background: #2a2200; 
             color: #ffca28; 
             box-shadow: 0 0 5px rgba(255, 202, 40, 0.3);
         }
@@ -150,6 +150,9 @@
         let myName = '無名戰友', showWarningIcon = true, colorMode = 1, audioCtx = null, isChatOpen = true, lastReadMsgTime = 0;
         window.currentData = {};
 
+        // 個人置頂資料集 (存放在 localStorage)
+        let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
+
         function updateVolBg(el) {
             const val = (el.value - el.min) / (el.max - el.min) * 100;
             el.style.backgroundSize = val + '% 100%';
@@ -158,10 +161,9 @@
         function getStatusColor(weight) {
             const colors = { 6:'#800000', 5:'#FF0000', 4:'#FF4500', 3:'#FFA500', 2:'#FFFF00', 1:'#00FF00', 0:'#FF3300' };
             if (colorMode === 1) return colors[weight] || '#fff';
-            // 色彩模式 II 修正：階段 1, 2, 3 (weight 2, 3, 4) 改為黃色
-            if (weight === 6) return '#800000'; // ON 酒紅
-            if (weight === 5) return '#FF0000'; // 階4 正紅
-            if (weight >= 2 && weight <= 4) return '#FFFF00'; // 階1~3 黃色
+            if (weight === 6) return '#800000';
+            if (weight === 5) return '#FF0000';
+            if (weight >= 2 && weight <= 4) return '#FFFF00';
             return weight === 1 ? '#00FF00' : '#FF3300';
         }
 
@@ -204,10 +206,10 @@
         }
 
         function startSession(id) {
-            currentRoom = id; myName = document.getElementById('userNameInput').value.trim() || '無名戰友';
+            currentRoom = id.toUpperCase(); myName = document.getElementById('userNameInput').value.trim() || '無名戰友';
             document.getElementById('loginView').style.display = 'none';
             document.getElementById('mainView').style.display = 'block';
-            document.getElementById('displayID').innerText = id;
+            document.getElementById('displayID').innerText = currentRoom;
             updateVolBg(document.getElementById('volRange'));
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
             db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
@@ -224,7 +226,23 @@
             initChat();
         }
 
-        function getBossStatus(b) {
+        // 修改後的置頂邏輯：存入個人本地
+        function togglePin(bossId) {
+            const storageKey = `${currentRoom}_${bossId}`;
+            if (localPinned[storageKey]) {
+                delete localPinned[storageKey];
+            } else {
+                localPinned[storageKey] = true;
+            }
+            localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned));
+            renderList(); // 即時重新渲染
+        }
+
+        function isPinned(bossId) {
+            return localPinned[`${currentRoom}_${bossId}`] === true;
+        }
+
+        function getBossStatus(b, bossId) {
             const now = Date.now(), oneHour = 3600000;
             const isManualIdle = b.lastInput.toUpperCase().startsWith("XX");
             const isTimeIdle = (b.targetTime > 0 && (now - b.targetTime > oneHour));
@@ -239,7 +257,7 @@
             else if (b.displayValue.includes("階段1")) weight = 2;
             else if (b.targetTime > 0) weight = (b.targetTime > now) ? 1 : 0;
 
-            return { isGrey, weight, color: getStatusColor(weight), mapLv: parseInt((b.map || '').match(/\d+/)) || 0, pinned: b.pinned || false };
+            return { isGrey, weight, color: getStatusColor(weight), mapLv: parseInt((b.map || '').match(/\d+/)) || 0, pinned: isPinned(bossId) };
         }
 
         function renderList() {
@@ -254,13 +272,13 @@
                 container.appendChild(sec);
                 const grid = sec.querySelector('.grid');
                 items.forEach(([id, b]) => {
-                    const status = getBossStatus(b);
+                    const status = getBossStatus(b, id);
                     const card = document.createElement('div');
                     card.className = `card ${status.isGrey ? 'idle-card' : ''}`;
                     card.innerHTML = `
                         <button class="del" onclick="deleteBoss('${id}')">×</button>
                         <div class="card-title-row">
-                            <button class="pin-btn ${status.pinned?'pinned':''}" onclick="togglePin('${id}', ${status.pinned})">★</button>
+                            <button class="pin-btn ${status.pinned?'pinned':''}" onclick="togglePin('${id}')">★</button>
                             <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3>
                         </div>
                         <div class="timer-container">
@@ -271,14 +289,14 @@
                 });
             };
 
-            const pinnedItems = all.filter(item => getBossStatus(item[1]).pinned);
-            const otherItems = all.filter(item => !getBossStatus(item[1]).pinned);
+            const pinnedItems = all.filter(item => getBossStatus(item[1], item[0]).pinned);
+            const otherItems = all.filter(item => !getBossStatus(item[1], item[0]).pinned);
 
             if (pinnedItems.length > 0) renderBox(pinnedItems, "置頂追蹤區 ★");
 
             if (currentSort === 'time') {
                 const sorted = otherItems.sort((a, b) => {
-                    const sA = getBossStatus(a[1]), sB = getBossStatus(b[1]);
+                    const sA = getBossStatus(a[1], a[0]), sB = getBossStatus(b[1], b[0]);
                     if (sA.isGrey !== sB.isGrey) return sA.isGrey ? 1 : -1;
                     const sortWeight = (w) => (w === 0 ? 1.5 : w); 
                     if (sA.weight !== sB.weight) return sortWeight(sB.weight) - sortWeight(sA.weight);
@@ -287,24 +305,20 @@
                 });
                 renderBox(sorted, "全域時間排序 (閒置置底)");
             } else if (currentSort === 'map') {
-                const sorted = otherItems.sort((a,b) => getBossStatus(b[1]).mapLv - getBossStatus(a[1]).mapLv || a[1].ch - b[1].ch);
+                const sorted = otherItems.sort((a,b) => getBossStatus(b[1], b[0]).mapLv - getBossStatus(a[1], a[0]).mapLv || a[1].ch - b[1].ch);
                 renderBox(sorted, "全域地圖等級排序");
             } else {
                 const stages = [], timersList = [], idleList = [];
                 otherItems.forEach(([id, b]) => {
-                    const st = getBossStatus(b);
+                    const st = getBossStatus(b, id);
                     if (st.isGrey) idleList.push([id, b]);
                     else if (b.targetTime > 0) timersList.push([id, b]);
                     else stages.push([id, b]);
                 });
-                renderBox(stages.sort((a,b)=>getBossStatus(b[1]).weight - getBossStatus(a[1]).weight), "階段追蹤區");
+                renderBox(stages.sort((a,b)=>getBossStatus(b[1], b[0]).weight - getBossStatus(a[1], a[0]).weight), "階段追蹤區");
                 renderBox(timersList.sort((a,b)=>a[1].targetTime - b[1].targetTime), "重生計時區");
                 renderBox(idleList, "超時閒置區");
             }
-        }
-
-        function togglePin(id, currentPinned) {
-            db.ref(`rooms/${currentRoom}/bosses/${id}`).update({ pinned: !currentPinned });
         }
 
         function startTimer(id, b, isGrey, statusColor) {
@@ -338,8 +352,7 @@
                 if (parseFloat(n) >= 4) flash = true;
             } else tt = Date.now() + ((val.split(/[:.：]/).length===2?parseInt(val.split(/[:.：]/)[0])*60+parseInt(val.split(/[:.：]/)[1]):parseFloat(val)||0) * 60000);
             
-            const existingPin = (window.currentData[id] && window.currentData[id].pinned) || false;
-            db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash, pinned: existingPin });
+            db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: val, displayValue: dv, startTime: Date.now(), isFlash: flash });
             if (doFocus) doEdit(map, ch, val);
         }
 
