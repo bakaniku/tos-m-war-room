@@ -3,14 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.2.3</title>
+    <title>TOS M FB TIME v1.2.4</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
         body { margin: 0; background: #000; color: #fff; font-family: sans-serif; display: flex; justify-content: center; }
         #app { width: 100%; max-width: 1000px; min-height: 100vh; padding: 20px; box-sizing: border-box; }
         .login-view { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh; }
-        .title { color: #0f0; font-size: 32px; font-weight: bold; margin-bottom: 40px; }
+        .title { color: #0f0; font-size: 32px; font-weight: bold; margin-bottom: 5px; }
+        .ver-info { color: #444; font-size: 10px; margin-bottom: 40px; }
         .input-group { width: 220px; display: flex; flex-direction: column; gap: 15px; }
         input[type=text] { background: #111; border: 1px solid #333; color: #fff; padding: 12px; border-radius: 8px; font-size: 16px; outline: none; text-align: center; }
         input[type=text]:focus { border-color: #0f0; }
@@ -50,7 +51,7 @@
         .pin-btn { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid #444; background: #1a1a1a; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; font-size: 12px; color: #666; transition: 0.2s; flex-shrink: 0; }
         .pin-btn.pinned { border-color: #ffca28; background: #2a2200; color: #ffca28; box-shadow: 0 0 5px rgba(255, 202, 40, 0.3); }
         
-        .del { position: absolute; top: 18px; right: 8px; color: #444; background: none; border: none; font-size: 14px; cursor: pointer; }
+        .del { position: absolute; top: 8px; right: 8px; color: #444; background: none; border: none; font-size: 16px; cursor: pointer; padding: 5px; line-height: 1; }
         .timer { font-size: 18px; font-weight: bold; margin-top: 8px; font-family: monospace; display: flex; align-items: center; }
         .timer-sub { font-size: 14px; margin-left: 4px; opacity: 0.8; }
         .flash-anim { animation: flash 0.5s step-end 10; }
@@ -76,6 +77,7 @@
     <div id="app">
         <div id="loginView" class="login-view">
             <div class="title">TOS M FB TIME</div>
+            <div class="ver-info">v1.2.4</div>
             <div class="input-group">
                 <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10">
                 <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
@@ -102,7 +104,7 @@
                     </div>
                 </div>
                 <div class="room-info">
-                    <span class="version-tag">v1.2.3</span>
+                    <span class="version-tag">v1.2.4</span>
                     <button class="btn-danger" onclick="clearAllBosses()">一鍵清除</button>
                     <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
@@ -112,7 +114,7 @@
 
             <div class="info-bar">
                 <span class="info-icon">ℹ️</span>
-                <p class="info-text">優化提示：輸入 0015 會自動轉為 R1.5；特定房間保護中，輸入指令可解鎖編輯權限。</p>
+                <p class="info-text">操作說明：活躍中按 × 轉閒置，閒置中按 × 刪除。超時 2 小時自動進入閒置。</p>
             </div>
 
             <div class="sort-row">
@@ -147,7 +149,6 @@
         // --- 房間保護設定 ---
         const protectedRooms = {
             '000000': 'tosm',
-            '112234': 'tosm'
         };
 
         function hasAuth() {
@@ -212,8 +213,8 @@
         function sendMsg() { const i = document.getElementById('chatInput'); if (!i.value.trim()) return; db.ref(`rooms/${currentRoom}/chat`).push({ name: myName, text: i.value.trim(), t: Date.now() }); i.value = ''; }
 
         function getBossStatus(b, bossId) {
-            const now = Date.now(), oneHour = 3600000;
-            const isGrey = b.lastInput.toString().toUpperCase().startsWith("XX") || (b.targetTime > 0 && (now - b.targetTime > oneHour)) || (b.targetTime === 0 && (now - b.startTime > oneHour));
+            const now = Date.now(), twoHours = 7200000; // 更新：超時 2 小時進入閒置
+            const isGrey = b.lastInput.toString().toUpperCase().startsWith("XX") || (b.targetTime > 0 && (now - b.targetTime > twoHours)) || (b.targetTime === 0 && (now - b.startTime > twoHours));
             let weight = -1;
             const stageVal = parseFloat((b.displayValue || '').match(/[\d.]+/)) || 0;
             if (b.displayValue === "ON") weight = 6;
@@ -253,7 +254,8 @@
                 items.forEach(([id, b]) => {
                     const st = getBossStatus(b, id);
                     const card = document.createElement('div'); card.className = 'card';
-                    card.innerHTML = `${auth ? `<button class="del" onclick="deleteBoss('${id}')">×</button>` : ''}
+                    // 更新：× 按鈕位置校正，並傳入 id 以便判斷刪除還是轉閒置
+                    card.innerHTML = `${auth ? `<button class="del" onclick="handleDelClick('${id}')">×</button>` : ''}
                         <div class="card-title-row"><button class="pin-btn ${st.pinned?'pinned':''}" onclick="togglePin('${id}')">★</button>
                         <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3></div>
                         <div class="timer-container"><div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color: ${st.isGrey ? '#555' : st.color}">...</div>
@@ -296,6 +298,18 @@
                     if (!isGrey) el.style.color = statusColor;
                 }
             }; up(); timers[id] = setInterval(up, 1000);
+        }
+
+        // 更新：處理刪除按鈕點擊
+        function handleDelClick(id) {
+            const b = window.currentData[id];
+            if (!b) return;
+            const st = getBossStatus(b, id);
+            if (st.isGrey) {
+                deleteBoss(id); // 已閒置，執行刪除
+            } else {
+                saveBoss(b.map, b.ch, "XX1"); // 活躍中，轉為閒置 (XX 階段1)
+            }
         }
 
         function saveBoss(map, ch, val, doFocus = false) {
