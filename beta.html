@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.2.5</title>
+    <title>TOS M FB TIME v1.2.6</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -77,7 +77,7 @@
     <div id="app">
         <div id="loginView" class="login-view">
             <div class="title">TOS M FB TIME</div>
-            <div class="ver-info">v1.2.5</div>
+            <div class="ver-info">v1.2.6</div>
             <div class="input-group">
                 <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10">
                 <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
@@ -104,7 +104,7 @@
                     </div>
                 </div>
                 <div class="room-info">
-                    <span class="version-tag">v1.2.5</span>
+                    <span class="version-tag">v1.2.6</span>
                     <button class="btn-danger" onclick="clearAllBosses()">一鍵清除</button>
                     <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
@@ -114,18 +114,15 @@
 
             <div class="info-bar">
                 <span class="info-icon">ℹ️</span>
-                <p class="info-text">操作說明：ON 狀態按 NEXT 進入已擊殺區。排序按鈕已根據需求重整位置。</p>
+                <p class="info-text">修正：計時器讀取問題。功能：ON 按 NEXT 進已擊殺區，超時 2 小時進入閒置。</p>
             </div>
 
             <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 階段(R)/分鐘">
             <div class="input-hint" id="inputHint">範例：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 12:30 ｜ 80 3 ON</div>
             
-            <!-- 排序按鈕與內容容器，將由 JavaScript 動態組合 -->
-            <div id="contentWrapper">
-                <div id="pinnedContainer"></div>
-                <div id="sortRowContainer"></div>
-                <div id="listContainer"></div>
-            </div>
+            <div id="pinnedSection"></div>
+            <div id="sortRowSection"></div>
+            <div id="mainSection"></div>
 
             <div id="chatPanel">
                 <div class="chat-msgs" id="chatMsgs"></div>
@@ -169,14 +166,9 @@
             const vol = parseFloat(document.getElementById('volRange').value);
             const osc = audioCtx.createOscillator(); 
             const gain = audioCtx.createGain(); 
-            osc.type = 'sine'; 
-            osc.frequency.setValueAtTime(880, audioCtx.currentTime); 
-            osc.connect(gain); 
-            gain.connect(audioCtx.destination); 
-            gain.gain.setValueAtTime(0, audioCtx.currentTime); 
-            gain.gain.linearRampToValueAtTime(vol * 0.3, audioCtx.currentTime + 0.01); 
-            osc.start(); 
-            osc.stop(audioCtx.currentTime + 0.3); 
+            osc.type = 'sine'; osc.frequency.setValueAtTime(880, audioCtx.currentTime); osc.connect(gain); gain.connect(audioCtx.destination); 
+            gain.gain.setValueAtTime(0, audioCtx.currentTime); gain.gain.linearRampToValueAtTime(vol * 0.3, audioCtx.currentTime + 0.01); 
+            osc.start(); osc.stop(audioCtx.currentTime + 0.3); 
         }
 
         function speak(text, isTest = false) {
@@ -184,9 +176,7 @@
             window.speechSynthesis.cancel();
             const vol = parseFloat(document.getElementById('volRange').value);
             const msg = new SpeechSynthesisUtterance(text);
-            msg.volume = vol;
-            msg.lang = 'zh-TW';
-            msg.rate = 1.1;
+            msg.volume = vol; msg.lang = 'zh-TW'; msg.rate = 1.1;
             window.speechSynthesis.speak(msg);
         }
 
@@ -201,17 +191,14 @@
         function getBossStatus(b, bossId) {
             const now = Date.now(), twoHours = 7200000;
             const isGrey = b.lastInput.toString().toUpperCase().startsWith("XX") || (b.targetTime > 0 && (now - b.targetTime > twoHours)) || (b.targetTime === 0 && (now - b.startTime > twoHours));
-            let weight = -1;
-            const stageVal = parseFloat((b.displayValue || '').match(/[\d.]+/)) || 0;
-            
-            if (b.lastInput.toString().toUpperCase().startsWith("DE")) weight = 7; // 已擊殺
+            let weight = -1; const stageVal = parseFloat((b.displayValue || '').match(/[\d.]+/)) || 0;
+            if (b.lastInput.toString().toUpperCase().startsWith("DE")) weight = 7;
             else if (b.displayValue === "ON") weight = 6;
             else if (b.displayValue.includes("階段4")) weight = 5;
             else if (b.displayValue.includes("階段3")) weight = 4;
             else if (b.displayValue.includes("階段2")) weight = 3;
             else if (b.displayValue.includes("階段1")) weight = 2;
             else if (b.targetTime > 0) weight = (b.targetTime > now) ? 1 : 0;
-            
             return { isGrey, weight, stageVal, color: getStatusColor(weight), mapLv: parseInt((b.map || '').match(/\d+/)) || 0, pinned: !!localPinned[`${currentRoom}_${bossId}`] };
         }
 
@@ -219,7 +206,7 @@
             return items.sort((a, b) => {
                 const sA = getBossStatus(a[1], a[0]), sB = getBossStatus(b[1], b[0]);
                 if (sA.isGrey !== sB.isGrey) return sA.isGrey ? 1 : -1;
-                const sw = (w) => (w === 0 ? 1.5 : (w === 7 ? -1 : w)); // 已擊殺置底於活躍項
+                const sw = (w) => (w === 0 ? 1.5 : (w === 7 ? -1 : w));
                 if (sA.weight !== sB.weight) return sw(sB.weight) - sw(sA.weight);
                 if (sA.weight >= 2 && sA.weight <= 5) return sB.stageVal - sA.stageVal;
                 if (sA.weight <= 1.5) return a[1].targetTime - b[1].targetTime;
@@ -228,31 +215,27 @@
         }
 
         function renderList() {
-            const pinnedContainer = document.getElementById('pinnedContainer');
-            const sortRowContainer = document.getElementById('sortRowContainer');
-            const listContainer = document.getElementById('listContainer');
-            if(!pinnedContainer || !sortRowContainer || !listContainer) return;
+            const pSec = document.getElementById('pinnedSection');
+            const sSec = document.getElementById('sortRowSection');
+            const mSec = document.getElementById('mainSection');
+            if(!pSec || !sSec || !mSec) return;
 
-            pinnedContainer.innerHTML = '';
-            sortRowContainer.innerHTML = '';
-            listContainer.innerHTML = '';
-            
+            pSec.innerHTML = ''; sSec.innerHTML = ''; mSec.innerHTML = '';
             Object.values(timers).forEach(clearInterval); timers = {};
             const all = Object.entries(window.currentData);
             const auth = hasAuth();
 
-            // 生成排序按鈕 HTML
-            const sortRowHTML = `
-                <div class="sort-row">
-                    <button id="sortTimeBtn" class="btn-toggle ${currentSort==='time'?'active':''}" onclick="setSort('time')">時間排序</button>
-                    <button id="sortGroupBtn" class="btn-toggle ${currentSort==='group'?'active':''}" onclick="setSort('group')">分組排序</button>
-                    <button id="sortMapBtn" class="btn-toggle ${currentSort==='map'?'active':''}" onclick="setSort('map')">地圖排序</button>
-                </div>`;
+            const sortRowHTML = `<div class="sort-row">
+                <button id="sortTimeBtn" class="btn-toggle ${currentSort==='time'?'active':''}" onclick="setSort('time')">時間排序</button>
+                <button id="sortGroupBtn" class="btn-toggle ${currentSort==='group'?'active':''}" onclick="setSort('group')">分組排序</button>
+                <button id="sortMapBtn" class="btn-toggle ${currentSort==='map'?'active':''}" onclick="setSort('map')">地圖排序</button>
+            </div>`;
 
-            const createBox = (items, label) => {
-                if (items.length === 0) return null;
+            const drawBox = (items, label, container) => {
+                if (items.length === 0) return;
                 const sec = document.createElement('div'); sec.className = 'grid-section';
                 sec.innerHTML = `<div class="section-label">${label}</div><div class="grid"></div>`;
+                container.appendChild(sec);
                 const grid = sec.querySelector('.grid');
                 items.forEach(([id, b]) => {
                     const st = getBossStatus(b, id);
@@ -263,30 +246,22 @@
                         <div class="timer-container"><div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color: ${st.isGrey ? '#555' : st.color}">...</div>
                         ${(b.targetTime === 0 && auth && st.weight !== 7) ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color}; border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>` : ''}</div>
                         ${b.updater ? `<div style="font-size:10px; color:#444; text-align:right; margin-top:5px;">Last: ${b.updater}</div>` : ''}`;
-                    grid.appendChild(card); startTimer(id, b, st.isGrey, st.color);
+                    grid.appendChild(card);
+                    startTimer(id, b, st.isGrey, st.color);
                 });
-                return sec;
             };
 
             const pinnedItems = sortItems(all.filter(i => getBossStatus(i[1], i[0]).pinned));
             const otherItems = all.filter(i => !getBossStatus(i[1], i[0]).pinned);
 
-            // 1. 渲染置頂區
-            const pinnedBox = createBox(pinnedItems, "置頂追蹤區 ★");
-            if (pinnedBox) pinnedContainer.appendChild(pinnedBox);
+            drawBox(pinnedItems, "置頂追蹤區 ★", pSec);
+            sSec.innerHTML = sortRowHTML;
 
-            // 2. 渲染排序按鈕
-            sortRowContainer.innerHTML = sortRowHTML;
-
-            // 3. 渲染主要列表
             if (currentSort === 'time') {
-                const box = createBox(sortItems(otherItems), "全域時間排序 (閒置置底)");
-                if (box) listContainer.appendChild(box);
+                drawBox(sortItems(otherItems), "全域時間排序 (閒置置底)", mSec);
             } else if (currentSort === 'map') {
-                const box = createBox(otherItems.sort((a,b) => getBossStatus(b[1], b[0]).mapLv - getBossStatus(a[1], a[0]).mapLv || a[1].ch - b[1].ch), "全域地圖等級排序");
-                if (box) listContainer.appendChild(box);
+                drawBox(otherItems.sort((a,b) => getBossStatus(b[1], b[0]).mapLv - getBossStatus(a[1], a[0]).mapLv || a[1].ch - b[1].ch), "全域地圖等級排序", mSec);
             } else {
-                // 分組排序邏輯
                 const stages = [], timersList = [], killedList = [], idleList = [];
                 otherItems.forEach(([id, b]) => {
                     const st = getBossStatus(b, id);
@@ -295,17 +270,17 @@
                     else if (b.targetTime > 0) timersList.push([id, b]);
                     else stages.push([id, b]);
                 });
-                const b1 = createBox(sortItems(stages), "階段追蹤區"); if(b1) listContainer.appendChild(b1);
-                const b2 = createBox(sortItems(killedList), "已擊殺區間"); if(b2) listContainer.appendChild(b2);
-                const b3 = createBox(timersList.sort((a,b)=>a[1].targetTime - b[1].targetTime), "重生計時區"); if(b3) listContainer.appendChild(b3);
-                const b4 = createBox(idleList, "超時閒置區"); if(b4) listContainer.appendChild(b4);
+                drawBox(sortItems(stages), "階段追蹤區", mSec);
+                drawBox(sortItems(killedList), "已擊殺區間", mSec);
+                drawBox(timersList.sort((a,b)=>a[1].targetTime - b[1].targetTime), "重生計時區", mSec);
+                drawBox(idleList, "超時閒置區", mSec);
             }
         }
 
         function startTimer(id, b, isGrey, statusColor) {
-            const el = document.getElementById(`t_${id}`);
-            if(!el) return;
             const up = () => {
+                const el = document.getElementById(`t_${id}`);
+                if(!el) return;
                 const now = Date.now();
                 if (b.targetTime > 0) {
                     const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
@@ -313,12 +288,12 @@
                     if (!isGrey) el.style.color = d <= 0 ? '#ff3300' : '#00FF00';
                 } else {
                     const m = Math.floor((now - b.startTime) / 60000), s = Math.floor(((now - b.startTime) % 60000) / 1000);
-                    const isKilled = b.lastInput.toString().toUpperCase().startsWith("DE");
-                    const label = isKilled ? "已擊殺" : b.displayValue;
-                    const matchNum = b.displayValue.match(/[\d.]+/);
-                    const lv = b.displayValue === "ON" ? 99 : (matchNum ? Math.floor(parseFloat(matchNum[0])) : 0);
+                    const isK = b.lastInput.toString().toUpperCase().startsWith("DE");
+                    const lbl = isK ? "已擊殺" : b.displayValue;
+                    const mat = b.displayValue.match(/[\d.]+/);
+                    const lv = b.displayValue === "ON" ? 99 : (mat ? Math.floor(parseFloat(mat[0])) : 0);
                     const isW = (lv < 2 && m >= 12) || (lv >= 2 && lv < 3 && m >= 7) || (lv >= 3 && lv < 4 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
-                    el.innerHTML = `<span>${label}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isGrey && !isKilled) ? '⚠️' : ''}`;
+                    el.innerHTML = `<span>${lbl}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isGrey && !isK) ? '⚠️' : ''}`;
                     if (!isGrey) el.style.color = statusColor;
                 }
             }; up(); timers[id] = setInterval(up, 1000);
@@ -334,34 +309,24 @@
             const pass = protectedRooms[currentRoom];
             if (pass && map.toUpperCase() === "ADMIN" && ch === pass) {
                 localStorage.setItem(`auth_${currentRoom}`, pass);
-                alert("管理權限已解鎖！");
-                document.getElementById('bossInput').value = '';
-                renderList();
-                return;
+                alert("管理權限已解鎖！"); document.getElementById('bossInput').value = ''; renderList(); return;
             }
             if (!hasAuth()) { alert("此房間已保護，請輸入正確暗號解鎖。"); return; }
-
-            const id = `${map}_${ch}`; 
-            let dv = val, tt = 0, flash = false;
-            let uv = val.toString().toUpperCase();
+            const id = `${map}_${ch}`; let dv = val, tt = 0, flash = false, uv = val.toString().toUpperCase();
             if (uv.startsWith("00")) {
-                let raw = uv.replace("00", "");
-                uv = (raw.length === 2 && !raw.includes('.')) ? "R" + raw[0] + "." + raw[1] : "R" + raw;
+                let r = uv.replace("00", "");
+                uv = (r.length === 2 && !r.includes('.')) ? "R" + r[0] + "." + r[1] : "R" + r;
             }
-            if (uv.startsWith("XX")) { dv = "階段" + (uv.substring(2) || "1"); }
-            else if (uv.startsWith("DE")) { dv = "已擊殺"; } // 處理已擊殺
+            if (uv.startsWith("XX")) dv = "階段" + (uv.substring(2) || "1");
+            else if (uv.startsWith("DE")) dv = "已擊殺";
             else if (uv === "ON") { dv = "ON"; flash = true; }
             else if (uv.startsWith("R")) {
-                const rawNum = uv.substring(1);
-                dv = "階段" + rawNum; 
-                if (parseFloat(rawNum) >= 4.0) flash = true;
+                const rn = uv.substring(1); dv = "階段" + rn; 
+                if (parseFloat(rn) >= 4.0) flash = true;
             } else {
                 tt = Date.now() + ((uv.split(/[:.：]/).length===2?parseInt(uv.split(/[:.：]/)[0])*60+parseInt(uv.split(/[:.：]/)[1]):parseFloat(uv)||0) * 60000);
             }
-            db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ 
-                map, ch, targetTime: tt, lastInput: uv, displayValue: dv, 
-                startTime: Date.now(), isFlash: flash, updater: myName 
-            });
+            db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: uv, displayValue: dv, startTime: Date.now(), isFlash: flash, updater: myName });
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 3000);
             if (doFocus) doEdit(map, ch, uv);
         }
@@ -371,13 +336,12 @@
             db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => {
                 const d = s.val(); if (!d) return; 
                 let cur = d.lastInput.toString().toUpperCase();
-                if (cur === "ON") { saveBoss(m, c, "DE1"); } // 更新：ON 按 NEXT 轉為已擊殺
+                if (cur === "ON") saveBoss(m, c, "DE1");
                 else if (cur.startsWith("R")) {
-                    const num = parseFloat(cur.substring(1)) || 0;
-                    let next = Math.floor(num) + 1;
-                    if (next >= 5) saveBoss(m, c, "ON");
-                    else saveBoss(m, c, "R" + next);
-                } else { saveBoss(m, c, "ON"); }
+                    const n = parseFloat(cur.substring(1)) || 0;
+                    let nx = Math.floor(n) + 1;
+                    if (nx >= 5) saveBoss(m, c, "ON"); else saveBoss(m, c, "R" + nx);
+                } else saveBoss(m, c, "ON");
             }); unlockAudio();
         }
 
@@ -388,35 +352,32 @@
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
             db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
             db.ref(`rooms/${currentRoom}/users`).on('value', s => {
-                const users = Object.values(s.val() || {});
-                document.getElementById('onlineCount').innerText = users.length;
-                document.getElementById('onlineUsers').innerText = users.map(u => u.name).join(', ');
+                const u = Object.values(s.val() || {});
+                document.getElementById('onlineCount').innerText = u.length;
+                document.getElementById('onlineUsers').innerText = u.map(x => x.name).join(', ');
             });
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
                 const incomingData = s.val() || {};
                 Object.keys(incomingData).forEach(k => {
-                    const boss = incomingData[k];
-                    const inputVal = boss.lastInput.toString().toUpperCase();
-                    if (inputVal !== lastProcessedInput[k] && boss.isFlash) {
-                        if (inputVal === "ON") {
-                            playDing(); speak(`${boss.map}分流${boss.ch}重生`);
-                        } else if (inputVal.startsWith("R")) {
-                            const num = parseFloat(inputVal.substring(1)) || 0;
-                            if (num >= 4.0) { playDing(); speak(`${boss.map}分流${boss.ch}階段${num}`); }
+                    const b = incomingData[k]; const v = b.lastInput.toString().toUpperCase();
+                    if (v !== lastProcessedInput[k] && b.isFlash) {
+                        if (v === "ON") { playDing(); speak(`${b.map}分流${b.ch}重生`); }
+                        else if (v.startsWith("R")) {
+                            const n = parseFloat(v.substring(1)) || 0;
+                            if (n >= 4.0) { playDing(); speak(`${b.map}分流${b.ch}階段${n}`); }
                         }
                     }
-                    lastProcessedInput[k] = inputVal;
+                    lastProcessedInput[k] = v;
                 });
                 window.currentData = incomingData; renderList();
             });
             initChat();
         }
 
-        function togglePin(bossId) {
-            const key = `${currentRoom}_${bossId}`;
-            if (localPinned[key]) delete localPinned[key]; else localPinned[key] = true;
-            localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned));
-            renderList();
+        function togglePin(id) {
+            const k = `${currentRoom}_${id}`;
+            if (localPinned[k]) delete localPinned[k]; else localPinned[k] = true;
+            localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned)); renderList();
         }
         function doEdit(m, c, l) {
             const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus();
