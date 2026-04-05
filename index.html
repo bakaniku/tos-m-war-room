@@ -186,9 +186,9 @@
 
         function updateVolBg(el) { const val = (el.value - el.min) / (el.max - el.min) * 100; el.style.backgroundSize = val + '% 100%'; }
         function getStatusColor(weight) {
-            const colors = { 7:'#9dadc1', 6:'#800000', 5:'#FF0000', 4:'#FF4500', 3:'#FFA500', 2:'#FFFF00', 1:'#00FF00', 0:'#FF3300' };
+            const colors = { 7:'#9dadc1', 6:'#FF00FF', 5:'#FF0000', 4:'#FF4500', 3:'#FFA500', 2:'#FFFF00', 1:'#00FF00', 0:'#FF3300' };
             if (colorMode === 1) return colors[weight] || '#fff';
-            return (weight === 7) ? '#9dadc1' : (weight === 6) ? '#800000' : (weight === 5) ? '#FF0000' : (weight >= 2 && weight <= 4) ? '#FFFF00' : (weight === 1) ? '#00FF00' : '#FF3300';
+            return (weight === 7) ? '#9dadc1' : (weight === 6) ? '#FF00FF' : (weight === 5) ? '#FF0000' : (weight >= 2 && weight <= 4) ? '#FFFF00' : (weight === 1) ? '#00FF00' : '#FF3300';
         }
         function unlockAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); }
         
