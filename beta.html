@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.3.1</title>
+    <title>TOS M FB TIME v1.3.2</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -79,7 +79,7 @@
     <div id="app">
         <div id="loginView" class="login-view">
             <div class="title">TOS M FB TIME</div>
-            <div class="ver-info">v1.3.1</div>
+            <div class="ver-info">v1.3.2</div>
             <div class="input-group">
                 <input type="text" id="userNameInput" placeholder="你的稱呼 / お名前" maxlength="10">
                 <button class="btn-outline" onclick="createRoom()">＋ 創建新房間 / 新規作成</button>
@@ -108,7 +108,7 @@
                     </div>
                 </div>
                 <div class="room-info">
-                    <span class="version-tag">v1.3.1</span>
+                    <span class="version-tag">v1.3.2</span>
                     <button id="clearBtn" class="btn-danger" onclick="clearAllBosses()">一鍵清除</button>
                     <button id="exitBtn" style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
@@ -147,7 +147,6 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
         
-        // i18n 定義
         const i18n = {
             zh: {
                 lang: "ZH", online: "在線", exit: "退出", clearAll: "一鍵清除", 
@@ -200,7 +199,7 @@
             document.getElementById('chatInput').placeholder = t('chatPh');
             document.getElementById('chatSendBtn').innerText = t('send');
             document.getElementById('opInfo').innerText = t('opInfo');
-            checkDuplicate(); // 更新範例文字
+            checkDuplicate();
         }
 
         function hasAuth() {
@@ -226,11 +225,13 @@
         }
 
         function updateVolBg(el) { const val = (el.value - el.min) / (el.max - el.min) * 100; el.style.backgroundSize = val + '% 100%'; }
+        
         function getStatusColor(weight) {
             const colors = { 7:'#9dadc1', 6:'#800000', 5:'#FF0000', 4:'#FF4500', 3:'#FFA500', 2:'#FFFF00', 1:'#00FF00', 0:'#FF3300' };
             if (colorMode === 1) return colors[weight] || '#fff';
             return (weight === 7) ? '#9dadc1' : (weight === 6) ? '#800000' : (weight === 5) ? '#FF0000' : (weight >= 2 && weight <= 4) ? '#FFFF00' : (weight === 1) ? '#00FF00' : '#FF3300';
         }
+        
         function unlockAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); }
         
         function playDing(freq = 880) { 
@@ -248,9 +249,7 @@
             window.speechSynthesis.cancel();
             const vol = parseFloat(document.getElementById('volRange').value);
             const msg = new SpeechSynthesisUtterance(text);
-            msg.volume = vol;
-            msg.lang = currLang === 'zh' ? 'zh-TW' : 'ja-JP';
-            msg.rate = 1.1;
+            msg.volume = vol; msg.lang = currLang === 'zh' ? 'zh-TW' : 'ja-JP'; msg.rate = 1.1;
             window.speechSynthesis.speak(msg);
         }
 
@@ -272,20 +271,40 @@
         function scrollChat() { const el = document.getElementById('chatMsgs'); setTimeout(() => { el.scrollTop = el.scrollHeight; }, 100); }
         function sendMsg() { const i = document.getElementById('chatInput'); if (!i.value.trim()) return; db.ref(`rooms/${currentRoom}/chat`).push({ name: myName, text: i.value.trim(), t: Date.now() }); i.value = ''; }
 
+        // --- 核心修正處：getBossStatus ---
         function getBossStatus(b, bossId) {
             const now = Date.now(), twoHours = 7200000;
-            const isGrey = b.lastInput.toString().toUpperCase().startsWith("XX") || (b.targetTime > 0 && (now - b.targetTime > twoHours)) || (b.targetTime === 0 && (now - b.startTime > twoHours));
-            let weight = -1; const stageVal = parseFloat((b.displayValue || '').match(/[\d.]+/)) || 0;
-            if (b.lastInput.toString().toUpperCase().startsWith("DE")) weight = 7;
-            else if (b.displayValue === "ON") weight = 6;
-            else if (b.displayValue.includes("階段") || b.displayValue.includes("フェーズ")) weight = 4; // 簡化權重判定
-            if (b.displayValue === "ON") weight = 6;
-            else if (b.displayValue.includes("4")) weight = 5;
-            else if (b.displayValue.includes("3")) weight = 4;
-            else if (b.displayValue.includes("2")) weight = 3;
-            else if (b.displayValue.includes("1")) weight = 2;
-            else if (b.targetTime > 0) weight = (b.targetTime > now) ? 1 : 0;
-            return { isGrey, weight, stageVal, color: getStatusColor(weight), mapLv: parseInt((b.map || '').match(/\d+/)) || 0, pinned: !!localPinned[`${currentRoom}_${bossId}`] };
+            const isGrey = b.lastInput.toString().toUpperCase().startsWith("XX") || 
+                           (b.targetTime > 0 && (now - b.targetTime > twoHours)) || 
+                           (b.targetTime === 0 && (now - b.startTime > twoHours));
+            
+            let weight = -1;
+            // 使用 parseFloat 抓取包含小數點的精確數字
+            const mat = (b.displayValue || '').match(/[\d.]+/);
+            const stageVal = mat ? parseFloat(mat[0]) : 0;
+
+            if (b.lastInput.toString().toUpperCase().startsWith("DE")) {
+                weight = 7;
+            } else if (b.displayValue === "ON") {
+                weight = 6;
+            } else if (stageVal >= 4.0) {
+                weight = 5;
+            } else if (stageVal >= 3.0) {
+                weight = 4;
+            } else if (stageVal >= 2.0) {
+                weight = 3;
+            } else if (stageVal >= 1.0) {
+                weight = 2;
+            } else if (b.targetTime > 0) {
+                weight = (b.targetTime > now) ? 1 : 0;
+            }
+
+            return { 
+                isGrey, weight, stageVal, 
+                color: getStatusColor(weight), 
+                mapLv: parseInt((b.map || '').match(/\d+/)) || 0, 
+                pinned: !!localPinned[`${currentRoom}_${bossId}`] 
+            };
         }
 
         function sortItems(items) {
@@ -294,7 +313,9 @@
                 if (sA.isGrey !== sB.isGrey) return sA.isGrey ? 1 : -1;
                 const sw = (w) => (w === 7 ? -1 : (w === 0 ? 1.5 : w));
                 if (sA.weight !== sB.weight) return sw(sB.weight) - sw(sA.weight);
+                // 同階段內，進度數字大的優先
                 if (sA.weight >= 2 && sA.weight <= 5) return sB.stageVal - sA.stageVal;
+                // 重生倒數，時間近的優先
                 if (sA.weight <= 1.5) return a[1].targetTime - b[1].targetTime;
                 return sB.mapLv - sA.mapLv;
             });
@@ -304,6 +325,7 @@
             const area = document.getElementById('renderArea'); if(!area) return;
             area.innerHTML = ''; Object.values(timers).forEach(clearInterval); timers = {};
             const all = Object.entries(window.currentData); const auth = hasAuth();
+            
             const drawBox = (items, label) => {
                 if (items.length === 0) return;
                 const sec = document.createElement('div'); sec.className = 'grid-section';
@@ -320,18 +342,30 @@
                     grid.appendChild(card); startTimer(id, b, st.isGrey, st.color);
                 });
             };
+
             const pinnedItems = sortItems(all.filter(i => getBossStatus(i[1], i[0]).pinned));
             const otherItems = all.filter(i => !getBossStatus(i[1], i[0]).pinned);
             drawBox(pinnedItems, t('pinSec'));
+            
             const killedItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight === 7);
             const activeItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight !== 7);
             drawBox(sortItems(killedItems), t('killSec'));
-            if (currentSort === 'time') { drawBox(sortItems(activeItems), t('timeSec')); } 
-            else if (currentSort === 'map') { drawBox(activeItems.sort((a,b) => getBossStatus(b[1], b[0]).mapLv - getBossStatus(a[1], a[0]).mapLv || a[1].ch - b[1].ch), t('sm')); } 
-            else {
+            
+            if (currentSort === 'time') { 
+                drawBox(sortItems(activeItems), t('timeSec')); 
+            } else if (currentSort === 'map') { 
+                drawBox(activeItems.sort((a,b) => getBossStatus(b[1], b[0]).mapLv - getBossStatus(a[1], a[0]).mapLv || a[1].ch - b[1].ch), t('sm')); 
+            } else {
                 const stages = [], timersList = [], idleList = [];
-                activeItems.forEach(([id, b]) => { const st = getBossStatus(b, id); if (st.isGrey) idleList.push([id, b]); else if (b.targetTime > 0) timersList.push([id, b]); else stages.push([id, b]); });
-                drawBox(sortItems(stages), t('grpStage')); drawBox(timersList.sort((a,b)=>a[1].targetTime - b[1].targetTime), t('grpTimer')); drawBox(idleList, t('grpIdle'));
+                activeItems.forEach(([id, b]) => { 
+                    const st = getBossStatus(b, id); 
+                    if (st.isGrey) idleList.push([id, b]); 
+                    else if (b.targetTime > 0) timersList.push([id, b]); 
+                    else stages.push([id, b]); 
+                });
+                drawBox(sortItems(stages), t('grpStage')); 
+                drawBox(timersList.sort((a,b)=>a[1].targetTime - b[1].targetTime), t('grpTimer')); 
+                drawBox(idleList, t('grpIdle'));
             }
         }
 
@@ -345,7 +379,6 @@
                 } else {
                     const m = Math.floor((now - b.startTime) / 60000), s = Math.floor(((now - b.startTime) % 60000) / 1000);
                     const isK = b.lastInput.toString().toUpperCase().startsWith("DE");
-                    // 語言動態標籤
                     let lbl = b.displayValue.replace("階段", t('stage')).replace("フェーズ", t('stage'));
                     if (isK) lbl = t('killed');
                     el.innerHTML = `<span>${lbl}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && !isGrey && !isK && (m>=3)) ? '⚠️' : ''}`;
@@ -376,61 +409,3 @@
         }
 
         function triggerNext(m, c) {
-            if (!hasAuth()) return;
-            db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => {
-                const d = s.val(); if (!d) return; let cur = d.lastInput.toString().toUpperCase();
-                if (cur === "ON") saveBoss(m, c, "DE1");
-                else if (cur.startsWith("R")) { const n = parseFloat(cur.substring(1)) || 0; let nx = Math.floor(n) + 1; if (nx >= 5) saveBoss(m, c, "ON"); else saveBoss(m, c, "R" + nx); }
-                else saveBoss(m, c, "ON");
-            }); unlockAudio();
-        }
-
-        function startSession(id) {
-            currentRoom = id.toUpperCase(); myName = document.getElementById('userNameInput').value.trim() || 'No Name';
-            document.getElementById('loginView').style.display = 'none'; document.getElementById('mainView').style.display = 'block';
-            document.getElementById('displayID').innerText = currentRoom; updateVolBg(document.getElementById('volRange'));
-            updateUIStrings();
-            document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
-            db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
-            db.ref(`rooms/${currentRoom}/users`).on('value', s => { const u = Object.values(s.val() || {}); document.getElementById('onlineCount').innerText = u.length; document.getElementById('onlineUsers').innerText = u.map(x => x.name).join(', '); });
-            db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
-                const incomingData = s.val() || {};
-                Object.keys(incomingData).forEach(k => {
-                    const b = incomingData[k]; const v = b.lastInput.toString().toUpperCase();
-                    if (v !== lastProcessedInput[k] && b.isFlash) {
-                        const callName = currLang === 'zh' ? `${b.map}分流${b.ch}` : `${b.map}の${b.ch}チャンネル`;
-                        if (v === "ON") { if(isOnSfxEnabled) playDing(880); speak(callName + (currLang==='zh'?"重生":"湧き")); }
-                        else if (v.startsWith("R")) {
-                            const n = parseFloat(v.substring(1)) || 0;
-                            if (n >= 4.0) { if(isR4SfxEnabled) playDing(440); speak(callName + t('stage') + n); }
-                        }
-                    }
-                    lastProcessedInput[k] = v;
-                });
-                window.currentData = incomingData; renderList();
-            });
-            initChat();
-        }
-
-        function togglePin(id) { const k = `${currentRoom}_${id}`; if (localPinned[k]) delete localPinned[k]; else localPinned[k] = true; localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned)); renderList(); }
-        function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); i.setSelectionRange(m.length + c.length + 2, i.value.length); }
-        function addBoss() { const i = document.getElementById('bossInput'); const p = i.value.trim().split(/\s+/); if (p.length < 3) return; saveBoss(p[0], p[1], p.slice(2).join('')); i.value = ''; }
-        function deleteBoss(id) { if (!hasAuth()) return; db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
-        function clearAllBosses() { if (!hasAuth()) { alert(t('roomAuth')); return; } if (confirm(t('confirmClear'))) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
-        function copyRoomID() { navigator.clipboard.writeText(currentRoom); alert('Room ID Copied'); }
-        function joinRoom() { const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
-        function createRoom() { const i = Math.random().toString(36).substring(2, 8).toUpperCase(); startSession(i); }
-        function setSort(t) { currentSort = t; document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id === `sort${t.charAt(0).toUpperCase() + t.slice(1)}Btn`)); renderList(); }
-        function initChat() {
-            document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMsg(); });
-            db.ref(`rooms/${currentRoom}/chat`).limitToLast(50).on('value', s => {
-                const container = document.getElementById('chatMsgs'); container.innerHTML = '';
-                const list = Object.values(s.val() || {}).sort((a,b) => a.t - b.t);
-                list.forEach(m => { container.innerHTML += `<div class="msg-row"><span class="msg-name ${m.name===myName?'self':''}">${m.name}</span><span class="msg-bubble">${m.text}</span></div>`; });
-                if (chatMode === 'hidden' && list.length > 0 && list[list.length-1].t > lastReadMsgTime && list[list.length-1].name !== myName) { document.getElementById('chatDot').classList.add('show'); }
-                scrollChat();
-            });
-        }
-    </script>
-</body>
-</html>
