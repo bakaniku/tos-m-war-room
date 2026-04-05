@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.2.8</title>
+    <title>TOS M FB TIME v1.2.9</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -58,20 +58,23 @@
         @keyframes flash { 0%, 100% { opacity: 1; color: #fff; } 50% { opacity: 0.3; } }
         .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-block; margin-top: 8px; border: 2px solid; }
 
-        /* 留言板位置與三段式高度優化 */
+        /* 留言板三段式高度優化 */
         #chatPanel { margin-bottom: 15px; background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 10px; overflow: hidden; transition: all 0.3s ease; }
         #chatPanel.chat-hidden { display: none; }
         .chat-msgs { overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; transition: height 0.3s ease; }
-        #chatPanel.chat-mini .chat-msgs { height: 50px; } /* 約2行 */
-        #chatPanel.chat-full .chat-msgs { height: 150px; } /* 約6行 */
+        #chatPanel.chat-mini .chat-msgs { height: 50px; }
+        #chatPanel.chat-full .chat-msgs { height: 150px; }
         
         .msg-row { display: flex; gap: 8px; align-items: flex-start; }
         .msg-name { font-size: 11px; color: #0f0; min-width: 48px; }
         .msg-name.self { color: #0af; }
         .msg-bubble { font-size: 13px; color: #ccc; background: #141414; border-radius: 6px; padding: 5px 9px; max-width: 80%; word-break: break-all; }
-        .chat-input-row { display: flex; border-top: 1px solid #1a1a1a; }
-        .chat-input-row input { flex: 1; background: #0a0a0a; border: none; color: #fff; padding: 12px; font-size: 13px; outline: none; }
-        .chat-input-row button { background: #0f0; color: #000; border: none; padding: 0 20px; font-weight: bold; cursor: pointer; }
+        
+        /* 聊天輸入框高度縮小至 70% (更新) */
+        .chat-input-row { display: flex; border-top: 1px solid #1a1a1a; align-items: stretch; }
+        .chat-input-row input { flex: 1; background: #0a0a0a; border: none; color: #fff; padding: 8px 12px; font-size: 12px; outline: none; }
+        .chat-input-row button { background: #0f0; color: #000; border: none; padding: 0 15px; font-weight: bold; cursor: pointer; font-size: 12px; }
+        
         .chat-dot { position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; background: #f00; border-radius: 50%; display: none; }
         .chat-dot.show { display: block; }
         .version-tag { font-size: 10px; color: #333; margin-right: 10px; }
@@ -81,7 +84,7 @@
     <div id="app">
         <div id="loginView" class="login-view">
             <div class="title">TOS M FB TIME</div>
-            <div class="ver-info">v1.2.8</div>
+            <div class="ver-info">v1.2.9</div>
             <div class="input-group">
                 <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10">
                 <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
@@ -108,7 +111,7 @@
                     </div>
                 </div>
                 <div class="room-info">
-                    <span class="version-tag">v1.2.8</span>
+                    <span class="version-tag">v1.2.9</span>
                     <button class="btn-danger" onclick="clearAllBosses()">一鍵清除</button>
                     <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
@@ -121,7 +124,7 @@
                 <p class="info-text">操作說明：💬 切換「隱藏/收縮/展開」。ON 按 NEXT 轉已擊殺。非閒置按 × 轉閒置。</p>
             </div>
 
-            <!-- 留言板移動至此 -->
+            <!-- 留言板 -->
             <div id="chatPanel" class="chat-full">
                 <div class="chat-msgs" id="chatMsgs"></div>
                 <div class="chat-input-row">
@@ -194,7 +197,6 @@
         function toggleWarn() { showWarningIcon = !showWarningIcon; document.getElementById('warnBtn').classList.toggle('active', showWarningIcon); renderList(); }
         function toggleColorMode() { colorMode = colorMode === 1 ? 2 : 1; document.getElementById('colorModeBtn').innerText = colorMode === 1 ? '🎨' : '🖌️'; renderList(); }
         
-        // 留言板三段式切換邏輯
         function toggleChat() {
             const panel = document.getElementById('chatPanel');
             const btn = document.getElementById('chatBtn');
@@ -277,6 +279,7 @@
 
             const pinnedItems = sortItems(all.filter(i => getBossStatus(i[1], i[0]).pinned));
             const otherItems = all.filter(i => !getBossStatus(i[1], i[0]).pinned);
+
             drawBox(pinnedItems, "置頂追蹤區 ★");
             const killedItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight === 7);
             const activeItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight !== 7);
@@ -398,7 +401,7 @@
         }
 
         function togglePin(id) {
-            const k = `${currentRoom}_${id}`;
+            const k = `${currentRoom}_id`;
             if (localPinned[k]) delete localPinned[k]; else localPinned[k] = true;
             localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned)); renderList();
         }
@@ -419,8 +422,6 @@
                 const container = document.getElementById('chatMsgs'); container.innerHTML = '';
                 const list = Object.values(s.val() || {}).sort((a,b) => a.t - b.t);
                 list.forEach(m => { container.innerHTML += `<div class="msg-row"><span class="msg-name ${m.name===myName?'self':''}">${m.name}</span><span class="msg-bubble">${m.text}</span></div>`; });
-                
-                // 新訊息提示邏輯
                 if (chatMode === 'hidden' && list.length > 0 && list[list.length-1].t > lastReadMsgTime && list[list.length-1].name !== myName) {
                     document.getElementById('chatDot').classList.add('show');
                 }
