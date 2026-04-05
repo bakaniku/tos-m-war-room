@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.3.1</title>
+    <title>TOS M FB TIME v1.3.0</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -49,8 +49,10 @@
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
         .card-title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 0; }
         .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; border-bottom: 1px dashed #444; line-height: 1.2; }
+        
         .pin-btn { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid #444; background: #1a1a1a; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; font-size: 12px; color: #666; transition: 0.2s; flex-shrink: 0; }
         .pin-btn.pinned { border-color: #ffca28; background: #2a2200; color: #ffca28; box-shadow: 0 0 5px rgba(255, 202, 40, 0.3); }
+        
         .del { position: absolute; top: 8px; right: 8px; color: #444; background: none; border: none; font-size: 16px; cursor: pointer; padding: 5px; line-height: 1; }
         .timer { font-size: 18px; font-weight: bold; margin-top: 8px; font-family: monospace; display: flex; align-items: center; }
         .timer-sub { font-size: 14px; margin-left: 4px; opacity: 0.8; }
@@ -63,13 +65,17 @@
         .chat-msgs { overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; transition: height 0.3s ease; }
         #chatPanel.chat-mini .chat-msgs { height: 50px; }
         #chatPanel.chat-full .chat-msgs { height: 150px; }
+        
+        /* 更新：稱呼垂直對齊 */
         .msg-row { display: flex; gap: 8px; align-items: center; }
         .msg-name { font-size: 11px; color: #0f0; min-width: 48px; white-space: nowrap; }
         .msg-name.self { color: #0af; }
         .msg-bubble { font-size: 13px; color: #ccc; background: #141414; border-radius: 6px; padding: 5px 9px; max-width: 80%; word-break: break-all; }
+        
         .chat-input-row { display: flex; border-top: 1px solid #1a1a1a; align-items: stretch; }
         .chat-input-row input { flex: 1; background: #0a0a0a; border: none; color: #fff; padding: 8px 12px; font-size: 12px; outline: none; }
         .chat-input-row button { background: #0f0; color: #000; border: none; padding: 0 15px; font-weight: bold; cursor: pointer; font-size: 12px; }
+        
         .chat-dot { position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; background: #f00; border-radius: 50%; display: none; }
         .chat-dot.show { display: block; }
         .version-tag { font-size: 10px; color: #333; margin-right: 10px; }
@@ -79,12 +85,12 @@
     <div id="app">
         <div id="loginView" class="login-view">
             <div class="title">TOS M FB TIME</div>
-            <div class="ver-info">v1.3.1</div>
+            <div class="ver-info">v1.3.0</div>
             <div class="input-group">
-                <input type="text" id="userNameInput" placeholder="你的稱呼 / お名前" maxlength="10">
-                <button class="btn-outline" onclick="createRoom()">＋ 創建新房間 / 新規作成</button>
-                <input type="text" id="roomInput" placeholder="輸入房號 / 部屋番号" maxlength="6">
-                <button class="btn-solid" onclick="joinRoom()">進入房間 / 入室</button>
+                <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10">
+                <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
+                <input type="text" id="roomInput" placeholder="輸入房號" maxlength="6">
+                <button class="btn-solid" onclick="joinRoom()">進入房間</button>
             </div>
         </div>
 
@@ -94,11 +100,11 @@
                     <span class="room-id" id="displayID"></span>
                     <svg class="copy-icon" onclick="copyRoomID()" viewBox="0 0 24 24" fill="none" stroke="#0f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                     <div class="audio-controls">
-                        <button id="langBtn" class="audio-btn active" onclick="toggleLang()" style="font-size:12px; opacity:1;">🌐 ZH</button>
                         <button id="voiceBtn" class="audio-btn" onclick="toggleVoice()">🔊</button>
                         <input type="range" id="volRange" class="vol-range" min="0" max="1" step="0.01" value="0.5" oninput="updateVolBg(this)">
-                        <button id="onSfxBtn" class="audio-btn" onclick="toggleOnSfx()">📢</button>
-                        <button id="r4SfxBtn" class="audio-btn" onclick="toggleR4Sfx()">🛡️</button>
+                        <!-- 更新：報號開關獨立 -->
+                        <button id="onSfxBtn" title="ON 重生音效" class="audio-btn" onclick="toggleOnSfx()">📢</button>
+                        <button id="r4SfxBtn" title="階段4音效" class="audio-btn" onclick="toggleR4Sfx()">🛡️</button>
                         <button id="warnBtn" class="audio-btn active" onclick="toggleWarn()">⚠️</button>
                         <button id="colorModeBtn" class="audio-btn active" onclick="toggleColorMode()">🎨</button>
                         <span class="chat-wrap" style="position:relative;">
@@ -108,24 +114,24 @@
                     </div>
                 </div>
                 <div class="room-info">
-                    <span class="version-tag">v1.3.1</span>
-                    <button id="clearBtn" class="btn-danger" onclick="clearAllBosses()">一鍵清除</button>
-                    <button id="exitBtn" style="background:none; color:#444;" onclick="location.reload()">退出</button>
+                    <span class="version-tag">v1.3.0</span>
+                    <button class="btn-danger" onclick="clearAllBosses()">一鍵清除</button>
+                    <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
             </div>
 
-            <div class="user-list-bar"><span id="onlineLabel">在線</span>:<span id="onlineCount" style="color:#0f0;">0</span> | <span id="onlineUsers">載入中...</span></div>
+            <div class="user-list-bar">在線:<span id="onlineCount" style="color:#0f0;">0</span> | <span id="onlineUsers">載入中...</span></div>
 
             <div class="info-bar">
                 <span class="info-icon">ℹ️</span>
-                <p id="opInfo" class="info-text">...</p>
+                <p class="info-text">操作說明：📢 ON音效；🛡️ 階段4音效。重疊輸入將顯示紅字警告。</p>
             </div>
 
             <div id="chatPanel" class="chat-full">
                 <div class="chat-msgs" id="chatMsgs"></div>
                 <div class="chat-input-row">
-                    <input type="text" id="chatInput" placeholder="..." maxlength="80">
-                    <button id="chatSendBtn" onclick="sendMsg()">送出</button>
+                    <input type="text" id="chatInput" placeholder="輸入訊息…" maxlength="80">
+                    <button onclick="sendMsg()">送出</button>
                 </div>
             </div>
 
@@ -135,8 +141,8 @@
                 <button id="sortMapBtn" class="btn-toggle" onclick="setSort('map')">地圖排序</button>
             </div>
 
-            <input type="text" id="bossInput" class="main-input" placeholder="..." oninput="checkDuplicate()">
-            <div class="input-hint" id="inputHint">...</div>
+            <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 階段(R)/分鐘" oninput="checkDuplicate()">
+            <div class="input-hint" id="inputHint">範例：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 12:30 ｜ 80 3 ON</div>
             
             <div id="renderArea"></div>
         </div>
@@ -146,35 +152,8 @@
         const firebaseConfig = { apiKey: "AIzaSyAff__U1cLBr92gYmtbWpm80zO4rHvObUI", authDomain: "tos-m-fb.firebaseapp.com", databaseURL: "https://tos-m-fb-default-rtdb.asia-southeast1.firebasedatabase.app", projectId: "tos-m-fb" };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
-        
-        // i18n 定義
-        const i18n = {
-            zh: {
-                lang: "ZH", online: "在線", exit: "退出", clearAll: "一鍵清除", 
-                st: "時間排序", sg: "分組排序", sm: "地圖排序",
-                phBoss: "地圖 分流 階段(R)/分鐘", example: "範例",
-                pinSec: "置頂追蹤區 ★", killSec: "已擊殺區間", timeSec: "全域時間排序 (閒置置底)",
-                grpStage: "階段追蹤區", grpTimer: "重生計時區", grpIdle: "超時閒置區",
-                killed: "已擊殺", stage: "階段", opInfo: "操作說明：📢 ON音效；🛡️ 階段4音效。重疊輸入將顯示紅字警告。",
-                dupWarn: "⚠️ 該地圖分流已存在於列表中！", chatPh: "輸入訊息…", send: "送出", voiceOn: "語音開啟", 
-                roomAuth: "此房間已保護，請輸入正確暗號解鎖。", adminUnlock: "管理權限已解鎖！", confirmClear: "確定一鍵清除？"
-            },
-            ja: {
-                lang: "JA", online: "オンライン", exit: "離れる", clearAll: "一括クリア", 
-                st: "時間順", sg: "グループ順", sm: "マップ順",
-                phBoss: "マップ チャンネル 段階/分", example: "例文",
-                pinSec: "ピン留めブロック ★", killSec: "討伐済みブロック", timeSec: "全体時間順(待機は下部へ)",
-                grpStage: "段階ブロック", grpTimer: "クールタイムブロック", grpIdle: "アウト待機ブロック",
-                killed: "済み", stage: "段階", opInfo: "操作：📢 湧き通知；🛡️ フェーズ4通知。重複入力は赤字で警告。",
-                dupWarn: "⚠️ このマップとチャンネルは既に存在します！", chatPh: "メッセージを入力…", send: "送信", voiceOn: "音声通知オン",
-                roomAuth: "この部屋は保護されています。正しいパスワードを入力してください。", adminUnlock: "管理者権限が解除されました！", confirmClear: "本当に一括削除しますか？"
-            }
-        };
-        let currLang = 'zh';
-        function t(key) { return i18n[currLang][key] || key; }
-
         let currentRoom = '', timers = {}, currentSort = 'time', isVoiceEnabled = false;
-        let isOnSfxEnabled = false, isR4SfxEnabled = false;
+        let isOnSfxEnabled = false, isR4SfxEnabled = false; // 音效開關獨立
         let myName = 'No Name', showWarningIcon = true, colorMode = 1, audioCtx = null, chatMode = 'full', lastReadMsgTime = 0;
         window.currentData = {};
         let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
@@ -182,33 +161,13 @@
 
         const protectedRooms = { '000000': 'tosm' };
 
-        function toggleLang() {
-            currLang = currLang === 'zh' ? 'ja' : 'zh';
-            document.getElementById('langBtn').innerText = `🌐 ${t('lang')}`;
-            updateUIStrings();
-            renderList();
-        }
-
-        function updateUIStrings() {
-            document.getElementById('onlineLabel').innerText = t('online');
-            document.getElementById('exitBtn').innerText = t('exit');
-            document.getElementById('clearBtn').innerText = t('clearAll');
-            document.getElementById('sortTimeBtn').innerText = t('st');
-            document.getElementById('sortGroupBtn').innerText = t('sg');
-            document.getElementById('sortMapBtn').innerText = t('sm');
-            document.getElementById('bossInput').placeholder = t('phBoss');
-            document.getElementById('chatInput').placeholder = t('chatPh');
-            document.getElementById('chatSendBtn').innerText = t('send');
-            document.getElementById('opInfo').innerText = t('opInfo');
-            checkDuplicate(); // 更新範例文字
-        }
-
         function hasAuth() {
             const pass = protectedRooms[currentRoom];
             if (!pass) return true; 
             return localStorage.getItem(`auth_${currentRoom}`) === pass;
         }
 
+        // 更新：重複檢查提醒
         function checkDuplicate() {
             const input = document.getElementById('bossInput');
             const hint = document.getElementById('inputHint');
@@ -216,12 +175,12 @@
             if (p.length >= 2) {
                 const id = `${p[0]}_${p[1]}`;
                 if (window.currentData && window.currentData[id]) {
-                    hint.innerText = t('dupWarn');
+                    hint.innerText = `⚠️ 該地圖分流已存在於列表中！`;
                     hint.classList.add('warning');
                     return;
                 }
             }
-            hint.innerText = `${t('example')}：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 12:30 ｜ 80 3 ON`;
+            hint.innerText = `範例：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 12:30 ｜ 80 3 ON`;
             hint.classList.remove('warning');
         }
 
@@ -233,7 +192,8 @@
         }
         function unlockAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); }
         
-        function playDing(freq = 880) { 
+        // 更新：音效區分 (ON=880Hz, R4=440Hz)
+        function playDing(freq = 880, isTest = false) { 
             unlockAudio(); 
             const vol = parseFloat(document.getElementById('volRange').value);
             const osc = audioCtx.createOscillator(); 
@@ -248,13 +208,11 @@
             window.speechSynthesis.cancel();
             const vol = parseFloat(document.getElementById('volRange').value);
             const msg = new SpeechSynthesisUtterance(text);
-            msg.volume = vol;
-            msg.lang = currLang === 'zh' ? 'zh-TW' : 'ja-JP';
-            msg.rate = 1.1;
+            msg.volume = vol; msg.lang = 'zh-TW'; msg.rate = 1.1;
             window.speechSynthesis.speak(msg);
         }
 
-        function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); unlockAudio(); if (isVoiceEnabled) speak(t('voiceOn')); }
+        function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); unlockAudio(); if (isVoiceEnabled) speak("語音開啟"); }
         function toggleOnSfx() { isOnSfxEnabled = !isOnSfxEnabled; document.getElementById('onSfxBtn').classList.toggle('active', isOnSfxEnabled); unlockAudio(); if(isOnSfxEnabled) playDing(880); }
         function toggleR4Sfx() { isR4SfxEnabled = !isR4SfxEnabled; document.getElementById('r4SfxBtn').classList.toggle('active', isR4SfxEnabled); unlockAudio(); if(isR4SfxEnabled) playDing(440); }
         function toggleWarn() { showWarningIcon = !showWarningIcon; document.getElementById('warnBtn').classList.toggle('active', showWarningIcon); renderList(); }
@@ -278,12 +236,10 @@
             let weight = -1; const stageVal = parseFloat((b.displayValue || '').match(/[\d.]+/)) || 0;
             if (b.lastInput.toString().toUpperCase().startsWith("DE")) weight = 7;
             else if (b.displayValue === "ON") weight = 6;
-            else if (b.displayValue.includes("階段") || b.displayValue.includes("フェーズ")) weight = 4; // 簡化權重判定
-            if (b.displayValue === "ON") weight = 6;
-            else if (b.displayValue.includes("4")) weight = 5;
-            else if (b.displayValue.includes("3")) weight = 4;
-            else if (b.displayValue.includes("2")) weight = 3;
-            else if (b.displayValue.includes("1")) weight = 2;
+            else if (b.displayValue.includes("階段4")) weight = 5;
+            else if (b.displayValue.includes("階段3")) weight = 4;
+            else if (b.displayValue.includes("階段2")) weight = 3;
+            else if (b.displayValue.includes("階段1")) weight = 2;
             else if (b.targetTime > 0) weight = (b.targetTime > now) ? 1 : 0;
             return { isGrey, weight, stageVal, color: getStatusColor(weight), mapLv: parseInt((b.map || '').match(/\d+/)) || 0, pinned: !!localPinned[`${currentRoom}_${bossId}`] };
         }
@@ -322,16 +278,16 @@
             };
             const pinnedItems = sortItems(all.filter(i => getBossStatus(i[1], i[0]).pinned));
             const otherItems = all.filter(i => !getBossStatus(i[1], i[0]).pinned);
-            drawBox(pinnedItems, t('pinSec'));
+            drawBox(pinnedItems, "置頂追蹤區 ★");
             const killedItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight === 7);
             const activeItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight !== 7);
-            drawBox(sortItems(killedItems), t('killSec'));
-            if (currentSort === 'time') { drawBox(sortItems(activeItems), t('timeSec')); } 
-            else if (currentSort === 'map') { drawBox(activeItems.sort((a,b) => getBossStatus(b[1], b[0]).mapLv - getBossStatus(a[1], a[0]).mapLv || a[1].ch - b[1].ch), t('sm')); } 
+            drawBox(sortItems(killedItems), "已擊殺區間");
+            if (currentSort === 'time') { drawBox(sortItems(activeItems), "全域時間排序 (閒置置底)"); } 
+            else if (currentSort === 'map') { drawBox(activeItems.sort((a,b) => getBossStatus(b[1], b[0]).mapLv - getBossStatus(a[1], a[0]).mapLv || a[1].ch - b[1].ch), "全域地圖等級排序"); } 
             else {
                 const stages = [], timersList = [], idleList = [];
                 activeItems.forEach(([id, b]) => { const st = getBossStatus(b, id); if (st.isGrey) idleList.push([id, b]); else if (b.targetTime > 0) timersList.push([id, b]); else stages.push([id, b]); });
-                drawBox(sortItems(stages), t('grpStage')); drawBox(timersList.sort((a,b)=>a[1].targetTime - b[1].targetTime), t('grpTimer')); drawBox(idleList, t('grpIdle'));
+                drawBox(sortItems(stages), "階段追蹤區"); drawBox(timersList.sort((a,b)=>a[1].targetTime - b[1].targetTime), "重生計時區"); drawBox(idleList, "超時閒置區");
             }
         }
 
@@ -344,11 +300,10 @@
                     if (!isGrey) el.style.color = d <= 0 ? '#ff3300' : '#00FF00';
                 } else {
                     const m = Math.floor((now - b.startTime) / 60000), s = Math.floor(((now - b.startTime) % 60000) / 1000);
-                    const isK = b.lastInput.toString().toUpperCase().startsWith("DE");
-                    // 語言動態標籤
-                    let lbl = b.displayValue.replace("階段", t('stage')).replace("フェーズ", t('stage'));
-                    if (isK) lbl = t('killed');
-                    el.innerHTML = `<span>${lbl}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && !isGrey && !isK && (m>=3)) ? '⚠️' : ''}`;
+                    const isK = b.lastInput.toString().toUpperCase().startsWith("DE"); const mat = b.displayValue.match(/[\d.]+/);
+                    const lv = b.displayValue === "ON" ? 99 : (mat ? Math.floor(parseFloat(mat[0])) : 0);
+                    const isW = (lv < 2 && m >= 12) || (lv >= 2 && lv < 3 && m >= 7) || (lv >= 3 && lv < 4 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
+                    el.innerHTML = `<span>${isK ? "已擊殺" : b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isGrey && !isK) ? '⚠️' : ''}`;
                     if (!isGrey) el.style.color = statusColor;
                 }
             }; up(); timers[id] = setInterval(up, 1000);
@@ -361,8 +316,8 @@
 
         function saveBoss(map, ch, val, doFocus = false) {
             const pass = protectedRooms[currentRoom];
-            if (pass && map.toUpperCase() === "ADMIN" && ch === pass) { localStorage.setItem(`auth_${currentRoom}`, pass); alert(t('adminUnlock')); document.getElementById('bossInput').value = ''; renderList(); return; }
-            if (!hasAuth()) { alert(t('roomAuth')); return; }
+            if (pass && map.toUpperCase() === "ADMIN" && ch === pass) { localStorage.setItem(`auth_${currentRoom}`, pass); alert("管理權限已解鎖！"); document.getElementById('bossInput').value = ''; renderList(); return; }
+            if (!hasAuth()) { alert("此房間已保護，請輸入正確暗號解鎖。"); return; }
             const id = `${map}_${ch}`; let dv = val, tt = 0, flash = false, uv = val.toString().toUpperCase();
             if (uv.startsWith("00")) { let r = uv.replace("00", ""); uv = (r.length === 2 && !r.includes('.')) ? "R" + r[0] + "." + r[1] : "R" + r; }
             if (uv.startsWith("XX")) dv = "階段" + (uv.substring(2) || "1");
@@ -373,6 +328,7 @@
             db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: uv, displayValue: dv, startTime: Date.now(), isFlash: flash, updater: myName });
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 3000);
             if (doFocus) doEdit(map, ch, uv);
+            document.getElementById('inputHint').classList.remove('warning');
         }
 
         function triggerNext(m, c) {
@@ -389,7 +345,6 @@
             currentRoom = id.toUpperCase(); myName = document.getElementById('userNameInput').value.trim() || 'No Name';
             document.getElementById('loginView').style.display = 'none'; document.getElementById('mainView').style.display = 'block';
             document.getElementById('displayID').innerText = currentRoom; updateVolBg(document.getElementById('volRange'));
-            updateUIStrings();
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
             db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
             db.ref(`rooms/${currentRoom}/users`).on('value', s => { const u = Object.values(s.val() || {}); document.getElementById('onlineCount').innerText = u.length; document.getElementById('onlineUsers').innerText = u.map(x => x.name).join(', '); });
@@ -398,11 +353,11 @@
                 Object.keys(incomingData).forEach(k => {
                     const b = incomingData[k]; const v = b.lastInput.toString().toUpperCase();
                     if (v !== lastProcessedInput[k] && b.isFlash) {
-                        const callName = currLang === 'zh' ? `${b.map}分流${b.ch}` : `${b.map}の${b.ch}チャンネル`;
-                        if (v === "ON") { if(isOnSfxEnabled) playDing(880); speak(callName + (currLang==='zh'?"重生":"湧き")); }
+                        // 更新：音效區分邏輯
+                        if (v === "ON") { if(isOnSfxEnabled) playDing(880); speak(`${b.map}分流${b.ch}重生`); }
                         else if (v.startsWith("R")) {
                             const n = parseFloat(v.substring(1)) || 0;
-                            if (n >= 4.0) { if(isR4SfxEnabled) playDing(440); speak(callName + t('stage') + n); }
+                            if (n >= 4.0) { if(isR4SfxEnabled) playDing(440); speak(`${b.map}分流${b.ch}階段${n}`); }
                         }
                     }
                     lastProcessedInput[k] = v;
@@ -416,8 +371,8 @@
         function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); i.setSelectionRange(m.length + c.length + 2, i.value.length); }
         function addBoss() { const i = document.getElementById('bossInput'); const p = i.value.trim().split(/\s+/); if (p.length < 3) return; saveBoss(p[0], p[1], p.slice(2).join('')); i.value = ''; }
         function deleteBoss(id) { if (!hasAuth()) return; db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
-        function clearAllBosses() { if (!hasAuth()) { alert(t('roomAuth')); return; } if (confirm(t('confirmClear'))) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
-        function copyRoomID() { navigator.clipboard.writeText(currentRoom); alert('Room ID Copied'); }
+        function clearAllBosses() { if (!hasAuth()) { alert("無管理權限"); return; } if (confirm("確定一鍵清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
+        function copyRoomID() { navigator.clipboard.writeText(currentRoom); alert('房號已複製'); }
         function joinRoom() { const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
         function createRoom() { const i = Math.random().toString(36).substring(2, 8).toUpperCase(); startSession(i); }
         function setSort(t) { currentSort = t; document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id === `sort${t.charAt(0).toUpperCase() + t.slice(1)}Btn`)); renderList(); }
