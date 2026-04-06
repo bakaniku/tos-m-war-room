@@ -271,7 +271,7 @@
                         <div class="card-title-row"><button class="pin-btn ${st.pinned?'pinned':''}" onclick="togglePin('${id}')">★</button>
                         <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3></div>
                         <div class="timer-container"><div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color: ${st.isGrey ? '#555' : st.color}">...</div>
-                        ${(b.targetTime === 0 && auth && st.weight !== 7) ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color}; border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')">NEXT</button>` : ''}</div>
+                        ${(b.targetTime === 0 && st.weight !== 7) ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color}; border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')">${b.displayValue === 'ON' ? 'KILL' : 'NEXT'}</button>` : ''}</div>
                         ${b.updater ? `<div style="font-size:10px; color:#444; text-align:right; margin-top:5px;">Last: ${b.updater}</div>` : ''}`;
                     grid.appendChild(card); startTimer(id, b, st.isGrey, st.color);
                 });
