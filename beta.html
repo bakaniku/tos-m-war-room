@@ -21,45 +21,60 @@
         .btn-danger { background: #422; color: #f66; font-size: 11px; padding: 5px 10px; border-radius: 6px; }
         .btn-toggle { background: #222; color: #888; font-size: 12px; padding: 5px 10px; border: 1px solid #444; }
         .btn-toggle.active { background: #050; color: #0f0; border-color: #0f0; }
+        .copy-icon { width: 18px; height: 18px; min-width: 18px; vertical-align: middle; cursor: pointer; opacity: 0.7; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px; }
         .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .room-id { color: #0f0; font-size: 20px; font-weight: bold; line-height: 1; }
         
-        /* 音量與控制項 */
         .audio-controls { display: flex; align-items: center; gap: 5px; background: #111; padding: 4px 10px; border-radius: 20px; border: 1px solid #333; height: 32px; box-sizing: border-box; }
         .audio-btn { background: none; color: #0f0; padding: 0; font-size: 14px; cursor: pointer; border: none; opacity: 0.3; transition: 0.2s; }
         .audio-btn.active { opacity: 1; }
         .vol-range { -webkit-appearance: none; width: 60px; height: 4px; background: #333; border-radius: 2px; outline: none; margin: 0 5px; background-image: linear-gradient(#0f0, #0f0); background-repeat: no-repeat; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: #0f0; border-radius: 50%; cursor: pointer; border: 2px solid #111; }
 
+        .user-list-bar { font-size: 12px; color: #555; margin-bottom: 8px; border-bottom: 1px solid #222; padding-bottom: 8px; }
         .info-bar { background: #111; border-radius: 6px; padding: 8px 12px; border: 1px solid #333; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; }
         .info-text { font-size: 12px; color: #888; margin: 0; line-height: 1.4; flex: 1; }
-        .help-trigger { background: #222; color: #0f0; border: 1px solid #0f0; padding: 3px 10px; font-size: 11px; border-radius: 4px; cursor: pointer; }
+        .help-trigger { background: #050; color: #0f0; border: 1px solid #0f0; padding: 4px 10px; font-size: 11px; border-radius: 4px; cursor: pointer; font-weight: bold; }
 
-        /* 卡片樣式 */
+        .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; margin-bottom: 5px; font-size: 16px; color: #fff; padding: 8px 0; box-sizing: border-box; }
+        .input-hint { font-size: 11px; color: #444; margin-bottom: 15px; transition: color 0.2s; }
+        .input-hint.warning { color: #f33; font-weight: bold; }
+
+        /* 卡片與內容樣式 */
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
-        .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; border-bottom: 1px dashed #444; }
-        .del { position: absolute; top: 8px; right: 8px; color: #444; background: none; border: none; font-size: 16px; cursor: pointer; }
-        .timer { font-size: 18px; font-weight: bold; margin-top: 8px; font-family: monospace; }
+        .card-title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 0; }
+        .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; border-bottom: 1px dashed #444; line-height: 1.2; }
+        .pin-btn { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid #444; background: #1a1a1a; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; font-size: 12px; color: #666; transition: 0.2s; flex-shrink: 0; }
+        .pin-btn.pinned { border-color: #ffca28; background: #2a2200; color: #ffca28; box-shadow: 0 0 5px rgba(255, 202, 40, 0.3); }
+        .del { position: absolute; top: 8px; right: 8px; color: #444; background: none; border: none; font-size: 16px; cursor: pointer; padding: 5px; line-height: 1; }
+        .timer { font-size: 18px; font-weight: bold; margin-top: 8px; font-family: monospace; display: flex; align-items: center; }
+        .timer-sub { font-size: 14px; margin-left: 4px; opacity: 0.8; }
         .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-block; margin-top: 8px; border: 2px solid; }
 
-        /* 說明彈窗 */
+        /* 聊天室樣式 (回歸圖二) */
+        #chatPanel { margin-bottom: 15px; background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 10px; overflow: hidden; }
+        #chatPanel.chat-hidden { display: none; }
+        .chat-msgs { overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+        #chatPanel.chat-mini .chat-msgs { height: 50px; }
+        #chatPanel.chat-full .chat-msgs { height: 150px; }
+        .msg-row { display: flex; gap: 8px; align-items: center; }
+        .msg-name { font-size: 11px; color: #0f0; min-width: 48px; white-space: nowrap; }
+        .msg-bubble { font-size: 13px; color: #ccc; background: #141414; border-radius: 6px; padding: 5px 9px; max-width: 80%; word-break: break-all; }
+        .chat-input-row { display: flex; border-top: 1px solid #1a1a1a; align-items: stretch; }
+        .chat-input-row input { flex: 1; background: #0a0a0a; border: none; color: #fff; padding: 8px 12px; font-size: 12px; outline: none; }
+        .chat-input-row button { background: #0f0; color: #000; border: none; padding: 0 15px; font-weight: bold; cursor: pointer; font-size: 12px; }
+
+        /* 說明彈窗 (圖一風格) */
         #helpModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999; justify-content: center; align-items: center; }
-        .modal-content { background: #111; width: 90%; max-width: 500px; max-height: 85vh; border: 1px solid #333; border-radius: 12px; padding: 20px; overflow-y: auto; position: relative; box-shadow: 0 0 20px rgba(0,255,0,0.1); }
+        .modal-content { background: #111; width: 90%; max-width: 500px; max-height: 85vh; border: 1px solid #333; border-radius: 12px; padding: 20px; overflow-y: auto; position: relative; }
         .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #222; padding-bottom: 10px; margin-bottom: 15px; }
         .close-modal { color: #888; font-size: 28px; cursor: pointer; line-height: 1; }
         .help-list { list-style: none; padding: 0; margin: 0; font-size: 13px; line-height: 1.6; color: #bbb; }
         .help-list li { margin-bottom: 12px; padding-left: 12px; border-left: 2px solid #0f0; }
         .help-list b { color: #0f0; margin-right: 4px; }
         .code-inline { background: #222; color: #0af; padding: 2px 5px; border-radius: 4px; font-family: monospace; }
-
-        /* 聊天室 */
-        #chatPanel { margin-bottom: 15px; background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 10px; overflow: hidden; transition: all 0.3s ease; }
-        #chatPanel.chat-hidden { display: none; }
-        .chat-msgs { overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
-        #chatPanel.chat-mini .chat-msgs { height: 50px; }
-        #chatPanel.chat-full .chat-msgs { height: 150px; }
     </style>
 </head>
 <body>
@@ -81,6 +96,7 @@
             <div class="header">
                 <div class="room-info">
                     <span class="room-id" id="displayID"></span>
+                    <svg class="copy-icon" onclick="copyRoomID()" viewBox="0 0 24 24" fill="none" stroke="#0f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                     <div class="audio-controls">
                         <button id="voiceBtn" class="audio-btn" onclick="toggleVoice()">🔊</button>
                         <input type="range" id="volRange" class="vol-range" min="0" max="1" step="0.01" value="0.5" oninput="updateVolBg(this)">
@@ -92,10 +108,13 @@
                     </div>
                 </div>
                 <div class="room-info">
+                    <span style="font-size:10px; color:#333;">v1.3.1</span>
                     <button class="btn-danger" onclick="clearAllBosses()">一鍵清除</button>
                     <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
             </div>
+
+            <div class="user-list-bar">在線:<span id="onlineCount" style="color:#0f0;">0</span> | <span id="onlineUsers">載入中...</span></div>
 
             <div class="info-bar">
                 <p class="info-text">操作提示：📢 ON音效；🛡️ 階段4音效。重疊輸入將顯示紅字警告。</p>
@@ -104,12 +123,13 @@
 
             <div id="chatPanel" class="chat-full">
                 <div class="chat-msgs" id="chatMsgs"></div>
-                <div class="chat-input-row" style="display:flex; border-top:1px solid #222;">
-                    <input type="text" id="chatInput" style="flex:1; background:none; border:none; color:#fff; padding:10px; font-size:12px;" placeholder="發送訊息..." onkeypress="if(event.key==='Enter')sendMsg()">
+                <div class="chat-input-row">
+                    <input type="text" id="chatInput" placeholder="輸入訊息…" maxlength="80" onkeypress="if(event.key==='Enter')sendMsg()">
+                    <button onclick="sendMsg()">送出</button>
                 </div>
             </div>
 
-            <div class="sort-row" style="margin-bottom:15px; display:flex; gap:8px;">
+            <div class="sort-row" style="margin:10px 0; display:flex; gap:8px;">
                 <button id="sortTimeBtn" class="btn-toggle active" onclick="setSort('time')">時間排序</button>
                 <button id="sortGroupBtn" class="btn-toggle" onclick="setSort('group')">分組排序</button>
                 <button id="sortMapBtn" class="btn-toggle" onclick="setSort('map')">地圖排序</button>
@@ -122,7 +142,7 @@
         </div>
     </div>
 
-    <!-- 說明彈窗 -->
+    <!-- 說明彈窗 (手冊12項實裝) -->
     <div id="helpModal">
         <div class="modal-content">
             <div class="modal-header">
@@ -132,12 +152,12 @@
             <ul class="help-list">
                 <li><b>1. 你的稱呼：</b>選填，若留空則顯示 <span class="code-inline">No Name</span>。</li>
                 <li><b>2. 創建房間：</b>點擊按鈕後立即生成一組隨機的新房間代碼。</li>
-                <li><b>3. 輸入房號：</b>輸入他人代碼即可同步編輯。房間無權限區分，請慎重保管代碼。</li>
+                <li><b>3. 輸入房號：</b>輸入他人代碼即可同步編輯。請慎重保管代碼。</li>
                 <li><b>4. 音量功能：</b>🔊 播報重生；📢 ON重生音效；🛡️ 階段4音效。</li>
                 <li><b>5. 警告符號：</b>⚠️ 各階段若超過預設時間未更新時會顯示。</li>
-                <li><b>6. 色彩模式：</b>🎨 階段漸層色；🖌️ 階段123固定色。</li>
-                <li><b>7. 留言板：</b>💬 按鈕可切換：隱藏 / 顯示2行 / 顯示6行。</li>
-                <li><b>8. 個人化：</b>排序與置頂屬於個人本地設定，不會影響他人畫面。</li>
+                <li><b>6. 色彩模式：</b>🎨 漸層模式；🖌️ 階段123同色模式。</li>
+                <li><b>7. 留言板：</b>💬 循環切換：隱藏 / 顯示2行 / 顯示6行。</li>
+                <li><b>8. 個人化：</b>排序與置頂屬於個人本地設定，不會影響他人。</li>
                 <li><b>9. 輸入格式：</b><span class="code-inline">地圖 分流 內容</span>
                     <br>• 分鐘：<span class="code-inline">10</span> (10分) / <span class="code-inline">100</span> (1時40分)
                     <br>• 時分：<span class="code-inline">1.10</span> 或 <span class="code-inline">1:10</span> (1時10分)
@@ -163,7 +183,6 @@
 
         const protectedRooms = { '000000': 'tosm' };
 
-        // 核心功能
         function toggleHelp() {
             const m = document.getElementById('helpModal');
             m.style.display = (m.style.display === 'flex') ? 'none' : 'flex';
@@ -203,7 +222,7 @@
         function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); unlockAudio(); }
         function toggleOnSfx() { isOnSfxEnabled = !isOnSfxEnabled; document.getElementById('onSfxBtn').classList.toggle('active', isOnSfxEnabled); unlockAudio(); }
         function toggleR4Sfx() { isR4SfxEnabled = !isR4SfxEnabled; document.getElementById('r4SfxBtn').classList.toggle('active', isR4SfxEnabled); unlockAudio(); }
-        function toggleWarn() { showWarningIcon = !showWarningIcon; renderList(); }
+        function toggleWarn() { showWarningIcon = !showWarningIcon; document.getElementById('warnBtn').classList.toggle('active', showWarningIcon); renderList(); }
         function toggleColorMode() { colorMode = colorMode === 1 ? 2 : 1; renderList(); }
         
         function toggleChat() {
@@ -227,6 +246,18 @@
             return { isGrey, weight: w, stageVal: s, color: getStatusColor(w), mapLv: parseInt((b.map || '').match(/\d+/)) || 0, pinned: !!localPinned[`${currentRoom}_${bossId}`] };
         }
 
+        function sortItems(items) {
+            return items.sort((a, b) => {
+                const sA = getBossStatus(a[1], a[0]), sB = getBossStatus(b[1], b[0]);
+                if (sA.isGrey !== sB.isGrey) return sA.isGrey ? 1 : -1;
+                const sw = (w) => (w === 7 ? -1 : (w === 0 ? 1.5 : w));
+                if (sA.weight !== sB.weight) return sw(sB.weight) - sw(sA.weight);
+                if (sA.weight >= 2 && sA.weight <= 5) return sB.stageVal - sA.stageVal;
+                if (sA.weight <= 1.5) return a[1].targetTime - b[1].targetTime;
+                return sB.mapLv - sA.mapLv;
+            });
+        }
+
         function renderList() {
             const area = document.getElementById('renderArea'); if(!area) return;
             area.innerHTML = ''; Object.values(timers).forEach(clearInterval); timers = {};
@@ -239,7 +270,7 @@
                 items.forEach(([id, b]) => {
                     const st = getBossStatus(b, id); const card = document.createElement('div'); card.className = 'card';
                     card.innerHTML = `${auth ? `<button class="del" onclick="handleDelClick('${id}')">×</button>` : ''}
-                        <div style="display:flex; align-items:center; gap:8px;">
+                        <div class="card-title-row">
                             <button class="pin-btn ${st.pinned?'pinned':''}" onclick="togglePin('${id}')">★</button>
                             <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3>
                         </div>
@@ -250,13 +281,20 @@
                 });
             };
             
-            const pinned = all.filter(i => getBossStatus(i[1], i[0]).pinned);
+            const pinned = sortItems(all.filter(i => getBossStatus(i[1], i[0]).pinned));
             const others = all.filter(i => !getBossStatus(i[1], i[0]).pinned);
-            drawBox(pinned, "置頂追蹤 ★");
+            drawBox(pinned, "置頂追蹤區 ★");
             const killed = others.filter(i => getBossStatus(i[1], i[0]).weight === 7);
             const active = others.filter(i => getBossStatus(i[1], i[0]).weight !== 7);
-            drawBox(killed, "已擊殺區間");
-            drawBox(active, "重生計時與階段區");
+            drawBox(sortItems(killed), "已擊殺區間");
+            
+            if (currentSort === 'time') { drawBox(sortItems(active), "全域時間排序 (閒置置底)"); }
+            else if (currentSort === 'map') { drawBox(active.sort((a,b) => getBossStatus(b[1], b[0]).mapLv - getBossStatus(a[1], a[0]).mapLv || a[1].ch - b[1].ch), "全域地圖等級排序"); }
+            else {
+                const stages = [], timersList = [], idleList = [];
+                active.forEach(([id, b]) => { const st = getBossStatus(b, id); if (st.isGrey) idleList.push([id, b]); else if (b.targetTime > 0) timersList.push([id, b]); else stages.push([id, b]); });
+                drawBox(sortItems(stages), "階段追蹤區"); drawBox(timersList.sort((a,b)=>a[1].targetTime - b[1].targetTime), "重生計時區"); drawBox(idleList, "超時閒置區");
+            }
         }
 
         function startTimer(id, b, isGrey, statusColor) {
@@ -268,7 +306,9 @@
                     if (!isGrey) el.style.color = d <= 0 ? '#ff3300' : '#00FF00';
                 } else {
                     const m = Math.floor((now - b.startTime) / 60000), s = Math.floor(((now - b.startTime) % 60000) / 1000);
-                    el.innerHTML = `<span>${b.displayValue}</span><span style="font-size:12px; opacity:0.5; margin-left:5px;">(${m}:${s.toString().padStart(2,'0')})</span>`;
+                    const mat = b.displayValue.match(/[\d.]+/); const lv = b.displayValue === "ON" ? 99 : (mat ? Math.floor(parseFloat(mat[0])) : 0);
+                    const isW = (lv < 2 && m >= 12) || (lv >= 2 && lv < 3 && m >= 7) || (lv >= 3 && lv < 4 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
+                    el.innerHTML = `<span>${b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isGrey && st.weight !== 7) ? '⚠️' : ''}`;
                     if (!isGrey) el.style.color = statusColor;
                 }
             }; up(); timers[id] = setInterval(up, 1000);
@@ -290,8 +330,8 @@
             else if (uv === "ON") dv = "ON";
             else if (uv.startsWith("R")) dv = "階段" + uv.substring(1);
             else { tt = Date.now() + (uv.includes('.') || uv.includes(':') ? (parseFloat(uv.replace(':', '.'))*60) : parseFloat(uv)) * 60000; }
-            
             db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: uv, displayValue: dv, startTime: Date.now(), isFlash: flash, updater: myName });
+            setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 3000);
         }
 
         function triggerNext(m, c) {
@@ -307,6 +347,8 @@
             currentRoom = id.toUpperCase(); myName = document.getElementById('userNameInput').value.trim() || 'No Name';
             document.getElementById('loginView').style.display = 'none'; document.getElementById('mainView').style.display = 'block';
             document.getElementById('displayID').innerText = currentRoom;
+            db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
+            db.ref(`rooms/${currentRoom}/users`).on('value', s => { const u = Object.values(s.val() || {}); document.getElementById('onlineCount').innerText = u.length; document.getElementById('onlineUsers').innerText = u.map(x => x.name).join(', '); });
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
                 const incoming = s.val() || {};
                 Object.keys(incoming).forEach(k => {
@@ -323,15 +365,17 @@
 
         function sendMsg() { const i = document.getElementById('chatInput'); if (!i.value.trim()) return; db.ref(`rooms/${currentRoom}/chat`).push({ name: myName, text: i.value.trim(), t: Date.now() }); i.value = ''; }
         function initChat() {
-            db.ref(`rooms/${currentRoom}/chat`).limitToLast(20).on('value', s => {
+            db.ref(`rooms/${currentRoom}/chat`).limitToLast(50).on('value', s => {
                 const c = document.getElementById('chatMsgs'); c.innerHTML = '';
-                Object.values(s.val() || {}).forEach(m => { c.innerHTML += `<div class="msg-row"><span class="msg-name">${m.name}</span>: <span>${m.text}</span></div>`; });
+                const list = Object.values(s.val() || {}).sort((a,b) => a.t - b.t);
+                list.forEach(m => { c.innerHTML += `<div class="msg-row"><span class="msg-name">${m.name}</span><span class="msg-bubble">${m.text}</span></div>`; });
                 c.scrollTop = c.scrollHeight;
             });
         }
         function joinRoom() { const r = document.getElementById('roomInput').value.trim().toUpperCase(); if(r) startSession(r); }
         function createRoom() { startSession(Math.random().toString(36).substring(7).toUpperCase()); }
-        function setSort(t) { currentSort = t; renderList(); }
+        function copyRoomID() { navigator.clipboard.writeText(currentRoom); alert('房號已複製'); }
+        function setSort(t) { currentSort = t; document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id === `sort${t.charAt(0).toUpperCase() + t.slice(1)}Btn`)); renderList(); }
         function togglePin(id) { const k = `${currentRoom}_${id}`; localPinned[k] = !localPinned[k]; localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned)); renderList(); }
         function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); }
         function updateVolBg(el) { el.style.backgroundSize = (el.value * 100) + '% 100%'; }
