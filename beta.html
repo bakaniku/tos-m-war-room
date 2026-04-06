@@ -11,7 +11,7 @@
         #app { width: 100%; max-width: 1000px; min-height: 100vh; padding: 20px; box-sizing: border-box; }
         .login-view { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 80vh; }
         .title { color: #0f0; font-size: 32px; font-weight: bold; margin-bottom: 5px; }
-        .ver-info { color: #444; font-size: 10px; margin-bottom: 40px; }
+        .ver-info { color: #444; font-size: 11px; margin-bottom: 40px; }
         .input-group { width: 220px; display: flex; flex-direction: column; gap: 15px; }
         input[type=text] { background: #111; border: 1px solid #333; color: #fff; padding: 12px; border-radius: 8px; font-size: 16px; outline: none; text-align: center; }
         input[type=text]:focus { border-color: #0f0; }
@@ -21,71 +21,53 @@
         .btn-danger { background: #422; color: #f66; font-size: 11px; padding: 5px 10px; border-radius: 6px; }
         .btn-toggle { background: #222; color: #888; font-size: 12px; padding: 5px 10px; border: 1px solid #444; }
         .btn-toggle.active { background: #050; color: #0f0; border-color: #0f0; }
-        .copy-icon { width: 18px; height: 18px; min-width: 18px; vertical-align: middle; cursor: pointer; opacity: 0.7; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px; }
         .room-info { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
         .room-id { color: #0f0; font-size: 20px; font-weight: bold; line-height: 1; }
         
+        /* 音量與控制項 */
         .audio-controls { display: flex; align-items: center; gap: 5px; background: #111; padding: 4px 10px; border-radius: 20px; border: 1px solid #333; height: 32px; box-sizing: border-box; }
         .audio-btn { background: none; color: #0f0; padding: 0; font-size: 14px; cursor: pointer; border: none; opacity: 0.3; transition: 0.2s; }
         .audio-btn.active { opacity: 1; }
         .vol-range { -webkit-appearance: none; width: 60px; height: 4px; background: #333; border-radius: 2px; outline: none; margin: 0 5px; background-image: linear-gradient(#0f0, #0f0); background-repeat: no-repeat; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: #0f0; border-radius: 50%; cursor: pointer; border: 2px solid #111; }
 
-        .user-list-bar { font-size: 12px; color: #555; margin-bottom: 8px; border-bottom: 1px solid #222; padding-bottom: 8px; }
         .info-bar { background: #111; border-radius: 6px; padding: 8px 12px; border: 1px solid #333; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; }
-        .info-icon { color: #0af; font-size: 14px; }
-        .info-text { font-size: 12px; color: #888; margin: 0; line-height: 1.4; }
+        .info-text { font-size: 12px; color: #888; margin: 0; line-height: 1.4; flex: 1; }
+        .help-trigger { background: #222; color: #0f0; border: 1px solid #0f0; padding: 3px 10px; font-size: 11px; border-radius: 4px; cursor: pointer; }
 
-        .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; margin-bottom: 5px; font-size: 16px; color: #fff; padding: 8px 0; box-sizing: border-box; }
-        .input-hint { font-size: 11px; color: #444; margin-bottom: 15px; transition: color 0.2s; }
-        .input-hint.warning { color: #f33; font-weight: bold; }
-        
-        .sort-row { margin: 10px 0; display: flex; gap: 8px; flex-wrap: wrap; }
-        .grid-section { margin-bottom: 30px; }
-        .section-label { color: #555; font-size: 11px; border-left: 2px solid #333; padding-left: 8px; text-transform: uppercase; margin-bottom: 10px; }
+        /* 卡片樣式 */
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
-        
         .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
-        .card-title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 0; }
-        .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; border-bottom: 1px dashed #444; line-height: 1.2; }
-        
-        .pin-btn { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid #444; background: #1a1a1a; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; font-size: 12px; color: #666; transition: 0.2s; flex-shrink: 0; }
-        .pin-btn.pinned { border-color: #ffca28; background: #2a2200; color: #ffca28; box-shadow: 0 0 5px rgba(255, 202, 40, 0.3); }
-        
-        .del { position: absolute; top: 8px; right: 8px; color: #444; background: none; border: none; font-size: 16px; cursor: pointer; padding: 5px; line-height: 1; }
-        .timer { font-size: 18px; font-weight: bold; margin-top: 8px; font-family: monospace; display: flex; align-items: center; }
-        .timer-sub { font-size: 14px; margin-left: 4px; opacity: 0.8; }
-        .flash-anim { animation: flash 0.5s step-end 10; }
-        @keyframes flash { 0%, 100% { opacity: 1; color: #fff; } 50% { opacity: 0.3; } }
+        .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; border-bottom: 1px dashed #444; }
+        .del { position: absolute; top: 8px; right: 8px; color: #444; background: none; border: none; font-size: 16px; cursor: pointer; }
+        .timer { font-size: 18px; font-weight: bold; margin-top: 8px; font-family: monospace; }
         .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-block; margin-top: 8px; border: 2px solid; }
 
+        /* 說明彈窗 */
+        #helpModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999; justify-content: center; align-items: center; }
+        .modal-content { background: #111; width: 90%; max-width: 500px; max-height: 85vh; border: 1px solid #333; border-radius: 12px; padding: 20px; overflow-y: auto; position: relative; box-shadow: 0 0 20px rgba(0,255,0,0.1); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #222; padding-bottom: 10px; margin-bottom: 15px; }
+        .close-modal { color: #888; font-size: 28px; cursor: pointer; line-height: 1; }
+        .help-list { list-style: none; padding: 0; margin: 0; font-size: 13px; line-height: 1.6; color: #bbb; }
+        .help-list li { margin-bottom: 12px; padding-left: 12px; border-left: 2px solid #0f0; }
+        .help-list b { color: #0f0; margin-right: 4px; }
+        .code-inline { background: #222; color: #0af; padding: 2px 5px; border-radius: 4px; font-family: monospace; }
+
+        /* 聊天室 */
         #chatPanel { margin-bottom: 15px; background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 10px; overflow: hidden; transition: all 0.3s ease; }
         #chatPanel.chat-hidden { display: none; }
-        .chat-msgs { overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; transition: height 0.3s ease; }
+        .chat-msgs { overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
         #chatPanel.chat-mini .chat-msgs { height: 50px; }
         #chatPanel.chat-full .chat-msgs { height: 150px; }
-        
-        /* 更新：稱呼垂直對齊 */
-        .msg-row { display: flex; gap: 8px; align-items: center; }
-        .msg-name { font-size: 11px; color: #0f0; min-width: 48px; white-space: nowrap; }
-        .msg-name.self { color: #0af; }
-        .msg-bubble { font-size: 13px; color: #ccc; background: #141414; border-radius: 6px; padding: 5px 9px; max-width: 80%; word-break: break-all; }
-        
-        .chat-input-row { display: flex; border-top: 1px solid #1a1a1a; align-items: stretch; }
-        .chat-input-row input { flex: 1; background: #0a0a0a; border: none; color: #fff; padding: 8px 12px; font-size: 12px; outline: none; }
-        .chat-input-row button { background: #0f0; color: #000; border: none; padding: 0 15px; font-weight: bold; cursor: pointer; font-size: 12px; }
-        
-        .chat-dot { position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; background: #f00; border-radius: 50%; display: none; }
-        .chat-dot.show { display: block; }
-        .version-tag { font-size: 10px; color: #333; margin-right: 10px; }
     </style>
 </head>
 <body>
     <div id="app">
+        <!-- 登入頁面 -->
         <div id="loginView" class="login-view">
             <div class="title">TOS M FB TIME</div>
-            <div class="ver-info">v1.3.1</div>
+            <div class="ver-info">v1.3.1 <span style="color:#0af; cursor:pointer; text-decoration:underline;" onclick="toggleHelp()">[操作說明]</span></div>
             <div class="input-group">
                 <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10">
                 <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
@@ -94,57 +76,78 @@
             </div>
         </div>
 
+        <!-- 主頁面 -->
         <div id="mainView" style="display:none;">
             <div class="header">
                 <div class="room-info">
                     <span class="room-id" id="displayID"></span>
-                    <svg class="copy-icon" onclick="copyRoomID()" viewBox="0 0 24 24" fill="none" stroke="#0f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                     <div class="audio-controls">
                         <button id="voiceBtn" class="audio-btn" onclick="toggleVoice()">🔊</button>
                         <input type="range" id="volRange" class="vol-range" min="0" max="1" step="0.01" value="0.5" oninput="updateVolBg(this)">
-                        <!-- 更新：報號開關獨立 -->
-                        <button id="onSfxBtn" title="ON 重生音效" class="audio-btn" onclick="toggleOnSfx()">📢</button>
-                        <button id="r4SfxBtn" title="階段4音效" class="audio-btn" onclick="toggleR4Sfx()">🛡️</button>
+                        <button id="onSfxBtn" title="ON音效" class="audio-btn" onclick="toggleOnSfx()">📢</button>
+                        <button id="r4SfxBtn" title="R4音效" class="audio-btn" onclick="toggleR4Sfx()">🛡️</button>
                         <button id="warnBtn" class="audio-btn active" onclick="toggleWarn()">⚠️</button>
                         <button id="colorModeBtn" class="audio-btn active" onclick="toggleColorMode()">🎨</button>
-                        <span class="chat-wrap" style="position:relative;">
-                            <button id="chatBtn" class="audio-btn active" onclick="toggleChat()">💬</button>
-                            <span id="chatDot" class="chat-dot"></span>
-                        </span>
+                        <button id="chatBtn" class="audio-btn active" onclick="toggleChat()">💬</button>
                     </div>
                 </div>
                 <div class="room-info">
-                    <span class="version-tag">v1.3.1</span>
                     <button class="btn-danger" onclick="clearAllBosses()">一鍵清除</button>
                     <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
             </div>
 
-            <div class="user-list-bar">在線:<span id="onlineCount" style="color:#0f0;">0</span> | <span id="onlineUsers">載入中...</span></div>
-
             <div class="info-bar">
-                <span class="info-icon">ℹ️</span>
-                <p class="info-text">操作說明：📢 ON音效；🛡️ 階段4音效。重疊輸入將顯示紅字警告。</p>
+                <p class="info-text">操作提示：📢 ON音效；🛡️ 階段4音效。重疊輸入將顯示紅字警告。</p>
+                <button class="help-trigger" onclick="toggleHelp()">操作說明</button>
             </div>
 
             <div id="chatPanel" class="chat-full">
                 <div class="chat-msgs" id="chatMsgs"></div>
-                <div class="chat-input-row">
-                    <input type="text" id="chatInput" placeholder="輸入訊息…" maxlength="80">
-                    <button onclick="sendMsg()">送出</button>
+                <div class="chat-input-row" style="display:flex; border-top:1px solid #222;">
+                    <input type="text" id="chatInput" style="flex:1; background:none; border:none; color:#fff; padding:10px; font-size:12px;" placeholder="發送訊息..." onkeypress="if(event.key==='Enter')sendMsg()">
                 </div>
             </div>
 
-            <div class="sort-row">
+            <div class="sort-row" style="margin-bottom:15px; display:flex; gap:8px;">
                 <button id="sortTimeBtn" class="btn-toggle active" onclick="setSort('time')">時間排序</button>
                 <button id="sortGroupBtn" class="btn-toggle" onclick="setSort('group')">分組排序</button>
                 <button id="sortMapBtn" class="btn-toggle" onclick="setSort('map')">地圖排序</button>
             </div>
 
             <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 階段(R)/分鐘" oninput="checkDuplicate()">
-            <div class="input-hint" id="inputHint">範例：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 12:30 ｜ 80 3 ON</div>
+            <div class="input-hint" id="inputHint">範例：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 ON</div>
             
             <div id="renderArea"></div>
+        </div>
+    </div>
+
+    <!-- 說明彈窗 -->
+    <div id="helpModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 style="margin:0; color:#0f0;">操作手冊</h3>
+                <span class="close-modal" onclick="toggleHelp()">×</span>
+            </div>
+            <ul class="help-list">
+                <li><b>1. 你的稱呼：</b>選填，若留空則顯示 <span class="code-inline">No Name</span>。</li>
+                <li><b>2. 創建房間：</b>點擊按鈕後立即生成一組隨機的新房間代碼。</li>
+                <li><b>3. 輸入房號：</b>輸入他人代碼即可同步編輯。房間無權限區分，請慎重保管代碼。</li>
+                <li><b>4. 音量功能：</b>🔊 播報重生；📢 ON重生音效；🛡️ 階段4音效。</li>
+                <li><b>5. 警告符號：</b>⚠️ 各階段若超過預設時間未更新時會顯示。</li>
+                <li><b>6. 色彩模式：</b>🎨 階段漸層色；🖌️ 階段123固定色。</li>
+                <li><b>7. 留言板：</b>💬 按鈕可切換：隱藏 / 顯示2行 / 顯示6行。</li>
+                <li><b>8. 個人化：</b>排序與置頂屬於個人本地設定，不會影響他人畫面。</li>
+                <li><b>9. 輸入格式：</b><span class="code-inline">地圖 分流 內容</span>
+                    <br>• 分鐘：<span class="code-inline">10</span> (10分) / <span class="code-inline">100</span> (1時40分)
+                    <br>• 時分：<span class="code-inline">1.10</span> 或 <span class="code-inline">1:10</span> (1時10分)
+                    <br>• 階段：<span class="code-inline">0015</span> 或 <span class="code-inline">R1.5</span> (階段1.5)
+                    <br>• 閒置：<span class="code-inline">xx1</span> (黑灰顯示階段1)
+                </li>
+                <li><b>10. 閒置與過期：</b>點擊活躍卡片 <span class="code-inline">×</span> 轉為閒置，閒置狀態再點一次才刪除。超過 2 小時自動轉黑灰。</li>
+                <li><b>11. 自動清理：</b>房間超過 24 小時未有任何編輯將自動刪除。</li>
+                <li><b>12. 擊殺紀錄：</b>在 <span class="code-inline">ON</span> 階段點擊 <span class="code-inline">KILL</span> 會移動至已擊殺區。</li>
+            </ul>
         </div>
     </div>
 
@@ -152,8 +155,7 @@
         const firebaseConfig = { apiKey: "AIzaSyAff__U1cLBr92gYmtbWpm80zO4rHvObUI", authDomain: "tos-m-fb.firebaseapp.com", databaseURL: "https://tos-m-fb-default-rtdb.asia-southeast1.firebasedatabase.app", projectId: "tos-m-fb" };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
-        let currentRoom = '', timers = {}, currentSort = 'time', isVoiceEnabled = false;
-        let isOnSfxEnabled = false, isR4SfxEnabled = false; // 音效開關獨立
+        let currentRoom = '', timers = {}, currentSort = 'time', isVoiceEnabled = false, isOnSfxEnabled = false, isR4SfxEnabled = false;
         let myName = 'No Name', showWarningIcon = true, colorMode = 1, audioCtx = null, chatMode = 'full', lastReadMsgTime = 0;
         window.currentData = {};
         let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
@@ -161,147 +163,100 @@
 
         const protectedRooms = { '000000': 'tosm' };
 
-        function hasAuth() {
-            const pass = protectedRooms[currentRoom];
-            if (!pass) return true; 
-            return localStorage.getItem(`auth_${currentRoom}`) === pass;
+        // 核心功能
+        function toggleHelp() {
+            const m = document.getElementById('helpModal');
+            m.style.display = (m.style.display === 'flex') ? 'none' : 'flex';
         }
 
-        // 更新：重複檢查提醒
+        function hasAuth() { const p = protectedRooms[currentRoom]; return !p || localStorage.getItem(`auth_${currentRoom}`) === p; }
+
         function checkDuplicate() {
-            const input = document.getElementById('bossInput');
-            const hint = document.getElementById('inputHint');
-            const p = input.value.trim().split(/\s+/);
+            const i = document.getElementById('bossInput'); const h = document.getElementById('inputHint');
+            const p = i.value.trim().split(/\s+/);
             if (p.length >= 2) {
                 const id = `${p[0]}_${p[1]}`;
                 if (window.currentData && window.currentData[id]) {
-                    hint.innerText = `⚠️ 該地圖分流已存在於列表中！`;
-                    hint.classList.add('warning');
-                    return;
+                    h.innerText = `⚠️ 該分流已存在！`; h.classList.add('warning'); return;
                 }
             }
-            hint.innerText = `範例：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 12:30 ｜ 80 3 ON`;
-            hint.classList.remove('warning');
+            h.innerText = `範例：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 ON`; h.classList.remove('warning');
         }
 
-        function updateVolBg(el) { const val = (el.value - el.min) / (el.max - el.min) * 100; el.style.backgroundSize = val + '% 100%'; }
-        function getStatusColor(weight) {
-            const colors = { 7:'#9dadc1', 6:'#FF00FF', 5:'#FF0000', 4:'#FF4500', 3:'#FFA500', 2:'#FFFF00', 1:'#00FF00', 0:'#FF3300' };
-            if (colorMode === 1) return colors[weight] || '#fff';
-            return (weight === 7) ? '#9dadc1' : (weight === 6) ? '#FF00FF' : (weight === 5) ? '#FF0000' : (weight >= 2 && weight <= 4) ? '#FFFF00' : (weight === 1) ? '#00FF00' : '#FF3300';
+        function getStatusColor(w) {
+            const c = { 7:'#9dadc1', 6:'#FF00FF', 5:'#FF0000', 4:'#FF4500', 3:'#FFA500', 2:'#FFFF00', 1:'#00FF00', 0:'#FF3300' };
+            if (colorMode === 1) return c[w] || '#fff';
+            return (w >= 2 && w <= 4) ? '#FFFF00' : (c[w] || '#fff');
         }
+
         function unlockAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); }
-        
-        // 更新：音效區分 (ON=880Hz, R4=440Hz)
-        function playDing(freq = 880, isTest = false) { 
-            unlockAudio(); 
-            const vol = parseFloat(document.getElementById('volRange').value);
-            const osc = audioCtx.createOscillator(); 
-            const gain = audioCtx.createGain(); 
-            osc.type = 'sine'; osc.frequency.setValueAtTime(freq, audioCtx.currentTime); osc.connect(gain); gain.connect(audioCtx.destination); 
-            gain.gain.setValueAtTime(0, audioCtx.currentTime); gain.gain.linearRampToValueAtTime(vol * 0.3, audioCtx.currentTime + 0.01); 
-            osc.start(); osc.stop(audioCtx.currentTime + 0.3); 
+        function playDing(f = 880) { 
+            unlockAudio(); const v = parseFloat(document.getElementById('volRange').value);
+            const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
+            o.type = 'sine'; o.frequency.setValueAtTime(f, audioCtx.currentTime); o.connect(g); g.connect(audioCtx.destination);
+            g.gain.setValueAtTime(0, audioCtx.currentTime); g.gain.linearRampToValueAtTime(v * 0.3, audioCtx.currentTime + 0.01);
+            o.start(); o.stop(audioCtx.currentTime + 0.3);
         }
 
-        function speak(text) {
-            if (!isVoiceEnabled) return;
-            window.speechSynthesis.cancel();
-            const vol = parseFloat(document.getElementById('volRange').value);
-            const msg = new SpeechSynthesisUtterance(text);
-            msg.volume = vol; msg.lang = 'zh-TW'; msg.rate = 1.1;
-            window.speechSynthesis.speak(msg);
-        }
+        function speak(t) { if (!isVoiceEnabled) return; window.speechSynthesis.cancel(); const v = parseFloat(document.getElementById('volRange').value); const m = new SpeechSynthesisUtterance(t); m.volume = v; m.lang = 'zh-TW'; window.speechSynthesis.speak(m); }
 
-        function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); unlockAudio(); if (isVoiceEnabled) speak("語音開啟"); }
-        function toggleOnSfx() { isOnSfxEnabled = !isOnSfxEnabled; document.getElementById('onSfxBtn').classList.toggle('active', isOnSfxEnabled); unlockAudio(); if(isOnSfxEnabled) playDing(880); }
-        function toggleR4Sfx() { isR4SfxEnabled = !isR4SfxEnabled; document.getElementById('r4SfxBtn').classList.toggle('active', isR4SfxEnabled); unlockAudio(); if(isR4SfxEnabled) playDing(440); }
-        function toggleWarn() { showWarningIcon = !showWarningIcon; document.getElementById('warnBtn').classList.toggle('active', showWarningIcon); renderList(); }
-        function toggleColorMode() { colorMode = colorMode === 1 ? 2 : 1; document.getElementById('colorModeBtn').innerText = colorMode === 1 ? '🎨' : '🖌️'; renderList(); }
+        function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); unlockAudio(); }
+        function toggleOnSfx() { isOnSfxEnabled = !isOnSfxEnabled; document.getElementById('onSfxBtn').classList.toggle('active', isOnSfxEnabled); unlockAudio(); }
+        function toggleR4Sfx() { isR4SfxEnabled = !isR4SfxEnabled; document.getElementById('r4SfxBtn').classList.toggle('active', isR4SfxEnabled); unlockAudio(); }
+        function toggleWarn() { showWarningIcon = !showWarningIcon; renderList(); }
+        function toggleColorMode() { colorMode = colorMode === 1 ? 2 : 1; renderList(); }
         
         function toggleChat() {
-            const panel = document.getElementById('chatPanel');
-            const btn = document.getElementById('chatBtn');
-            if (chatMode === 'full') { chatMode = 'hidden'; panel.className = 'chat-hidden'; btn.className = 'audio-btn'; btn.style.opacity = '0.3'; }
-            else if (chatMode === 'hidden') { chatMode = 'mini'; panel.className = 'chat-mini'; btn.className = 'audio-btn active'; btn.style.opacity = '1'; lastReadMsgTime = Date.now(); document.getElementById('chatDot').classList.remove('show'); }
-            else { chatMode = 'full'; panel.className = 'chat-full'; btn.className = 'audio-btn active'; btn.style.opacity = '1'; }
-            scrollChat();
+            const p = document.getElementById('chatPanel');
+            if (chatMode === 'full') { chatMode = 'hidden'; p.className = 'chat-hidden'; }
+            else if (chatMode === 'hidden') { chatMode = 'mini'; p.className = 'chat-mini'; }
+            else { chatMode = 'full'; p.className = 'chat-full'; }
         }
-
-        function scrollChat() { const el = document.getElementById('chatMsgs'); setTimeout(() => { el.scrollTop = el.scrollHeight; }, 100); }
-        function sendMsg() { const i = document.getElementById('chatInput'); if (!i.value.trim()) return; db.ref(`rooms/${currentRoom}/chat`).push({ name: myName, text: i.value.trim(), t: Date.now() }); i.value = ''; }
 
         function getBossStatus(b, bossId) {
             const now = Date.now(), twoHours = 7200000;
             const isGrey = b.lastInput.toString().toUpperCase().startsWith("XX") || (b.targetTime > 0 && (now - b.targetTime > twoHours)) || (b.targetTime === 0 && (now - b.startTime > twoHours));
-            let weight = -1; const stageVal = parseFloat((b.displayValue || '').match(/[\d.]+/)) || 0;
-            if (b.lastInput.toString().toUpperCase().startsWith("DE")) weight = 7;
-            else if (b.displayValue === "ON") weight = 6;
-            else if (b.displayValue.includes("階段4")) weight = 5;
-            else if (b.displayValue.includes("階段3")) weight = 4;
-            else if (b.displayValue.includes("階段2")) weight = 3;
-            else if (b.displayValue.includes("階段1")) weight = 2;
-            else if (b.targetTime > 0) weight = (b.targetTime > now) ? 1 : 0;
-            return { isGrey, weight, stageVal, color: getStatusColor(weight), mapLv: parseInt((b.map || '').match(/\d+/)) || 0, pinned: !!localPinned[`${currentRoom}_${bossId}`] };
-        }
-
-        function sortItems(items) {
-            return items.sort((a, b) => {
-                const sA = getBossStatus(a[1], a[0]), sB = getBossStatus(b[1], b[0]);
-                if (sA.isGrey !== sB.isGrey) return sA.isGrey ? 1 : -1;
-                const sw = (w) => (w === 7 ? -1 : (w === 0 ? 1.5 : w));
-                if (sA.weight !== sB.weight) return sw(sB.weight) - sw(sA.weight);
-                if (sA.weight >= 2 && sA.weight <= 5) return sB.stageVal - sA.stageVal;
-                if (sA.weight <= 1.5) return a[1].targetTime - b[1].targetTime;
-                return sB.mapLv - sA.mapLv;
-            });
+            let w = -1; const s = parseFloat((b.displayValue || '').match(/[\d.]+/)) || 0;
+            if (b.lastInput.toUpperCase().startsWith("DE")) w = 7;
+            else if (b.displayValue === "ON") w = 6;
+            else if (b.displayValue.includes("4")) w = 5;
+            else if (b.displayValue.includes("3")) w = 4;
+            else if (b.displayValue.includes("2")) w = 3;
+            else if (b.displayValue.includes("1")) w = 2;
+            else if (b.targetTime > 0) w = (b.targetTime > now) ? 1 : 0;
+            return { isGrey, weight: w, stageVal: s, color: getStatusColor(w), mapLv: parseInt((b.map || '').match(/\d+/)) || 0, pinned: !!localPinned[`${currentRoom}_${bossId}`] };
         }
 
         function renderList() {
             const area = document.getElementById('renderArea'); if(!area) return;
             area.innerHTML = ''; Object.values(timers).forEach(clearInterval); timers = {};
             const all = Object.entries(window.currentData); const auth = hasAuth();
+
             const drawBox = (items, label) => {
                 if (items.length === 0) return;
-                const sec = document.createElement('div'); sec.className = 'grid-section';
-                sec.innerHTML = `<div class="section-label">${label}</div><div class="grid"></div>`;
+                const sec = document.createElement('div'); sec.innerHTML = `<div style="color:#555; font-size:11px; margin:15px 0 10px; border-left:2px solid #333; padding-left:8px;">${label}</div><div class="grid"></div>`;
                 area.appendChild(sec); const grid = sec.querySelector('.grid');
                 items.forEach(([id, b]) => {
-                    const st = getBossStatus(b, id); 
-                    const card = document.createElement('div'); 
-                    card.className = 'card';
-                    
-                    // 取得地圖等級數字進行 EP17 (135級) 保護判斷
-                    const mapLevel = parseInt(b.map.match(/\d+/)) || 0;
-                    const canSwap = auth && mapLevel < 135 && (b.ch == "1" || b.ch == "2");
-
+                    const st = getBossStatus(b, id); const card = document.createElement('div'); card.className = 'card';
                     card.innerHTML = `${auth ? `<button class="del" onclick="handleDelClick('${id}')">×</button>` : ''}
-                        <div class="card-title-row">
+                        <div style="display:flex; align-items:center; gap:8px;">
                             <button class="pin-btn ${st.pinned?'pinned':''}" onclick="togglePin('${id}')">★</button>
                             <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3>
-                            ${canSwap ? `<button onclick="handleSwap('${id}')" style="margin-left:5px; font-size:10px; background:#002233; color:#0af; border:1px solid #045; padding:2px 4px; border-radius:4px; cursor:pointer;">⇄ CH${b.ch=="1"?"2":"1"}</button>` : ''}
                         </div>
-                        <div class="timer-container">
-                            <div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color: ${st.isGrey ? '#555' : st.color}">...</div>
-                            ${(b.targetTime === 0 && st.weight !== 7) ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color}; border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')">${b.displayValue === 'ON' ? 'KILL' : 'NEXT'}</button>` : ''}
-                        </div>
-                        ${b.updater ? `<div style="font-size:10px; color:#444; text-align:right; margin-top:5px;">Last: ${b.updater}</div>` : ''}`;
-                    grid.appendChild(card); 
-                    startTimer(id, b, st.isGrey, st.color);
+                        <div class="timer" id="t_${id}" style="color: ${st.isGrey ? '#555' : st.color}">...</div>
+                        ${(b.targetTime === 0 && st.weight !== 7) ? `<button class="btn-next" style="color:${st.color}; border-color:${st.color}" onclick="triggerNext('${b.map}','${b.ch}')">${b.displayValue==='ON'?'KILL':'NEXT'}</button>` : ''}
+                        <div style="font-size:9px; color:#444; text-align:right; margin-top:5px;">Last: ${b.updater || ''}</div>`;
+                    grid.appendChild(card); startTimer(id, b, st.isGrey, st.color);
                 });
             };
-            const pinnedItems = sortItems(all.filter(i => getBossStatus(i[1], i[0]).pinned));
-            const otherItems = all.filter(i => !getBossStatus(i[1], i[0]).pinned);
-            drawBox(pinnedItems, "置頂追蹤區 ★");
-            const killedItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight === 7);
-            const activeItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight !== 7);
-            drawBox(sortItems(killedItems), "已擊殺區間");
-            if (currentSort === 'time') { drawBox(sortItems(activeItems), "全域時間排序 (閒置置底)"); } 
-            else if (currentSort === 'map') { drawBox(activeItems.sort((a,b) => getBossStatus(b[1], b[0]).mapLv - getBossStatus(a[1], a[0]).mapLv || a[1].ch - b[1].ch), "全域地圖等級排序"); } 
-            else {
-                const stages = [], timersList = [], idleList = [];
-                activeItems.forEach(([id, b]) => { const st = getBossStatus(b, id); if (st.isGrey) idleList.push([id, b]); else if (b.targetTime > 0) timersList.push([id, b]); else stages.push([id, b]); });
-                drawBox(sortItems(stages), "階段追蹤區"); drawBox(timersList.sort((a,b)=>a[1].targetTime - b[1].targetTime), "重生計時區"); drawBox(idleList, "超時閒置區");
-            }
+            
+            const pinned = all.filter(i => getBossStatus(i[1], i[0]).pinned);
+            const others = all.filter(i => !getBossStatus(i[1], i[0]).pinned);
+            drawBox(pinned, "置頂追蹤 ★");
+            const killed = others.filter(i => getBossStatus(i[1], i[0]).weight === 7);
+            const active = others.filter(i => getBossStatus(i[1], i[0]).weight !== 7);
+            drawBox(killed, "已擊殺區間");
+            drawBox(active, "重生計時與階段區");
         }
 
         function startTimer(id, b, isGrey, statusColor) {
@@ -313,113 +268,73 @@
                     if (!isGrey) el.style.color = d <= 0 ? '#ff3300' : '#00FF00';
                 } else {
                     const m = Math.floor((now - b.startTime) / 60000), s = Math.floor(((now - b.startTime) % 60000) / 1000);
-                    const isK = b.lastInput.toString().toUpperCase().startsWith("DE"); const mat = b.displayValue.match(/[\d.]+/);
-                    const lv = b.displayValue === "ON" ? 99 : (mat ? Math.floor(parseFloat(mat[0])) : 0);
-                    const isW = (lv < 2 && m >= 12) || (lv >= 2 && lv < 3 && m >= 7) || (lv >= 3 && lv < 4 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
-                    el.innerHTML = `<span>${isK ? "已擊殺" : b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isGrey && !isK) ? '⚠️' : ''}`;
+                    el.innerHTML = `<span>${b.displayValue}</span><span style="font-size:12px; opacity:0.5; margin-left:5px;">(${m}:${s.toString().padStart(2,'0')})</span>`;
                     if (!isGrey) el.style.color = statusColor;
                 }
             }; up(); timers[id] = setInterval(up, 1000);
         }
 
         function handleDelClick(id) {
-            const b = window.currentData[id]; if (!b) return; const st = getBossStatus(b, id);
-            if (st.isGrey) deleteBoss(id); else saveBoss(b.map, b.ch, "XX1");
+            const b = window.currentData[id]; const st = getBossStatus(b, id);
+            if (st.isGrey) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
+            else { saveBoss(b.map, b.ch, "XX1"); }
         }
-// --- v1.3.1 新增：強制換線覆蓋功能 ---
-        function handleSwap(id) {
-            const b = window.currentData[id];
-            if (!b || !hasAuth()) return;
 
-            const newCh = (b.ch == "1") ? "2" : "1";
-            const targetId = `${b.map}_${newCh}`;
-            
-            // 檢查目標分流是否已有資料
-            const targetExists = window.currentData[targetId];
-            const msg = targetExists 
-                ? `目標 CH${newCh} 已有資料，確定要將 CH${b.ch} 的進度「強制覆蓋」過去嗎？` 
-                : `確定將 ${b.map} 的進度轉移至 CH${newCh}？`;
-
-            if (confirm(msg)) {
-                // 1. 執行覆蓋寫入（saveBoss 會處理 Firebase set 與 updater）
-                saveBoss(b.map, newCh, b.lastInput);
-                // 2. 刪除原本舊分流的資料
-                db.ref(`rooms/${currentRoom}/bosses/${id}`).remove();
-            }
-        }
-        
-        function saveBoss(map, ch, val, doFocus = false) {
-            const pass = protectedRooms[currentRoom];
-            if (pass && map.toUpperCase() === "ADMIN" && ch === pass) { localStorage.setItem(`auth_${currentRoom}`, pass); alert("管理權限已解鎖！"); document.getElementById('bossInput').value = ''; renderList(); return; }
-            if (!hasAuth()) { alert("此房間已保護，請輸入正確暗號解鎖。"); return; }
-            const id = `${map}_${ch}`; let dv = val, tt = 0, flash = false, uv = val.toString().toUpperCase();
-            if (uv.startsWith("00")) { let r = uv.replace("00", ""); uv = (r.length === 2 && !r.includes('.')) ? "R" + r[0] + "." + r[1] : "R" + r; }
+        function saveBoss(map, ch, val) {
+            if (map.toUpperCase() === "ADMIN" && protectedRooms[currentRoom] === ch) { localStorage.setItem(`auth_${currentRoom}`, ch); alert("解鎖成功"); return; }
+            if (!hasAuth()) { alert("受保護房間"); return; }
+            const id = `${map}_${ch}`; let dv = val, tt = 0, flash = true, uv = val.toString().toUpperCase();
+            if (uv.startsWith("00")) { let r = uv.replace("00", ""); uv = (r.length === 2) ? "R" + r[0] + "." + r[1] : "R" + r; }
             if (uv.startsWith("XX")) dv = "階段" + (uv.substring(2) || "1");
             else if (uv.startsWith("DE")) dv = "已擊殺";
-            else if (uv === "ON") { dv = "ON"; flash = true; }
-            else if (uv.startsWith("R")) { const rn = uv.substring(1); dv = "階段" + rn; if (parseFloat(rn) >= 4.0) flash = true; }
-            else { tt = Date.now() + ((uv.split(/[:.：]/).length===2?parseInt(uv.split(/[:.：]/)[0])*60+parseInt(uv.split(/[:.：]/)[1]):parseFloat(uv)||0) * 60000); }
+            else if (uv === "ON") dv = "ON";
+            else if (uv.startsWith("R")) dv = "階段" + uv.substring(1);
+            else { tt = Date.now() + (uv.includes('.') || uv.includes(':') ? (parseFloat(uv.replace(':', '.'))*60) : parseFloat(uv)) * 60000; }
+            
             db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: uv, displayValue: dv, startTime: Date.now(), isFlash: flash, updater: myName });
-            setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 3000);
-            if (doFocus) doEdit(map, ch, uv);
-            document.getElementById('inputHint').classList.remove('warning');
         }
 
         function triggerNext(m, c) {
-            if (!hasAuth()) return;
             db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => {
-                const d = s.val(); if (!d) return; let cur = d.lastInput.toString().toUpperCase();
+                const d = s.val(); if (!d) return; let cur = d.lastInput.toUpperCase();
                 if (cur === "ON") saveBoss(m, c, "DE1");
-                else if (cur.startsWith("R")) { const n = parseFloat(cur.substring(1)) || 0; let nx = Math.floor(n) + 1; if (nx >= 5) saveBoss(m, c, "ON"); else saveBoss(m, c, "R" + nx); }
+                else if (cur.startsWith("R")) { let n = parseFloat(cur.substring(1)) || 0; let nx = Math.floor(n) + 1; saveBoss(m, c, nx >= 5 ? "ON" : "R" + nx); }
                 else saveBoss(m, c, "ON");
-            }); unlockAudio();
+            });
         }
 
         function startSession(id) {
             currentRoom = id.toUpperCase(); myName = document.getElementById('userNameInput').value.trim() || 'No Name';
             document.getElementById('loginView').style.display = 'none'; document.getElementById('mainView').style.display = 'block';
-            document.getElementById('displayID').innerText = currentRoom; updateVolBg(document.getElementById('volRange'));
-            document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
-            db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
-            db.ref(`rooms/${currentRoom}/users`).on('value', s => { const u = Object.values(s.val() || {}); document.getElementById('onlineCount').innerText = u.length; document.getElementById('onlineUsers').innerText = u.map(x => x.name).join(', '); });
+            document.getElementById('displayID').innerText = currentRoom;
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
-                const incomingData = s.val() || {};
-                Object.keys(incomingData).forEach(k => {
-                    const b = incomingData[k]; const v = b.lastInput.toString().toUpperCase();
-                    if (v !== lastProcessedInput[k] && b.isFlash) {
-                        // 更新：音效區分邏輯
-                        if (v === "ON") { if(isOnSfxEnabled) playDing(880); speak(`${b.map}分流${b.ch}重生`); }
-                        else if (v.startsWith("R")) {
-                            const n = parseFloat(v.substring(1)) || 0;
-                            if (n >= 4.0) { if(isR4SfxEnabled) playDing(440); speak(`${b.map}分流${b.ch}階段${n}`); }
-                        }
+                const incoming = s.val() || {};
+                Object.keys(incoming).forEach(k => {
+                    const b = incoming[k]; if (b.isFlash && b.lastInput !== lastProcessedInput[k]) {
+                        if (b.lastInput === "ON" && isOnSfxEnabled) { playDing(880); speak(`${b.map}重生`); }
+                        if (b.lastInput.includes("4") && isR4SfxEnabled) { playDing(440); speak(`${b.map}階段4`); }
                     }
-                    lastProcessedInput[k] = v;
+                    lastProcessedInput[k] = b.lastInput;
                 });
-                window.currentData = incomingData; renderList();
+                window.currentData = incoming; renderList();
             });
             initChat();
         }
 
-        function togglePin(id) { const k = `${currentRoom}_${id}`; if (localPinned[k]) delete localPinned[k]; else localPinned[k] = true; localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned)); renderList(); }
-        function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); i.setSelectionRange(m.length + c.length + 2, i.value.length); }
-        function addBoss() { const i = document.getElementById('bossInput'); const p = i.value.trim().split(/\s+/); if (p.length < 3) return; saveBoss(p[0], p[1], p.slice(2).join('')); i.value = ''; }
-        function deleteBoss(id) { if (!hasAuth()) return; db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
-        function clearAllBosses() { if (!hasAuth()) { alert("無管理權限"); return; } if (confirm("確定一鍵清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
-        function copyRoomID() { navigator.clipboard.writeText(currentRoom); alert('房號已複製'); }
-        function joinRoom() { const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
-        function createRoom() { const i = Math.random().toString(36).substring(2, 8).toUpperCase(); startSession(i); }
-        function setSort(t) { currentSort = t; document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id === `sort${t.charAt(0).toUpperCase() + t.slice(1)}Btn`)); renderList(); }
+        function sendMsg() { const i = document.getElementById('chatInput'); if (!i.value.trim()) return; db.ref(`rooms/${currentRoom}/chat`).push({ name: myName, text: i.value.trim(), t: Date.now() }); i.value = ''; }
         function initChat() {
-            document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMsg(); });
-            db.ref(`rooms/${currentRoom}/chat`).limitToLast(50).on('value', s => {
-                const container = document.getElementById('chatMsgs'); container.innerHTML = '';
-                const list = Object.values(s.val() || {}).sort((a,b) => a.t - b.t);
-                list.forEach(m => { container.innerHTML += `<div class="msg-row"><span class="msg-name ${m.name===myName?'self':''}">${m.name}</span><span class="msg-bubble">${m.text}</span></div>`; });
-                if (chatMode === 'hidden' && list.length > 0 && list[list.length-1].t > lastReadMsgTime && list[list.length-1].name !== myName) { document.getElementById('chatDot').classList.add('show'); }
-                scrollChat();
+            db.ref(`rooms/${currentRoom}/chat`).limitToLast(20).on('value', s => {
+                const c = document.getElementById('chatMsgs'); c.innerHTML = '';
+                Object.values(s.val() || {}).forEach(m => { c.innerHTML += `<div class="msg-row"><span class="msg-name">${m.name}</span>: <span>${m.text}</span></div>`; });
+                c.scrollTop = c.scrollHeight;
             });
         }
+        function joinRoom() { const r = document.getElementById('roomInput').value.trim().toUpperCase(); if(r) startSession(r); }
+        function createRoom() { startSession(Math.random().toString(36).substring(7).toUpperCase()); }
+        function setSort(t) { currentSort = t; renderList(); }
+        function togglePin(id) { const k = `${currentRoom}_${id}`; localPinned[k] = !localPinned[k]; localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned)); renderList(); }
+        function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); }
+        function updateVolBg(el) { el.style.backgroundSize = (el.value * 100) + '% 100%'; }
     </script>
 </body>
 </html>
