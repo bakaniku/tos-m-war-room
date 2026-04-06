@@ -266,14 +266,27 @@
                 sec.innerHTML = `<div class="section-label">${label}</div><div class="grid"></div>`;
                 area.appendChild(sec); const grid = sec.querySelector('.grid');
                 items.forEach(([id, b]) => {
-                    const st = getBossStatus(b, id); const card = document.createElement('div'); card.className = 'card';
+                    const st = getBossStatus(b, id); 
+                    const card = document.createElement('div'); 
+                    card.className = 'card';
+                    
+                    // 取得地圖等級數字進行 EP17 (135級) 保護判斷
+                    const mapLevel = parseInt(b.map.match(/\d+/)) || 0;
+                    const canSwap = auth && mapLevel < 135 && (b.ch == "1" || b.ch == "2");
+
                     card.innerHTML = `${auth ? `<button class="del" onclick="handleDelClick('${id}')">×</button>` : ''}
-                        <div class="card-title-row"><button class="pin-btn ${st.pinned?'pinned':''}" onclick="togglePin('${id}')">★</button>
-                        <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3></div>
-                        <div class="timer-container"><div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color: ${st.isGrey ? '#555' : st.color}">...</div>
-                        ${(b.targetTime === 0 && st.weight !== 7) ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color}; border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')">${b.displayValue === 'ON' ? 'KILL' : 'NEXT'}</button>` : ''}</div>
+                        <div class="card-title-row">
+                            <button class="pin-btn ${st.pinned?'pinned':''}" onclick="togglePin('${id}')">★</button>
+                            <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3>
+                            ${canSwap ? `<button onclick="handleSwap('${id}')" style="margin-left:5px; font-size:10px; background:#002233; color:#0af; border:1px solid #045; padding:2px 4px; border-radius:4px; cursor:pointer;">⇄ CH${b.ch=="1"?"2":"1"}</button>` : ''}
+                        </div>
+                        <div class="timer-container">
+                            <div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color: ${st.isGrey ? '#555' : st.color}">...</div>
+                            ${(b.targetTime === 0 && st.weight !== 7) ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color}; border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')">${b.displayValue === 'ON' ? 'KILL' : 'NEXT'}</button>` : ''}
+                        </div>
                         ${b.updater ? `<div style="font-size:10px; color:#444; text-align:right; margin-top:5px;">Last: ${b.updater}</div>` : ''}`;
-                    grid.appendChild(card); startTimer(id, b, st.isGrey, st.color);
+                    grid.appendChild(card); 
+                    startTimer(id, b, st.isGrey, st.color);
                 });
             };
             const pinnedItems = sortItems(all.filter(i => getBossStatus(i[1], i[0]).pinned));
@@ -313,7 +326,28 @@
             const b = window.currentData[id]; if (!b) return; const st = getBossStatus(b, id);
             if (st.isGrey) deleteBoss(id); else saveBoss(b.map, b.ch, "XX1");
         }
+// --- v1.3.1 新增：強制換線覆蓋功能 ---
+        function handleSwap(id) {
+            const b = window.currentData[id];
+            if (!b || !hasAuth()) return;
 
+            const newCh = (b.ch == "1") ? "2" : "1";
+            const targetId = `${b.map}_${newCh}`;
+            
+            // 檢查目標分流是否已有資料
+            const targetExists = window.currentData[targetId];
+            const msg = targetExists 
+                ? `目標 CH${newCh} 已有資料，確定要將 CH${b.ch} 的進度「強制覆蓋」過去嗎？` 
+                : `確定將 ${b.map} 的進度轉移至 CH${newCh}？`;
+
+            if (confirm(msg)) {
+                // 1. 執行覆蓋寫入（saveBoss 會處理 Firebase set 與 updater）
+                saveBoss(b.map, newCh, b.lastInput);
+                // 2. 刪除原本舊分流的資料
+                db.ref(`rooms/${currentRoom}/bosses/${id}`).remove();
+            }
+        }
+        
         function saveBoss(map, ch, val, doFocus = false) {
             const pass = protectedRooms[currentRoom];
             if (pass && map.toUpperCase() === "ADMIN" && ch === pass) { localStorage.setItem(`auth_${currentRoom}`, pass); alert("管理權限已解鎖！"); document.getElementById('bossInput').value = ''; renderList(); return; }
