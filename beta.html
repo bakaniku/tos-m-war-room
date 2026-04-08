@@ -349,6 +349,37 @@
             document.getElementById('loginView').style.display = 'none'; document.getElementById('mainView').style.display = 'block';
             document.getElementById('displayID').innerText = currentRoom; updateVolBg(document.getElementById('volRange'));
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
+            // GitHub 上的檔案內容修改如下：
+
+const currentVersion = "1.3.1"; // <-- 正式版請確保這裡與 GitHub 上的版本號一致
+
+function startSession(id) {
+    currentRoom = id.toUpperCase();
+    
+    // --- 新增：強制更新監控邏輯 ---
+    db.ref('app_version').on('value', (snapshot) => {
+        const latestVersion = snapshot.val();
+        if (latestVersion) {
+            // 版本轉換邏輯 (例如 "1.3.1" -> 1.31)
+            const vToNum = (v) => parseFloat(v.split('.').slice(0, 2).join('.') + v.split('.')[2]);
+            const latestNum = vToNum(latestVersion);
+            const currentNum = vToNum(currentVersion);
+
+            if (latestNum > currentNum) {
+                alert(`系統有重要更新 (v${latestVersion})，網頁將自動重新整理以啟用權限保護功能。`);
+                location.reload(true);
+                return; // 停止執行後續邏輯，直接刷新
+            }
+        }
+    });
+    // ----------------------------
+
+    // 原有的 startSession 邏輯 (登入介面隱藏、Firebase 監聽等)
+    myName = document.getElementById('userNameInput').value.trim() || 'No Name';
+    document.getElementById('loginView').style.display = 'none';
+    document.getElementById('mainView').style.display = 'block';
+    // ... 後續代碼 ...
+}
             db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
             db.ref(`rooms/${currentRoom}/users`).on('value', s => { const u = Object.values(s.val() || {}); document.getElementById('onlineCount').innerText = u.length; document.getElementById('onlineUsers').innerText = u.map(x => x.name).join(', '); });
             db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
