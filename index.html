@@ -147,7 +147,7 @@
         let lastProcessedInput = {};
 
         // 預設管理密碼設定
-        const protectedRooms = { 'GABIJA': 'gemini', '000000': 'tosm', 'ZEMYNA': 'earth0407' };
+        const protectedRooms = { 'GABIJA': 'gemini', '000000': 'tosm', 'ZEMYNA': 'earth0407', 'LADA': 'alibuda', 'ASRINE': 'lostu' };
 
         function hasAuth() {
             const pass = protectedRooms[currentRoom];
@@ -351,7 +351,7 @@
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
             // GitHub 上的檔案內容修改如下：
 
-const currentVersion = "1.3.1"; // <-- 正式版請確保這裡與 GitHub 上的版本號一致
+const currentVersion = "1.3.2"; // <-- 正式版請確保這裡與 GitHub 上的版本號一致
 
 function startSession(id) {
     currentRoom = id.toUpperCase();
