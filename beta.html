@@ -98,6 +98,7 @@
                             <button id="chatBtn" class="audio-btn active" onclick="toggleChat()">💬</button>
                             <span id="chatDot" class="chat-dot"></span>
                         </span>
+                        <button class="audio-btn active" style="margin-left: 5px;" onclick="showHelp()">❓</button>
                     </div>
                 </div>
                 <div class="room-info">
@@ -400,6 +401,33 @@
         function joinRoom() { const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
         function createRoom() { const i = Math.random().toString(36).substring(2, 8).toUpperCase(); startSession(i); }
         function setSort(t) { currentSort = t; document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id === `sort${t.charAt(0).toUpperCase() + t.slice(1)}Btn`)); renderList(); }
+
+        function showHelp() {
+            const helpText = `
+【快速操作指令】
+● 地圖 分流 ON：設定為 ON (例: 80 3 ON)
+● 地圖 分流 階段：設定為 階段1.5 (例: 80 3 R1.5)
+● 地圖 分流 階段：設定為 階段1.5 (例: 80 3 0015)
+● 地圖 分流 分鐘：設定倒數計時 (例: 80 3 15)
+● 地圖 分流 12:30：設定固定時間
+● 地圖 分流 12.30：設定固定時間
+● ADMIN 密碼：解鎖管理權限
+
+【圖示說明】
+🔊：語音報時開關
+📢：ON 重生音效開關
+🛡️：階段 4 提醒音效開關
+⚠️：預警圖示開關
+🎨：切換三種色彩模式
+💬：切換聊天室顯示狀態
+❓：顯示本說明
+
+【權限說明】
+● 一般使用者：點擊 × 僅能將卡片轉為「閒置」（黑灰色卡片）
+● 管理員：解鎖後點擊閒置卡片的 × 可「完全刪除」卡片
+            `.trim();
+            alert(helpText);
+        }
         
         function initChat() {
             document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMsg(); });
