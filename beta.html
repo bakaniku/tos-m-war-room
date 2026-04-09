@@ -380,16 +380,20 @@
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
             // GitHub 上的檔案內容修改如下：
 
+// --- 修復後的 startSession 邏輯 ---
+
 const currentVersion = "1.3.4"; 
 
 function startSession(id) {
+    // 確保進入房間前初始化基本變數
     currentRoom = id.toUpperCase();
     myName = document.getElementById('userNameInput').value.trim() || 'No Name';
 
-    // 1. 強制更新監控邏輯
+    // 1. 強制更新監控邏輯 (從 Firebase 讀取 app_version)
     db.ref('app_version').on('value', (snapshot) => {
         const latestVersion = snapshot.val();
         if (latestVersion) {
+            // 版本轉換邏輯 (例如 "1.3.1" -> 1.31)
             const vToNum = (v) => parseFloat(v.split('.').slice(0, 2).join('.') + v.split('.')[2]);
             const latestNum = vToNum(latestVersion);
             const currentNum = vToNum(currentVersion);
@@ -397,34 +401,39 @@ function startSession(id) {
             if (latestNum > currentNum) {
                 alert(`系統有重要更新 (v${latestVersion})，網頁將自動重新整理以啟用權限保護功能。`);
                 location.reload(true);
-                return;
+                return; 
             }
         }
     });
 
-    // 2. 介面切換
+    // 2. 介面切換與初始化顯示
     document.getElementById('loginView').style.display = 'none';
     document.getElementById('mainView').style.display = 'block';
     document.getElementById('displayID').innerText = currentRoom;
     updateVolBg(document.getElementById('volRange'));
 
-    // 3. 事件與監聽
-    document.getElementById('bossInput').onkeypress = (e) => { if (e.key === 'Enter') addBoss(); };
+    // 3. 輸入框事件監聽 (修正 Enter 鍵新增功能)
+    const bossInput = document.getElementById('bossInput');
+    bossInput.onkeypress = (e) => { if (e.key === 'Enter') addBoss(); };
 
-    // 在線人數監控
+    // 4. Firebase 在線人數監控
     db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
     db.ref(`rooms/${currentRoom}/users`).on('value', s => {
         const u = Object.values(s.val() || {});
-        document.getElementById('onlineCount').innerText = u.length;
-        document.getElementById('onlineUsers').innerText = u.map(x => x.name).join(', ');
+        const countEl = document.getElementById('onlineCount');
+        const userEl = document.getElementById('onlineUsers');
+        if(countEl) countEl.innerText = u.length;
+        if(userEl) userEl.innerText = u.map(x => x.name).join(', ');
     });
 
-    // Boss 資料監控
+    // 5. Firebase Boss 資料同步監控
     db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
         const incomingData = s.val() || {};
         Object.keys(incomingData).forEach(k => {
             const b = incomingData[k];
             const v = b.lastInput.toString().toUpperCase();
+            
+            // 檢查是否需要播放音效與語音 (偵測 isFlash 標籤)
             if (v !== lastProcessedInput[k] && b.isFlash) {
                 if (v === "ON") {
                     if (isOnSfxEnabled) playDing(880);
@@ -443,6 +452,7 @@ function startSession(id) {
         renderList();
     });
 
+    // 6. 初始化聊天室
     initChat();
 }
 
