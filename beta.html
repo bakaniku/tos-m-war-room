@@ -282,9 +282,13 @@ body.light-mode .btn-toggle.active { background: #e6ffed; color: #22863a; border
         }
 
         function renderList() {
-            const area = document.getElementById('renderArea'); if(!area) return;
-            area.innerHTML = ''; Object.values(timers).forEach(clearInterval); timers = {};
-            const all = Object.entries(window.currentData); const auth = hasAuth();
+            const area = document.getElementById('renderArea'); 
+            if(!area) return;
+            area.innerHTML = ''; 
+            Object.values(timers).forEach(clearInterval); 
+            timers = {};
+            const all = Object.entries(window.currentData); 
+            const auth = hasAuth();
             document.getElementById('clearAllBtn').style.display = auth ? 'block' : 'none';
 
             // --- 關鍵核心：重新判定目前的模式 ---
@@ -293,24 +297,25 @@ body.light-mode .btn-toggle.active { background: #e6ffed; color: #22863a; border
 
             const drawBox = (items, label) => {
                 if (items.length === 0) return;
-                const sec = document.createElement('div'); sec.className = 'grid-section';
+                const sec = document.createElement('div'); 
+                sec.className = 'grid-section';
                 sec.innerHTML = `<div class="section-label">${label}</div><div class="grid"></div>`;
-                area.appendChild(sec); const grid = sec.querySelector('.grid');
+                area.appendChild(sec); 
+                const grid = sec.querySelector('.grid');
                 
                 items.forEach(([id, b]) => {
                     const st = getBossStatus(b, id);
                     
                     // --- 關鍵核心：根據模式與狀態決定文字顏色 ---
-                    // 明亮模式下：超時顯示深紅 (#d32f2f)，其餘顯示深灰 (#24292e)
-                    // 暗色模式下：維持原本 Firebase 傳回的 st.color
                     const activeColor = isLight ? (st.weight === 0 ? '#d32f2f' : '#24292e') : st.color;
                     const cardColor = st.isGrey ? idleColor : activeColor;
 
-                    const card = document.createElement('div'); card.className = 'card';
+                    const card = document.createElement('div'); 
+                    card.className = 'card';
                     card.innerHTML = `
                         <button class="del" onclick="handleDelClick('${id}')">×</button>
                         <div class="card-title-row">
-                            <button class="pin-btn ${st.pinned?'pinned':''}" onclick="togglePin('${id}')">★</button>
+                            <button class="pin-btn ${st.pinned ? 'pinned' : ''}" onclick="togglePin('${id}')">★</button>
                             <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')" style="color: ${cardColor}">
                                 ${b.map} - ${b.ch}
                             </h3>
@@ -324,23 +329,34 @@ body.light-mode .btn-toggle.active { background: #e6ffed; color: #22863a; border
                         </div>
                         ${b.updater ? `<div style="font-size:10px; color:#888; text-align:right; margin-top:5px;">Last: ${b.updater}</div>` : ''}`;
                     grid.appendChild(card); 
-                    startTimer(id, b, st.isGrey, st.color); // 這裡維持傳入 st.color 沒關係，timer 內會再判定
+                    startTimer(id, b, st.isGrey, st.color);
                 });
             };
-            // ... 後續的排序與分類呼叫 ...
-        }
+
+            // 執行各分組渲染
             const pinnedItems = sortItems(all.filter(i => getBossStatus(i[1], i[0]).pinned));
             const otherItems = all.filter(i => !getBossStatus(i[1], i[0]).pinned);
             drawBox(pinnedItems, "置頂追蹤區 ★");
+
             const killedItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight === 7);
             const activeItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight !== 7);
             drawBox(sortItems(killedItems), "已擊殺區間");
-            if (currentSort === 'time') drawBox(sortItems(activeItems), "全域時間排序");
-            else if (currentSort === 'map') drawBox(activeItems.sort((a,b) => getBossStatus(b[1], b[0]).mapLv - getBossStatus(a[1], a[0]).mapLv || a[1].ch - b[1].ch), "地圖等級排序");
-            else {
+
+            if (currentSort === 'time') {
+                drawBox(sortItems(activeItems), "全域時間排序");
+            } else if (currentSort === 'map') {
+                drawBox(activeItems.sort((a,b) => getBossStatus(b[1], b[0]).mapLv - getBossStatus(a[1], a[0]).mapLv || a[1].ch - b[1].ch), "地圖等級排序");
+            } else {
                 const stages = [], timersList = [], idleList = [];
-                activeItems.forEach(([id, b]) => { const st = getBossStatus(b, id); if (st.isGrey) idleList.push([id, b]); else if (b.targetTime > 0) timersList.push([id, b]); else stages.push([id, b]); });
-                drawBox(sortItems(stages), "階段追蹤區"); drawBox(timersList.sort((a,b)=>a[1].targetTime - b[1].targetTime), "重生計時區"); drawBox(idleList, "超時閒置區");
+                activeItems.forEach(([id, b]) => { 
+                    const st = getBossStatus(b, id); 
+                    if (st.isGrey) idleList.push([id, b]); 
+                    else if (b.targetTime > 0) timersList.push([id, b]); 
+                    else stages.push([id, b]); 
+                });
+                drawBox(sortItems(stages), "階段追蹤區"); 
+                drawBox(timersList.sort((a,b)=>a[1].targetTime - b[1].targetTime), "重生計時區"); 
+                drawBox(idleList, "超時閒置區");
             }
         }
 
