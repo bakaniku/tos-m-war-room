@@ -68,40 +68,19 @@
         .chat-dot.show { display: block; }
         .version-tag { font-size: 10px; color: #333; margin-right: 10px; }
 
-        /* 明亮模式 CSS */
-        /* --- 質感升級版 明亮模式 --- */
-        body.light-mode { 
-            background: #f5f7fa; /* 柔和的淺灰藍背景 */
-            color: #24292e; 
-        }
-
-        /* 登入與基礎元件 */
-        body.light-mode #loginView .title { color: #2e7d32; }
-        body.light-mode input[type=text] { background: #fff; border: 1px solid #d1d5da; color: #24292e; }
-
-        /* 頂部膠囊控制列 */
-        body.light-mode .audio-controls { 
-            background: rgba(255, 255, 255, 0.9); 
-            border-color: #e1e4e8;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        }
-
-        /* 聊天室優化 */
-        body.light-mode #chatPanel { background: #fff; border-color: #e1e4e8; }
-        body.light-mode .chat-msgs { background: #f6f8fa; }
-        body.light-mode .msg-bubble { background: #e7f3ff; color: #24292e; border: 1px solid #d1e7ff; }
-
-        /* 卡片設計優化 (增加陰影與圓角質感) */
-        body.light-mode .card { 
-            background: #ffffff; 
-            border-color: #e1e4e8; 
-            box-shadow: 0 4px 12px rgba(149, 157, 165, 0.15);
-            border-radius: 12px;
-        }
-
-        /* 按鈕切換狀態 */
-        body.light-mode .btn-toggle { background: #ebf0f5; color: #475867; border-color: #d1d8df; }
-        body.light-mode .btn-toggle.active { background: #e6ffed; color: #22863a; border-color: #34d058; }
+        /* --- 質感升級版 明亮模式 CSS --- */
+body.light-mode { 
+    background: #f5f7fa !important; /* 強制換色 */
+    color: #24292e !important; 
+}
+body.light-mode .card { 
+    background: #ffffff !important; 
+    border-color: #e1e4e8 !important; 
+    box-shadow: 0 4px 12px rgba(149, 157, 165, 0.15) !important;
+}
+body.light-mode .audio-controls { background: white !important; border-color: #ddd !important; }
+body.light-mode .btn-toggle { background: #eee; color: #666; }
+body.light-mode .btn-toggle.active { background: #e6ffed; color: #22863a; border-color: #34d058; }
     </style>
 </head>
 <body>
@@ -308,33 +287,48 @@
             const all = Object.entries(window.currentData); const auth = hasAuth();
             document.getElementById('clearAllBtn').style.display = auth ? 'block' : 'none';
 
+            // --- 關鍵核心：重新判定目前的模式 ---
             const isLight = document.body.classList.contains('light-mode');
-            const idleColor = isLight ? '#aaa' : '#555';
+            const idleColor = isLight ? '#999' : '#555'; // 閒置狀態顏色
 
             const drawBox = (items, label) => {
                 if (items.length === 0) return;
                 const sec = document.createElement('div'); sec.className = 'grid-section';
                 sec.innerHTML = `<div class="section-label">${label}</div><div class="grid"></div>`;
                 area.appendChild(sec); const grid = sec.querySelector('.grid');
+                
                 items.forEach(([id, b]) => {
                     const st = getBossStatus(b, id);
-                    // 根據目前模式決定顏色
-                    const activeColor = isLight ? (st.weight === 0 ? '#d32f2f' : '#333') : st.color;
+                    
+                    // --- 關鍵核心：根據模式與狀態決定文字顏色 ---
+                    // 明亮模式下：超時顯示深紅 (#d32f2f)，其餘顯示深灰 (#24292e)
+                    // 暗色模式下：維持原本 Firebase 傳回的 st.color
+                    const activeColor = isLight ? (st.weight === 0 ? '#d32f2f' : '#24292e') : st.color;
+                    const cardColor = st.isGrey ? idleColor : activeColor;
+
                     const card = document.createElement('div'); card.className = 'card';
                     card.innerHTML = `
                         <button class="del" onclick="handleDelClick('${id}')">×</button>
                         <div class="card-title-row">
                             <button class="pin-btn ${st.pinned?'pinned':''}" onclick="togglePin('${id}')">★</button>
-                            <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')" style="color: ${st.isGrey ? idleColor : activeColor}">${b.map} - ${b.ch}</h3>
+                            <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')" style="color: ${cardColor}">
+                                ${b.map} - ${b.ch}
+                            </h3>
                         </div>
                         <div class="timer-container">
-                            <div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color: ${st.isGrey ? idleColor : activeColor}">...</div>
-                            ${(b.targetTime === 0 && st.weight !== 7) ? `<button class="btn-next" style="color:${st.isGrey?idleColor:activeColor}; border-color:${st.isGrey?idleColor:activeColor}" onclick="triggerNext('${b.map}','${b.ch}')">${b.displayValue === 'ON' ? 'KILL' : 'NEXT'}</button>` : ''}
+                            <div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color: ${cardColor}">...</div>
+                            ${(b.targetTime === 0 && st.weight !== 7) ? 
+                                `<button class="btn-next" style="color:${cardColor}; border-color:${cardColor}" onclick="triggerNext('${b.map}','${b.ch}')">
+                                    ${b.displayValue === 'ON' ? 'KILL' : 'NEXT'}
+                                </button>` : ''}
                         </div>
                         ${b.updater ? `<div style="font-size:10px; color:#888; text-align:right; margin-top:5px;">Last: ${b.updater}</div>` : ''}`;
-                    grid.appendChild(card); startTimer(id, b, st.isGrey, st.color);
+                    grid.appendChild(card); 
+                    startTimer(id, b, st.isGrey, st.color); // 這裡維持傳入 st.color 沒關係，timer 內會再判定
                 });
             };
+            // ... 後續的排序與分類呼叫 ...
+        }
             const pinnedItems = sortItems(all.filter(i => getBossStatus(i[1], i[0]).pinned));
             const otherItems = all.filter(i => !getBossStatus(i[1], i[0]).pinned);
             drawBox(pinnedItems, "置頂追蹤區 ★");
