@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.3.1</title>
+    <title>TOS M FB TIME v1.3.5</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -73,7 +73,7 @@
     <div id="app">
         <div id="loginView" class="login-view">
             <div class="title">TOS M FB TIME</div>
-            <div class="ver-info">v1.3.1</div>
+            <div class="ver-info">v1.3.5</div>
             <div class="input-group">
                 <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10">
                 <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
@@ -98,10 +98,11 @@
                             <button id="chatBtn" class="audio-btn active" onclick="toggleChat()">💬</button>
                             <span id="chatDot" class="chat-dot"></span>
                         </span>
+                        <button class="audio-btn active" style="margin-left: 5px;" onclick="showHelp()">❓</button>
                     </div>
                 </div>
                 <div class="room-info">
-                    <span class="version-tag">v1.3.1</span>
+                    <span class="version-tag">v1.3.5</span>
                     <button class="btn-danger" id="clearAllBtn" onclick="clearAllBosses()" style="display:none;">一鍵清除</button>
                     <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
@@ -351,7 +352,7 @@
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
             // GitHub 上的檔案內容修改如下：
 
-const currentVersion = "1.3.4"; // <-- 正式版請確保這裡與 GitHub 上的版本號一致
+const currentVersion = "1.3.5"; // <-- 正式版請確保這裡與 GitHub 上的版本號一致
 
 function startSession(id) {
     currentRoom = id.toUpperCase();
@@ -409,6 +410,35 @@ function startSession(id) {
         function joinRoom() { const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
         function createRoom() { const i = Math.random().toString(36).substring(2, 8).toUpperCase(); startSession(i); }
         function setSort(t) { currentSort = t; document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id === `sort${t.charAt(0).toUpperCase() + t.slice(1)}Btn`)); renderList(); }
+        function showHelp() {
+    const helpText = `
+【快速操作指令】
+● 地圖 分流 ON (例: 80 3 ON)
+● 地圖 分流 階段 (例: 80 3 R1.5，或者 80 3 0015)
+● 地圖 分流 分鐘 ，計時功能輸入有以下三種格式：
+  1. 120 1 100
+  2. 120 1 1.40
+  3. 120 1 1:40
+    (1) 120 1 1.5會顯示120 1 1:05
+● 地圖 分流 閒置 ，手動將房間變為閒置狀態（會至於最下方）
+  1. 120 1 xx1（會在閒置區顯示階段1)
+  
+【圖示說明】
+🔊：語音報時開關
+📢：ON 重生音效開關
+🛡️：階段 4 提醒音效開關
+⚠️：預警圖示開關
+🎨：切換三種色彩模式 (含灰白模式)
+💬：切換聊天室顯示狀態
+❓：顯示本說明
+
+【權限說明】
+● 一般使用者：點擊 × 僅能將卡片轉為「閒置」
+● 管理員：解鎖後點擊 × 可「完全刪除」卡片
+    `.trim();
+    
+    alert(helpText);
+}
         function initChat() {
             document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMsg(); });
             db.ref(`rooms/${currentRoom}/chat`).limitToLast(50).on('value', s => {
