@@ -59,53 +59,88 @@
         });
 
         function updateDashboard(rooms) {
-            const list = document.getElementById('roomList');
-            list.innerHTML = '';
-            
-            let roomsCount = 0;
-            let usersCount = 0;
-            let bossesCount = 0;
+    const list = document.getElementById('roomList');
+    list.innerHTML = '';
+    
+    let roomsCount = 0;
+    let usersCount = 0;
+    let bossesCount = 0;
+    let roomEntries = [];
 
-            Object.entries(rooms).forEach(([id, data]) => {
-                roomsCount++;
-                const uCount = data.users ? Object.keys(data.users).length : 0;
-                const bCount = data.bosses ? Object.keys(data.bosses).length : 0;
-                usersCount += uCount;
-                bossesCount += bCount;
+    if (!rooms) return;
 
-                // 抓取該房間最後一位動過卡片的人
-                let lastUser = "無紀錄";
-                if (data.bosses) {
-                    const bossArr = Object.values(data.bosses);
-                    // 找出最後更新時間最晚的那張卡片
-                    const latest = bossArr.reduce((prev, current) => (prev.startTime > current.startTime) ? prev : current);
-                    lastUser = latest.updater || "未知";
-                }
-
-                const row = `
-                    <tr>
-                        <td class="room-active">${id}</td>
-                        <td style="${uCount > 0 ? 'color:#0f0' : 'color:#666'}">${uCount} 人</td>
-                        <td>${bCount}</td>
-                        <td>${lastUser}</td>
-                        <td>
-                            <button class="btn-del" onclick="deleteRoom('${id}')">清除房間</button>
-                        </td>
-                    </tr>
-                `;
-                list.innerHTML += row;
-            });
-
-            document.getElementById('totalRooms').innerText = roomsCount;
-            document.getElementById('totalUsers').innerText = usersCount;
-            document.getElementById('totalBosses').innerText = bossesCount;
-        }
-
-        function deleteRoom(id) {
-            if(confirm(`確定要完全清除房間 ${id} 的所有資料嗎？`)) {
-                db.ref(`rooms/${id}`).remove();
+    // 預處理資料：計算每個房間的最後更新時間
+    Object.entries(rooms).forEach(([id, data]) => {
+        let lastTime = 0;
+        let lastUser = "無紀錄";
+        
+        if (data.bosses) {
+            const bossArr = Object.values(data.bosses);
+            if (bossArr.length > 0) {
+                const latest = bossArr.reduce((prev, curr) => 
+                    ((prev.startTime || 0) > (curr.startTime || 0)) ? prev : curr
+                );
+                lastTime = latest.startTime || 0;
+                lastUser = latest.updater || "未知";
             }
         }
+        roomEntries.push({ id, data, lastTime, lastUser });
+    });
+
+    // 排序：最久沒更新的排在最前面
+    roomEntries.sort((a, b) => a.lastTime - b.lastTime);
+
+    roomEntries.forEach(item => {
+        roomsCount++;
+        const uCount = item.data.users ? Object.keys(item.data.users).length : 0;
+        const bCount = item.data.bosses ? Object.keys(item.data.bosses).length : 0;
+        usersCount += uCount;
+        bossesCount += bCount;
+
+        // 計算距離現在多久沒動過
+        const timeAgo = item.lastTime === 0 ? "極久以前" : getTimeAgo(item.lastTime);
+
+        const row = `
+            <tr>
+                <td style="color:#0f0;">${item.id}</td>
+                <td style="${uCount > 0 ? 'color:#0f0' : 'color:#666'}">${uCount} 人</td>
+                <td>${bCount}</td>
+                <td><span style="color:#aaa">${timeAgo}</span> <br><small>(${item.lastUser})</small></td>
+                <td>
+                    <button class="btn-del" onclick="deleteRoom('${item.id}')">清除房間</button>
+                </td>
+            </tr>
+        `;
+        list.innerHTML += row;
+    });
+
+    document.getElementById('totalRooms').innerText = roomsCount;
+    document.getElementById('totalUsers').innerText = usersCount;
+    document.getElementById('totalBosses').innerText = bossesCount;
+}
+
+// 小工具：計算時間差
+function getTimeAgo(timestamp) {
+    const diff = Date.now() - timestamp;
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(hours / 24);
+    if (days > 0) return `${days} 天前`;
+    if (hours > 0) return `${hours} 小時前`;
+    return "剛更新";
+}
+
+        function deleteRoom(id) {
+    // 增加二次確認，避免手滑
+    const confirmFirst = confirm(`確定要完全清除房間 [${id}] 嗎？\n這將刪除該房所有卡片與對話紀錄。`);
+    if (confirmFirst) {
+        const confirmSecond = confirm(`最後確認：真的要刪除 [${id}] 嗎？`);
+        if (confirmSecond) {
+            db.ref(`rooms/${id}`).remove()
+              .then(() => alert(`房間 ${id} 已成功移除`))
+              .catch(err => alert(`刪除失敗: ${err}`));
+        }
+    }
+}
     </script>
 </body>
 </html>
