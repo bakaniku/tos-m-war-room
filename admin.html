@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>TOS M - 全域管理後台</title>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+    <style>
+        body { background: #121212; color: #e0e0e0; font-family: sans-serif; padding: 20px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 30px; }
+        .stat-card { background: #1e1e1e; padding: 20px; border-radius: 10px; border: 1px solid #333; text-align: center; }
+        .stat-card h2 { color: #0f0; margin: 0; font-size: 2em; }
+        table { width: 100%; border-collapse: collapse; background: #1e1e1e; border-radius: 10px; overflow: hidden; }
+        th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #333; }
+        th { background: #252525; color: #0f0; }
+        .room-active { color: #0f0; font-weight: bold; }
+        .room-idle { color: #666; }
+        button { cursor: pointer; padding: 5px 10px; border-radius: 4px; border: none; }
+        .btn-del { background: #422; color: #f66; }
+    </style>
+</head>
+<body>
+    <h1>TOS M FB 工具管理後台</h1>
+    
+    <div class="stats-grid">
+        <div class="stat-card">房間總數 <h2 id="totalRooms">0</h2></div>
+        <div class="stat-card">全域在線 <h2 id="totalUsers">0</h2></div>
+        <div class="stat-card">總記錄卡片 <h2 id="totalBosses">0</h2></div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>房間 ID</th>
+                <th>在線人數</th>
+                <th>卡片數量</th>
+                <th>最後動態 (最後一位更新者)</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="roomList"></tbody>
+    </table>
+
+    <script>
+        // 請貼上你原本 index.html 的 Firebase 設定
+        const firebaseConfig = { 
+            apiKey: "AIzaSyAff__U1cLBr92gYmtbWpm80zO4rHvObUI", 
+            authDomain: "tos-m-fb.firebaseapp.com", 
+            databaseURL: "https://tos-m-fb-default-rtdb.asia-southeast1.firebasedatabase.app", 
+            projectId: "tos-m-fb" 
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // 開始監控
+        db.ref('rooms').on('value', (snapshot) => {
+            const rooms = snapshot.val() || {};
+            updateDashboard(rooms);
+        });
+
+        function updateDashboard(rooms) {
+            const list = document.getElementById('roomList');
+            list.innerHTML = '';
+            
+            let roomsCount = 0;
+            let usersCount = 0;
+            let bossesCount = 0;
+
+            Object.entries(rooms).forEach(([id, data]) => {
+                roomsCount++;
+                const uCount = data.users ? Object.keys(data.users).length : 0;
+                const bCount = data.bosses ? Object.keys(data.bosses).length : 0;
+                usersCount += uCount;
+                bossesCount += bCount;
+
+                // 抓取該房間最後一位動過卡片的人
+                let lastUser = "無紀錄";
+                if (data.bosses) {
+                    const bossArr = Object.values(data.bosses);
+                    // 找出最後更新時間最晚的那張卡片
+                    const latest = bossArr.reduce((prev, current) => (prev.startTime > current.startTime) ? prev : current);
+                    lastUser = latest.updater || "未知";
+                }
+
+                const row = `
+                    <tr>
+                        <td class="room-active">${id}</td>
+                        <td style="${uCount > 0 ? 'color:#0f0' : 'color:#666'}">${uCount} 人</td>
+                        <td>${bCount}</td>
+                        <td>${lastUser}</td>
+                        <td>
+                            <button class="btn-del" onclick="deleteRoom('${id}')">清除房間</button>
+                        </td>
+                    </tr>
+                `;
+                list.innerHTML += row;
+            });
+
+            document.getElementById('totalRooms').innerText = roomsCount;
+            document.getElementById('totalUsers').innerText = usersCount;
+            document.getElementById('totalBosses').innerText = bossesCount;
+        }
+
+        function deleteRoom(id) {
+            if(confirm(`確定要完全清除房間 ${id} 的所有資料嗎？`)) {
+                db.ref(`rooms/${id}`).remove();
+            }
+        }
+    </script>
+</body>
+</html>
