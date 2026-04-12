@@ -347,14 +347,20 @@
         function updateVolBg(el) { const val = (el.value - el.min) / (el.max - el.min) * 100; el.style.backgroundSize = val + '% 100%'; }
 
         function getStatusColor(weight) {
-
-            const colors = { 7:'#9dadc1', 6:'#FF00FF', 5:'#FF0000', 4:'#FF4500', 3:'#FFA500', 2:'#FFFF00', 1:'#00FF00', 0:'#FF3300' };
-
-            if (colorMode === 1) return colors[weight] || '#fff';
-
-            return (weight === 7) ? '#9dadc1' : (weight === 6) ? '#FF00FF' : (weight === 5) ? '#FF0000' : (weight >= 2 && weight <= 4) ? '#FFFF00' : (weight === 1) ? '#00FF00' : '#FF3300';
-
-        }
+    const colors = { 
+        7:'#9dadc1', // 已擊殺
+        6:'#FF00FF', // ON
+        5:'#FF1493', // 階段 4 (改為深粉紅 DeepPink，與階段 3 的橘色區隔)
+        4:'#FF4500', // 階段 3
+        3:'#FFA500', // 階段 2
+        2:'#FFFF00', // 階段 1
+        1:'#00FF00', // 重生中
+        0:'#FF3300'  // 超時
+    };
+    if (colorMode === 1) return colors[weight] || '#fff';
+    // 色彩模式 2 的邏輯維持不變
+    return (weight === 7) ? '#9dadc1' : (weight === 6) ? '#FF00FF' : (weight === 5) ? '#FF1493' : (weight >= 2 && weight <= 4) ? '#FFFF00' : (weight === 1) ? '#00FF00' : '#FF3300';
+}
 
         function unlockAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); }
 
@@ -604,29 +610,31 @@
 
         }
 
-
-
         function handleDelClick(id) {
+    const b = window.currentData[id];
+    if (!b) return;
+    const st = getBossStatus(b, id);
+    const auth = hasAuth();
 
-            const b = window.currentData[id]; if (!b) return; const st = getBossStatus(b, id);
-
-            const auth = hasAuth();
-
-            if (st.isGrey) {
-
-                if (auth) deleteBoss(id); 
-
-                else alert("只有管理權限可以完全刪除卡片。");
-
-            } else {
-
-                saveBoss(b.map, b.ch, "XX1");
-
-            }
-
+    // 新增限制：如果卡片是 ON (weight 6) 或 階段 4 (weight 5)
+    if (st.weight === 6 || st.weight === 5) {
+        if (!auth) {
+            alert("「ON」與「階段 4」的卡片非常重要，僅限管理員操作閒置/刪除。");
+            return;
         }
+    }
 
-
+    if (st.isGrey) {
+        if (auth) {
+            deleteBoss(id);
+        } else {
+            alert("只有管理權限可以完全刪除卡片。");
+        }
+    } else {
+        // 一般情況點擊 X 轉為閒置 (XX1)
+        saveBoss(b.map, b.ch, "XX1");
+    }
+}
 
         function saveBoss(map, ch, val, doFocus = false) {
 
