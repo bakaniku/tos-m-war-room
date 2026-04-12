@@ -174,10 +174,27 @@
 
         function updateVolBg(el) { const val = (el.value - el.min) / (el.max - el.min) * 100; el.style.backgroundSize = val + '% 100%'; }
         function getStatusColor(weight) {
-            const colors = { 7:'#9dadc1', 6:'#FF00FF', 5:'#FF0000', 4:'#FF4500', 3:'#FFA500', 2:'#FFFF00', 1:'#00FF00', 0:'#FF3300' };
-            if (colorMode === 1) return colors[weight] || '#fff';
-            return (weight === 7) ? '#9dadc1' : (weight === 6) ? '#FF00FF' : (weight === 5) ? '#FF0000' : (weight >= 2 && weight <= 4) ? '#FFFF00' : (weight === 1) ? '#00FF00' : '#FF3300';
-        }
+    const isLight = document.body.classList.contains('light-mode');
+    
+    // 如果是模式 3 (明亮模式)，回傳深色系的狀態色彩
+    if (isLight) {
+        const lightColors = { 
+            7: '#9dadc1', // 已擊殺
+            6: '#9c27b0', // ON (深紫色)
+            5: '#c2185b', // 階段 4 (深粉紅)
+            4: '#e64a19', // 階段 3 (深橘紅)
+            3: '#f57c00', // 階段 2
+            2: '#afb42b', // 階段 1 (深黃綠)
+            1: '#388e3c', // 重生計時中 (深綠)
+            0: '#d32f2f'  // 已超時 (深紅)
+        };
+        return lightColors[weight] || '#333';
+    }
+
+    // 原有的暗色模式顏色保持不變或略微調柔和
+    const colors = { 7: '#9dadc1', 6: '#FF00FF', 5: '#d6558a', 4: '#FF4500', 3: '#FFA500', 2: '#FFFF00', 1: '#00FF00', 0: '#FF3300' };
+    return colors[weight] || '#fff';
+}
         function unlockAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); }
         
         function playDing(freq = 880) { 
