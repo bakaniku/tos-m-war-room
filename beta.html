@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.3.5</title>
+    <title>TOS M FB TIME v1.3.6</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -49,31 +49,23 @@
         .del { position: absolute; top: 8px; right: 8px; color: #444; background: none; border: none; font-size: 16px; cursor: pointer; padding: 5px; line-height: 1; }
         .timer { font-size: 18px; font-weight: bold; margin-top: 8px; font-family: monospace; display: flex; align-items: center; }
         .timer-sub { font-size: 14px; margin-left: 4px; opacity: 0.8; }
-        .flash-anim { animation: flash 0.5s step-end 10; }
-        @keyframes flash { 0%, 100% { opacity: 1; color: #fff; } 50% { opacity: 0.3; } }
         .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-block; margin-top: 8px; border: 2px solid; }
         #chatPanel { margin-bottom: 15px; background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 10px; overflow: hidden; transition: all 0.3s ease; }
         #chatPanel.chat-hidden { display: none; }
-        .chat-msgs { overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; transition: height 0.3s ease; }
-        #chatPanel.chat-mini .chat-msgs { height: 50px; }
-        #chatPanel.chat-full .chat-msgs { height: 150px; }
+        .chat-msgs { overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; height: 150px; }
         .msg-row { display: flex; gap: 8px; align-items: center; }
         .msg-name { font-size: 11px; color: #0f0; min-width: 48px; white-space: nowrap; }
-        .msg-name.self { color: #0af; }
         .msg-bubble { font-size: 13px; color: #ccc; background: #141414; border-radius: 6px; padding: 5px 9px; max-width: 80%; word-break: break-all; }
-        .chat-input-row { display: flex; border-top: 1px solid #1a1a1a; align-items: stretch; }
+        .chat-input-row { display: flex; border-top: 1px solid #1a1a1a; }
         .chat-input-row input { flex: 1; background: #0a0a0a; border: none; color: #fff; padding: 8px 12px; font-size: 12px; outline: none; }
-        .chat-input-row button { background: #0f0; color: #000; border: none; padding: 0 15px; font-weight: bold; cursor: pointer; font-size: 12px; }
-        .chat-dot { position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; background: #f00; border-radius: 50%; display: none; }
-        .chat-dot.show { display: block; }
-        .version-tag { font-size: 10px; color: #333; margin-right: 10px; }
+        .chat-input-row button { background: #0f0; color: #000; border: none; padding: 0 15px; font-weight: bold; cursor: pointer; }
     </style>
 </head>
 <body>
     <div id="app">
         <div id="loginView" class="login-view">
             <div class="title">TOS M FB TIME</div>
-            <div class="ver-info">v1.3.5</div>
+            <div class="ver-info">v1.3.6</div>
             <div class="input-group">
                 <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10">
                 <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
@@ -94,26 +86,18 @@
                         <button id="r4SfxBtn" title="階段4音效" class="audio-btn" onclick="toggleR4Sfx()">🛡️</button>
                         <button id="warnBtn" class="audio-btn active" onclick="toggleWarn()">⚠️</button>
                         <button id="colorModeBtn" class="audio-btn active" onclick="toggleColorMode()">🎨</button>
-                        <span class="chat-wrap" style="position:relative;">
-                            <button id="chatBtn" class="audio-btn active" onclick="toggleChat()">💬</button>
-                            <span id="chatDot" class="chat-dot"></span>
-                        </span>
+                        <button id="chatBtn" class="audio-btn active" onclick="toggleChat()">💬</button>
                         <button class="audio-btn active" style="margin-left: 5px;" onclick="showHelp()">❓</button>
                     </div>
                 </div>
                 <div class="room-info">
-                    <span class="version-tag">v1.3.5</span>
+                    <span class="version-tag">v1.3.6</span>
                     <button class="btn-danger" id="clearAllBtn" onclick="clearAllBosses()" style="display:none;">一鍵清除</button>
                     <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
             </div>
 
             <div class="user-list-bar">在線:<span id="onlineCount" style="color:#0f0;">0</span> | <span id="onlineUsers">載入中...</span></div>
-
-            <div class="info-bar">
-                <span class="info-icon">ℹ️</span>
-                <p class="info-text">操作說明：📢 ON音效；🛡️ 階段4音效。管理解鎖：輸入 ADMIN 密碼。</p>
-            </div>
 
             <div id="chatPanel" class="chat-full">
                 <div class="chat-msgs" id="chatMsgs"></div>
@@ -142,7 +126,7 @@
         const db = firebase.database();
         let currentRoom = '', timers = {}, currentSort = 'time', isVoiceEnabled = false;
         let isOnSfxEnabled = false, isR4SfxEnabled = false;
-        let myName = 'No Name', showWarningIcon = true, colorMode = 1, audioCtx = null, chatMode = 'full', lastReadMsgTime = 0;
+        let myName = 'No Name', showWarningIcon = true, colorMode = 1, audioCtx = null, chatMode = 'full';
         window.currentData = {};
         let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
         let lastProcessedInput = {};
@@ -152,8 +136,7 @@
 
         function hasAuth() {
             const pass = protectedRooms[currentRoom];
-            if (!pass) return true; 
-            return localStorage.getItem(`auth_${currentRoom}`) === pass;
+            return !pass || localStorage.getItem(`auth_${currentRoom}`) === pass;
         }
 
         function checkDuplicate() {
@@ -163,7 +146,7 @@
             if (p.length >= 2) {
                 const id = `${p[0]}_${p[1]}`;
                 if (window.currentData && window.currentData[id]) {
-                    hint.innerText = `⚠️ 該地圖分流已存在於列表中！`;
+                    hint.innerText = `⚠️ 該地圖分流已存在！`;
                     hint.classList.add('warning'); return;
                 }
             }
@@ -172,13 +155,8 @@
         }
 
         function updateVolBg(el) { const val = (el.value - el.min) / (el.max - el.min) * 100; el.style.backgroundSize = val + '% 100%'; }
-        
+
         function getStatusColor(weight) {
-            const isLight = document.body.classList.contains('light-mode');
-            if (isLight) {
-                const lightColors = { 7: '#9dadc1', 6: '#9c27b0', 5: '#c2185b', 4: '#e64a19', 3: '#f57c00', 2: '#afb42b', 1: '#388e3c', 0: '#d32f2f' };
-                return lightColors[weight] || '#333';
-            }
             const colors = { 7: '#9dadc1', 6: '#FF00FF', 5: '#d6558a', 4: '#FF4500', 3: '#FFA500', 2: '#FFFF00', 1: '#00FF00', 0: '#FF3300' };
             if (colorMode === 2 && weight >= 3 && weight <= 5) return '#FFA500';
             return colors[weight] || '#fff';
@@ -187,8 +165,10 @@
         function getBossStatus(b, bossId) {
             const now = Date.now(), twoHours = 7200000;
             const isGrey = b.lastInput.toString().toUpperCase().startsWith("XX") || (b.targetTime > 0 && (now - b.targetTime > twoHours)) || (b.targetTime === 0 && (now - b.startTime > twoHours));
-            let weight = -1; const mat = (b.displayValue || '').match(/[\d.]+/);
+            let weight = -1; 
+            const mat = (b.displayValue || '').match(/[\d.]+/);
             const stageVal = mat ? parseFloat(mat[0]) : 0;
+            
             if (b.lastInput.toString().toUpperCase().startsWith("DE")) weight = 7;
             else if (b.displayValue === "ON") weight = 6;
             else if (b.displayValue.includes("階段4")) weight = 5;
@@ -196,6 +176,7 @@
             else if (b.displayValue.includes("階段2")) weight = 3;
             else if (b.displayValue.includes("階段1")) weight = 2;
             else if (b.targetTime > 0) weight = (b.targetTime > now) ? 1 : 0;
+            
             return { isGrey, weight, stageVal, color: getStatusColor(weight), mapLv: parseInt((b.map || '').match(/\d+/)) || 0, pinned: !!localPinned[`${currentRoom}_${bossId}`] };
         }
 
@@ -228,38 +209,38 @@
                         <button class="del" onclick="handleDelClick('${id}')">×</button>
                         <div class="card-title-row"><button class="pin-btn ${st.pinned?'pinned':''}" onclick="togglePin('${id}')">★</button>
                         <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3></div>
-                        <div class="timer-container"><div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color: ${st.isGrey ? '#555' : st.color}">...</div>
-                        ${(b.targetTime === 0 && st.weight !== 7) ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color}; border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')">${b.displayValue === 'ON' ? 'KILL' : 'NEXT'}</button>` : ''}</div>
+                        <div class="timer" id="t_${id}" style="color: ${st.isGrey ? '#555' : st.color}">...</div>
+                        ${(b.targetTime === 0 && st.weight !== 7) ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color}; border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')">${b.displayValue === 'ON' ? 'KILL' : 'NEXT'}</button>` : ''}
                         ${b.updater ? `<div style="font-size:10px; color:#444; text-align:right; margin-top:5px;">Last: ${b.updater}</div>` : ''}`;
                     grid.appendChild(card); startTimer(id, b, st.isGrey, st.color);
                 });
             };
 
-            const pinnedItems = sortItems(all.filter(i => getBossStatus(i[1], i[0]).pinned));
-            const otherItems = all.filter(i => !getBossStatus(i[1], i[0]).pinned);
-            drawBox(pinnedItems, "置頂追蹤區 ★");
+            const pinned = sortItems(all.filter(i => getBossStatus(i[1], i[0]).pinned));
+            const other = all.filter(i => !getBossStatus(i[1], i[0]).pinned);
+            drawBox(pinned, "置頂追蹤區 ★");
             
-            const killedItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight === 7);
-            const activeItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight !== 7);
-            drawBox(sortItems(killedItems), "已擊殺區間");
+            const killed = other.filter(i => getBossStatus(i[1], i[0]).weight === 7);
+            const active = other.filter(i => getBossStatus(i[1], i[0]).weight !== 7);
+            drawBox(sortItems(killed), "已擊殺區間");
 
-            if (currentSort === 'time') { 
-                drawBox(sortItems(activeItems), "全域時間排序"); 
-            } else if (currentSort === 'map') { 
-                drawBox(activeItems.sort((a,b) => getBossStatus(b[1], b[0]).mapLv - getBossStatus(a[1], a[0]).mapLv || a[1].ch - b[1].ch), "地圖等級排序"); 
+            if (currentSort === 'time') {
+                drawBox(sortItems(active), "全域時間排序");
+            } else if (currentSort === 'map') {
+                drawBox(active.sort((a,b) => getBossStatus(b[1], b[0]).mapLv - getBossStatus(a[1], a[0]).mapLv || a[1].ch - b[1].ch), "地圖等級排序");
             } else {
-                const stagesHigh = [], stage1 = [], timersList = [], idleList = [];
-                activeItems.forEach(([id, b]) => {
+                const sHigh = [], s1 = [], tList = [], idle = [];
+                active.forEach(([id, b]) => {
                     const st = getBossStatus(b, id);
-                    if (st.isGrey) idleList.push([id, b]); 
-                    else if (b.targetTime > 0) timersList.push([id, b]); 
-                    else if (st.weight === 2) stage1.push([id, b]); 
-                    else stagesHigh.push([id, b]);
+                    if (st.isGrey) idle.push([id, b]);
+                    else if (b.targetTime > 0) tList.push([id, b]);
+                    else if (st.weight === 2) s1.push([id, b]);
+                    else sHigh.push([id, b]);
                 });
-                drawBox(sortItems(stagesHigh), "階段追蹤區 (高階/ON)"); 
-                drawBox(sortItems(stage1), "階段 1 追蹤區"); 
-                drawBox(timersList.sort((a,b)=>a[1].targetTime - b[1].targetTime), "重生計時區"); 
-                drawBox(idleList, "超時閒置區");
+                drawBox(sortItems(sHigh), "階段追蹤區 (高階/ON)");
+                drawBox(sortItems(s1), "階段 1 追蹤區");
+                drawBox(tList.sort((a,b)=>a[1].targetTime - b[1].targetTime), "重生計時區");
+                drawBox(idle, "超時閒置區");
             }
         }
 
@@ -274,127 +255,105 @@
                     el.innerText = `${hh}:${mm}:${ss}`;
                     if (!isGrey) {
                         el.style.color = d <= 0 ? '#ff3300' : '#00FF00';
-                        if (d <= 0 && b.lastInput !== "R1" && !b.lastInput.startsWith("XX") && !b.lastInput.startsWith("DE")) { 
+                        if (d <= 0 && b.lastInput !== "R1" && !b.lastInput.startsWith("XX")) { 
                             saveBoss(b.map, b.ch, "R1"); 
                         }
                     }
                 } else {
                     const m = Math.floor((now - b.startTime) / 60000), s = Math.floor(((now - b.startTime) % 60000) / 1000).toString().padStart(2, '0');
-                    const isK = b.lastInput.toString().toUpperCase().startsWith("DE"); 
-                    const mat = b.displayValue.match(/[\d.]+/);
-                    const lv = b.displayValue === "ON" ? 99 : (mat ? Math.floor(parseFloat(mat[0])) : 0);
-                    const isW = (lv < 2 && m >= 12) || (lv >= 2 && lv < 3 && m >= 7) || (lv >= 3 && lv < 4 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
-                    el.innerHTML = `<span>${isK ? "已擊殺" : b.displayValue}</span><span class="timer-sub">(${m}:${s})</span>${(showWarningIcon && isW && !isGrey && !isK) ? '⚠️' : ''}`;
+                    el.innerHTML = `<span>${b.displayValue}</span><span class="timer-sub">(${m}:${s})</span>`;
                     if (!isGrey) el.style.color = statusColor;
                 }
             }; up(); timers[id] = setInterval(up, 1000);
         }
 
-        function startSession(id) {
-            currentRoom = id.toUpperCase();
-            db.ref('app_version').on('value', (snapshot) => {
-                const latestVersion = snapshot.val();
-                if (latestVersion && latestVersion !== currentVersion) {
-                    alert(`系統有更新 (v${latestVersion})，網頁將自動重整。`);
-                    location.reload(true);
-                }
-            });
-
-            myName = document.getElementById('userNameInput').value.trim() || 'No Name';
-            document.getElementById('loginView').style.display = 'none';
-            document.getElementById('mainView').style.display = 'block';
-            document.getElementById('displayID').innerText = currentRoom;
-            updateVolBg(document.getElementById('volRange'));
-
-            db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
-            db.ref(`rooms/${currentRoom}/users`).on('value', s => {
-                const u = Object.values(s.val() || {});
-                document.getElementById('onlineCount').innerText = u.length;
-                document.getElementById('onlineUsers').innerText = u.map(x => x.name).join(', ');
-            });
-
-            db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
-                const incomingData = s.val() || {};
-                Object.keys(incomingData).forEach(k => {
-                    const b = incomingData[k]; const v = b.lastInput.toString().toUpperCase();
-                    if (v !== lastProcessedInput[k] && b.isFlash) {
-                        if (v === "ON") { if(isOnSfxEnabled) playDing(880); speak(`${b.map}分流${b.ch}重生`); }
-                        else if (v.startsWith("R")) {
-                            const n = parseFloat(v.substring(1)) || 0;
-                            if (n >= 4.0) { if(isR4SfxEnabled) playDing(440); speak(`${b.map}分流${b.ch}階段${n}`); }
-                        }
-                    }
-                    lastProcessedInput[k] = v;
-                });
-                window.currentData = incomingData; renderList();
-            });
-            initChat();
-        }
-
-        // --- 其他工具函式 (saveBoss, triggerNext 等) 保持原樣 ---
-        function saveBoss(map, ch, val, doFocus = false) {
+        function saveBoss(map, ch, val) {
             const pass = protectedRooms[currentRoom];
             if (pass && map.toUpperCase() === "ADMIN" && ch === pass) { 
                 localStorage.setItem(`auth_${currentRoom}`, pass); 
-                alert("管理員權限已解鎖！"); 
-                document.getElementById('bossInput').value = ''; 
-                renderList(); return; 
+                alert("管理員權限已解鎖！"); return; 
             }
             const id = `${map}_${ch}`; let dv = val, tt = 0, flash = false, uv = val.toString().toUpperCase();
             if (uv.startsWith("00")) { let r = uv.replace("00", ""); uv = (r.length === 2 && !r.includes('.')) ? "R" + r[0] + "." + r[1] : "R" + r; }
             if (uv.startsWith("XX")) dv = "階段" + (uv.substring(2) || "1");
             else if (uv.startsWith("DE")) dv = "已擊殺";
             else if (uv === "ON") { dv = "ON"; flash = true; }
-            else if (uv.startsWith("R")) { const rn = uv.substring(1); dv = "階段" + rn; if (parseFloat(rn) >= 4.0) flash = true; }
+            else if (uv.startsWith("R")) { dv = "階段" + uv.substring(1); if (parseFloat(uv.substring(1)) >= 4.0) flash = true; }
             else {
-                const parts = uv.split(/[:.：]/);
-                let mins = 0;
-                if (parts.length === 2) mins = parseInt(parts[0]) * 60 + parseInt(parts[1]);
-                else mins = parseFloat(uv) || 0;
+                const p = uv.split(/[:.：]/);
+                let mins = p.length === 2 ? parseInt(p[0]) * 60 + parseInt(p[1]) : parseFloat(uv) || 0;
                 tt = Date.now() + mins * 60000;
             }
             db.ref(`rooms/${currentRoom}/bosses/${id}`).set({ map, ch, targetTime: tt, lastInput: uv, displayValue: dv, startTime: Date.now(), isFlash: flash, updater: myName });
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 3000);
-            if (doFocus) doEdit(map, ch, uv);
         }
 
+        function addBoss() { const i = document.getElementById('bossInput'); const p = i.value.trim().split(/\s+/); if (p.length < 3) return; saveBoss(p[0], p[1], p.slice(2).join('')); i.value = ''; }
         function triggerNext(m, c) {
             db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => {
-                const d = s.val(); if (!d) return; let cur = d.lastInput.toString().toUpperCase();
+                const d = s.val(); if (!d) return; let cur = d.lastInput.toUpperCase();
                 if (cur === "ON") saveBoss(m, c, "DE1");
-                else if (cur.startsWith("R")) { const n = parseFloat(cur.substring(1)) || 0; let nx = Math.floor(n) + 1; if (nx >= 5) saveBoss(m, c, "ON"); else saveBoss(m, c, "R" + nx); }
+                else if (cur.startsWith("R")) { let nx = Math.floor(parseFloat(cur.substring(1))) + 1; saveBoss(m, c, nx >= 5 ? "ON" : "R" + nx); }
                 else saveBoss(m, c, "ON");
-            }); unlockAudio();
+            });
+        }
+
+        function startSession(id) {
+            currentRoom = id.toUpperCase();
+            db.ref('app_version').on('value', s => { if (s.val() && s.val() !== currentVersion) location.reload(true); });
+            myName = document.getElementById('userNameInput').value.trim() || 'No Name';
+            document.getElementById('loginView').style.display = 'none';
+            document.getElementById('mainView').style.display = 'block';
+            document.getElementById('displayID').innerText = currentRoom;
+            updateVolBg(document.getElementById('volRange'));
+            document.getElementById('bossInput').onkeypress = (e) => { if (e.key === 'Enter') addBoss(); };
+            db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
+            db.ref(`rooms/${currentRoom}/users`).on('value', s => {
+                const u = Object.values(s.val() || {});
+                document.getElementById('onlineCount').innerText = u.length;
+                document.getElementById('onlineUsers').innerText = u.map(x => x.name).join(', ');
+            });
+            db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
+                const data = s.val() || {};
+                Object.keys(data).forEach(k => {
+                    const b = data[k]; const v = b.lastInput.toUpperCase();
+                    if (v !== lastProcessedInput[k] && b.isFlash) {
+                        if (v === "ON") { if(isOnSfxEnabled) playDing(880); speak(`${b.map}分流${b.ch}重生`); }
+                        else if (v.startsWith("R") && parseFloat(v.substring(1)) >= 4.0) { if(isR4SfxEnabled) playDing(440); speak(`${b.map}分流${b.ch}階段${v.substring(1)}`); }
+                    }
+                    lastProcessedInput[k] = v;
+                });
+                window.currentData = data; renderList();
+            });
+            initChat();
         }
 
         function unlockAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); }
-        function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); unlockAudio(); if (isVoiceEnabled) speak("語音開啟"); }
-        function toggleOnSfx() { isOnSfxEnabled = !isOnSfxEnabled; document.getElementById('onSfxBtn').classList.toggle('active', isOnSfxEnabled); unlockAudio(); }
-        function toggleR4Sfx() { isR4SfxEnabled = !isR4SfxEnabled; document.getElementById('r4SfxBtn').classList.toggle('active', isR4SfxEnabled); unlockAudio(); }
+        function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); unlockAudio(); }
+        function toggleOnSfx() { isOnSfxEnabled = !isOnSfxEnabled; document.getElementById('onSfxBtn').classList.toggle('active', isOnSfxEnabled); }
+        function toggleR4Sfx() { isR4SfxEnabled = !isR4SfxEnabled; document.getElementById('r4SfxBtn').classList.toggle('active', isR4SfxEnabled); }
         function toggleWarn() { showWarningIcon = !showWarningIcon; document.getElementById('warnBtn').classList.toggle('active', showWarningIcon); renderList(); }
-        function toggleColorMode() { colorMode = colorMode === 1 ? 2 : 1; document.getElementById('colorModeBtn').innerText = colorMode === 1 ? '🎨' : '🖌️'; renderList(); }
+        function toggleColorMode() { colorMode = colorMode === 1 ? 2 : 1; renderList(); }
         function togglePin(id) { const k = `${currentRoom}_${id}`; if (localPinned[k]) delete localPinned[k]; else localPinned[k] = true; localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned)); renderList(); }
+        function handleDelClick(id) { const b = window.currentData[id]; if (!b) return; if (getBossStatus(b, id).isGrey) { if (hasAuth()) db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); else alert("權限不足"); } else saveBoss(b.map, b.ch, "XX1"); }
         function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); }
-        function addBoss() { const i = document.getElementById('bossInput'); const p = i.value.trim().split(/\s+/); if (p.length < 3) return; saveBoss(p[0], p[1], p.slice(2).join('')); i.value = ''; }
-        function deleteBoss(id) { db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); }
-        function handleDelClick(id) { const b = window.currentData[id]; if (!b) return; if (getBossStatus(b, id).isGrey) { if (hasAuth()) deleteBoss(id); else alert("權限不足"); } else saveBoss(b.map, b.ch, "XX1"); }
         function clearAllBosses() { if (hasAuth() && confirm("確定一鍵清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
         function copyRoomID() { navigator.clipboard.writeText(currentRoom); alert('房號已複製'); }
         function joinRoom() { const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
         function createRoom() { startSession(Math.random().toString(36).substring(2, 8).toUpperCase()); }
         function setSort(t) { currentSort = t; document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id.includes(t.charAt(0).toUpperCase() + t.slice(1)))); renderList(); }
         function toggleChat() { chatMode = chatMode === 'full' ? 'hidden' : 'full'; document.getElementById('chatPanel').style.display = chatMode === 'full' ? 'block' : 'none'; }
-        
         function initChat() {
-            document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMsg(); });
+            document.getElementById('chatInput').onkeypress = (e) => { if (e.key === 'Enter') sendMsg(); };
             db.ref(`rooms/${currentRoom}/chat`).limitToLast(50).on('value', s => {
                 const container = document.getElementById('chatMsgs'); container.innerHTML = '';
                 const list = Object.values(s.val() || {}).sort((a,b) => a.t - b.t);
-                list.forEach(m => { container.innerHTML += `<div class="msg-row"><span class="msg-name ${m.name===myName?'self':''}">${m.name}</span><span class="msg-bubble">${m.text}</span></div>`; });
+                list.forEach(m => { container.innerHTML += `<div class="msg-row"><span class="msg-name">${m.name}:</span><span class="msg-bubble">${m.text}</span></div>`; });
                 container.scrollTop = container.scrollHeight;
             });
         }
-        function showHelp() { alert("指令範例：\n80 3 ON\n80 3 R1.5\n80 3 15 (計時15分)\n80 3 12:30 (指定時間)"); }
+        function sendMsg() { const i = document.getElementById('chatInput'); if (i.value.trim()) { db.ref(`rooms/${currentRoom}/chat`).push({ name: myName, text: i.value.trim(), t: Date.now() }); i.value = ''; } }
+        function showHelp() { alert("指令範例：\n80 3 ON\n80 3 R1.5\n80 3 15 (計時15分)"); }
     </script>
 </body>
 </html>
