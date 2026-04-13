@@ -574,42 +574,36 @@
 
         }
 
-
-
         function startTimer(id, b, isGrey, statusColor) {
+    const up = () => {
+        const el = document.getElementById(`t_${id}`); 
+        if(!el) return; 
+        const now = Date.now();
 
-            const up = () => {
+        if (b.targetTime > 0) {
+            // 重生倒數邏輯 (維持不變)
+            const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
+            el.innerText = `${Math.floor(a/3600)}:${Math.floor((a%3600)/60).toString().padStart(2,'0')}:${(a%60).toString().padStart(2,'0')}`;
+            if (!isGrey) el.style.color = d <= 0 ? '#ff3300' : '#00FF00';
+        } else {
+            // --- 修正區域：階段持續時間計算 ---
+            // 使用 Math.max(0, ...) 確保相減結果不會低於 0
+            const diff = Math.max(0, now - b.startTime); 
+            const m = Math.floor(diff / 60000);
+            const s = Math.floor((diff % 60000) / 1000);
 
-                const el = document.getElementById(`t_${id}`); if(!el) return; const now = Date.now();
-
-                if (b.targetTime > 0) {
-
-                    const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
-
-                    el.innerText = `${Math.floor(a/3600)}:${Math.floor((a%3600)/60).toString().padStart(2,'0')}:${(a%60).toString().padStart(2,'0')}`;
-
-                    if (!isGrey) el.style.color = d <= 0 ? '#ff3300' : '#00FF00';
-
-                } else {
-
-                    const m = Math.floor((now - b.startTime) / 60000), s = Math.floor(((now - b.startTime) % 60000) / 1000);
-
-                    const isK = b.lastInput.toString().toUpperCase().startsWith("DE"); const mat = b.displayValue.match(/[\d.]+/);
-
-                    const lv = b.displayValue === "ON" ? 99 : (mat ? Math.floor(parseFloat(mat[0])) : 0);
-
-                    const isW = (lv < 2 && m >= 12) || (lv >= 2 && lv < 3 && m >= 7) || (lv >= 3 && lv < 4 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
-
-                    el.innerHTML = `<span>${isK ? "已擊殺" : b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isGrey && !isK) ? '⚠️' : ''}`;
-
-                    if (!isGrey) el.style.color = statusColor;
-
-                }
-
-            }; up(); timers[id] = setInterval(up, 1000);
-
+            const isK = b.lastInput.toString().toUpperCase().startsWith("DE"); 
+            const mat = b.displayValue.match(/[\d.]+/);
+            const lv = b.displayValue === "ON" ? 99 : (mat ? Math.floor(parseFloat(mat[0])) : 0);
+            const isW = (lv < 2 && m >= 12) || (lv >= 2 && lv < 3 && m >= 7) || (lv >= 3 && lv < 4 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
+            
+            el.innerHTML = `<span>${isK ? "已擊殺" : b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isGrey && !isK) ? '⚠️' : ''}`;
+            if (!isGrey) el.style.color = statusColor;
         }
-
+    }; 
+    up(); 
+    timers[id] = setInterval(up, 1000);
+}
         function handleDelClick(id) {
     const b = window.currentData[id];
     if (!b) return;
@@ -712,7 +706,7 @@
 
 
 
-const currentVersion = "1.3.5"; // <-- 正式版請確保這裡與 GitHub 上的版本號一致
+const currentVersion = "1.3.6"; // <-- 正式版請確保這裡與 GitHub 上的版本號一致
 
 
 
