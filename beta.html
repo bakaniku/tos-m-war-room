@@ -533,52 +533,38 @@
 
 
             const drawBox = (items, label) => {
-
                 if (items.length === 0) return;
-
-                const sec = document.createElement('div'); sec.className = 'grid-section';
-
+                const sec = document.createElement('div'); 
+                sec.className = 'grid-section';
                 sec.innerHTML = `<div class="section-label">${label}</div><div class="grid"></div>`;
-
-                area.appendChild(sec); const grid = sec.querySelector('.grid');
+                area.appendChild(sec); 
+                const grid = sec.querySelector('.grid');
 
                 items.forEach(([id, b]) => {
+                    const st = getBossStatus(b, id); 
+                    const card = document.createElement('div'); 
+                    // 號召中的卡片會加上 calling class 觸發閃爍
+                    card.className = `card ${b.isCalling ? 'calling' : ''}`;
 
-                    const st = getBossStatus(b, id); const card = document.createElement('div'); card.className = `card ${b.isCalling ? 'calling' : ''}`;
-
-                    items.forEach(([id, b]) => {
-    const st = getBossStatus(b, id); 
-    const card = document.createElement('div'); 
-    
-    // 根據號召狀態動態賦予 class 以觸發閃爍特效
-    card.className = `card ${b.isCalling ? 'calling' : ''}`; 
-
-    card.innerHTML = `
-        <button class="del" onclick="handleDelClick('${id}')">×</button>
-        
-        <div class="card-title-row">
-            <button class="pin-btn ${st.pinned ? 'pinned' : ''}" onclick="togglePin('${id}')">★</button>
-            
-            <button class="call-btn ${b.isCalling ? 'active' : ''}" onclick="toggleCallHelp('${id}')">📢</button>
-            
-            <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3>
-        </div>
-
-        <div class="timer-container">
-            <div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color: ${st.isGrey ? '#555' : st.color}">...</div>
-            
-            ${(b.targetTime === 0 && st.weight !== 7) ? 
-                `<button class="btn-next" style="color:${st.isGrey ? '#555' : st.color}; border-color:${st.isGrey ? '#555' : st.color}" onclick="triggerNext('${b.map}','${b.ch}')">
-                    ${b.displayValue === 'ON' ? 'KILL' : 'NEXT'}
-                </button>` : ''}
-        </div>
-
-        ${b.updater ? `<div style="font-size:10px; color:#444; text-align:right; margin-top:5px;">Last: ${b.updater}</div>` : ''}
-    `;
-
-    grid.appendChild(card); 
-    startTimer(id, b, st.isGrey, st.color);
-});
+                    card.innerHTML = `
+                        <button class="del" onclick="handleDelClick('${id}')">×</button>
+                        <div class="card-title-row">
+                            <button class="pin-btn ${st.pinned ? 'pinned' : ''}" onclick="togglePin('${id}')">★</button>
+                            <button class="call-btn ${b.isCalling ? 'active' : ''}" onclick="toggleCallHelp('${id}')">📢</button>
+                            <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3>
+                        </div>
+                        <div class="timer-container">
+                            <div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color: ${st.isGrey ? '#555' : st.color}">...</div>
+                            ${(b.targetTime === 0 && st.weight !== 7) ? 
+                                `<button class="btn-next" style="color:${st.isGrey ? '#555' : st.color}; border-color:${st.isGrey ? '#555' : st.color}" onclick="triggerNext('${b.map}','${b.ch}')">
+                                    ${b.displayValue === 'ON' ? 'KILL' : 'NEXT'}
+                                </button>` : ''}
+                        </div>
+                        ${b.updater ? `<div style="font-size:10px; color:#444; text-align:right; margin-top:5px;">Last: ${b.updater}</div>` : ''}
+                    `;
+                    grid.appendChild(card); 
+                    startTimer(id, b, st.isGrey, st.color);
+                });
             };
 
             const pinnedItems = sortItems(all.filter(i => getBossStatus(i[1], i[0]).pinned));
@@ -840,6 +826,34 @@ function startSession(id) {
 
 
         function togglePin(id) { const k = `${currentRoom}_${id}`; if (localPinned[k]) delete localPinned[k]; else localPinned[k] = true; localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned)); renderList(); }
+        // 在這之後插入
+function togglePin(id) { /* ...原本的代碼... */ }
+
+// 新增的號召功能函式
+function toggleCallHelp(id) {
+    if (!hasAuth()) {
+        alert("只有管理員可以發起號召！");
+        return;
+    }
+    const b = window.currentData[id];
+    if (!b) return;
+    const newState = !b.isCalling;
+    
+    // 同步到 Firebase
+    db.ref(`rooms/${currentRoom}/bosses/${id}/isCalling`).set(newState);
+    
+    if (newState) {
+        db.ref(`rooms/${currentRoom}/chat`).push({
+            name: "【系統】",
+            text: `📣 大家注意！請優先集火：${b.map} - ${b.ch}！`,
+            t: Date.now()
+        });
+        if (isVoiceEnabled) speak(`請支援 ${b.map} 分流 ${b.ch}`);
+    }
+}
+
+// 在這之前插入
+function doEdit(m, c, l) { /* ...原本的代碼... */ }
 
         function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); i.setSelectionRange(m.length + c.length + 2, i.value.length); }
 
