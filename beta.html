@@ -413,6 +413,8 @@ logRef.once('value', snapshot => {
 
         function startSession(id) {
             currentRoom = id.toUpperCase();
+            
+            // --- 1. 版本監控 (維持原樣) ---
             db.ref('app_version').on('value', (snapshot) => {
                 const latestVersion = snapshot.val();
                 if (latestVersion) {
@@ -424,7 +426,7 @@ logRef.once('value', snapshot => {
                 }
             });
 
-            // --- 1. 名稱管制邏輯 ---
+            // --- 2. 名稱生成邏輯 (修正：確保不填也能產生 ID) ---
             let inputName = document.getElementById('userNameInput').value.trim();
             if (!inputName) {
                 let savedID = localStorage.getItem('tos_fixed_id');
@@ -437,7 +439,8 @@ logRef.once('value', snapshot => {
                 myName = inputName;
             }
 
-            // --- 2. 登入前檢查黑名單 ---
+            // --- 3. 進入正式檢查與登入流程 ---
+            // 先檢查黑名單
             db.ref(`rooms/${currentRoom}/blacklist/${myName}`).once('value', snapshot => {
                 if (snapshot.exists()) {
                     alert("此身分已被管理員封鎖，無法進入房間。");
@@ -445,23 +448,28 @@ logRef.once('value', snapshot => {
                     return;
                 }
 
-                // --- 3. 檢查名稱重複並初始化房間 ---
+                // 再檢查重複名稱並初始化
                 db.ref(`rooms/${currentRoom}/users`).once('value', userSnap => {
                     const users = userSnap.val() ? Object.values(userSnap.val()) : [];
                     if (users.some(u => u.name === myName)) {
                         myName += "(" + Math.floor(Math.random() * 99).toString().padStart(2, '0') + ")";
                     }
 
-                    // UI 切換
+                    // --- UI 顯示與基本設定 ---
                     document.getElementById('loginView').style.display = 'none';
                     document.getElementById('mainView').style.display = 'block';
                     document.getElementById('displayID').innerText = currentRoom;
                     updateVolBg(document.getElementById('volRange'));
 
                     // 綁定輸入事件
+                    const bossInput = document.getElementById('bossInput');
+                    // 移除舊監聽器避免重複綁定
+                    bossInput.replaceWith(bossInput.cloneNode(true)); 
                     document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
                     
-                    // 監控自己與在線名單
+                    // --- Firebase 實時監聽區 ---
+                    
+                    // A. 在線名單與被踢偵測
                     const myUserRef = db.ref(`rooms/${currentRoom}/users`).push({ name: myName });
                     myUserRef.onDisconnect().remove();
                     myUserRef.on('value', snap => {
@@ -471,7 +479,7 @@ logRef.once('value', snapshot => {
                         }
                     });
 
-                    // 監聽在線名單
+                    // B. 在線名單渲染 (含 🚫 按鈕)
                     db.ref(`rooms/${currentRoom}/users`).on('value', s => {
                         const u = s.val() ? Object.entries(s.val()) : [];
                         document.getElementById('onlineCount').innerText = u.length;
@@ -483,7 +491,7 @@ logRef.once('value', snapshot => {
                         }).join(', ');
                     });
 
-                    // 監聽 Boss 資料
+                    // C. Boss 資料監聽
                     db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
                         const incomingData = s.val() || {};
                         Object.keys(incomingData).forEach(k => {
@@ -501,6 +509,7 @@ logRef.once('value', snapshot => {
                         renderList();
                     });
 
+                    // D. 其他初始化
                     initChat();
                     initLogs();
                 });
