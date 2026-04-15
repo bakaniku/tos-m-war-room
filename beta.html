@@ -852,9 +852,6 @@ function toggleCallHelp(id) {
     }
 }
 
-// 在這之前插入
-function doEdit(m, c, l) { /* ...原本的代碼... */ }
-
         function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); i.setSelectionRange(m.length + c.length + 2, i.value.length); }
 
         function addBoss() { const i = document.getElementById('bossInput'); const p = i.value.trim().split(/\s+/); if (p.length < 3) return; saveBoss(p[0], p[1], p.slice(2).join('')); i.value = ''; }
