@@ -77,7 +77,7 @@
     <div id="app">
         <div id="loginView" class="login-view">
             <div class="title">TOS M FB TIME</div>
-            <div class="ver-info">v1.3.9</div>
+            <div class="ver-info">v1.3.10</div>
             <div class="input-group">
                 <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10" oninput="this.value=this.value.replace('#','')">
                 <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
@@ -500,48 +500,48 @@ function toggleLogPanel() {
 
 function setLogLimit(num) {
     logLimit = Math.min(100, Math.max(0, parseInt(num) || 0));
-    if (currentRoom) {
-        db.ref(`rooms/${currentRoom}/logs`).limitToLast(100).once('value', s => {
-            console.log("已更新顯示數量為:", logLimit);
-        });
-    }
-}
-
-// 初始化日誌監聽
-function initLogs() {
-    // 監聽 logs 節點，限制最多抓取資料庫最後 100 筆
-    db.ref(`rooms/${currentRoom}/logs`).limitToLast(100).on('value', s => {
-        const container = document.getElementById('logList');
-        if (!container) return;
-        
-        // 1. 取得所有紀錄並轉為陣列
-        let logs = s.val() ? Object.values(s.val()) : [];
-        
-        // 2. 依照時間倒序排列 (最新的在最上面)
-        logs.sort((a, b) => b.t - a.t);
-        
-        // 3. 【關鍵】根據目前設定的 logLimit 進行切片
-        const displayLogs = logs.slice(0, logLimit);
-        
-        // 4. 清空並渲染
-        container.innerHTML = '';
-        displayLogs.forEach(l => {
-            const time = new Date(l.t).toLocaleTimeString('zh-TW', { hour12: false });
-            const nameColor = l.name.startsWith('#') ? '#888' : '#0af';
-            container.innerHTML += `
-                <div style="border-bottom:1px solid #1a1a1a; padding:4px 0;">
-                    <span style="color:#444;">[${time}]</span> 
-                    <span style="color:${nameColor}; font-weight:bold;">${l.name}</span> 
-                    <span style="color:#aaa;">將</span> 
-                    <span style="color:#fff;">${l.boss}</span> 
-                    <span style="color:#f66;">${l.oldVal}</span> 
-                    <span style="color:#aaa;">改為</span> 
-                    <span style="color:#0f0;">${l.newVal}</span>
-                </div>`;
-        });
+    db.ref(`rooms/${currentRoom}/logs`).limitToLast(100).once('value', s => {
+        renderLogs(s.val()); // 呼叫獨立的渲染函式
     });
 }
 
+// 初始化監聽：資料庫一動就重畫
+// 初始化日誌監聽 (資料庫有變動時觸發)
+function initLogs() {
+    db.ref(`rooms/${currentRoom}/logs`).limitToLast(100).on('value', s => {
+        renderLogs(s.val()); // 呼叫下方的渲染函式
+    });
+}
+
+// 【新增】獨立渲染函式：負責依照目前的 logLimit 畫出紀錄
+function renderLogs(data) {
+    const container = document.getElementById('logList');
+    if (!container) return;
+    
+    // 1. 取得資料並按時間倒序
+    let logs = data ? Object.values(data) : [];
+    logs.sort((a, b) => b.t - a.t);
+    
+    // 2. 依照全域變數 logLimit 進行切片
+    const displayLogs = logs.slice(0, logLimit);
+    
+    // 3. 清空並渲染 HTML
+    container.innerHTML = '';
+    displayLogs.forEach(l => {
+        const time = new Date(l.t).toLocaleTimeString('zh-TW', { hour12: false });
+        const nameColor = l.name.startsWith('#') ? '#888' : '#0af';
+        container.innerHTML += `
+            <div style="border-bottom:1px solid #1a1a1a; padding:4px 0;">
+                <span style="color:#444;">[${time}]</span> 
+                <span style="color:${nameColor}; font-weight:bold;">${l.name}</span> 
+                <span style="color:#aaa;">將</span> 
+                <span style="color:#fff;">${l.boss}</span> 
+                <span style="color:#f66;">${l.oldVal}</span> 
+                <span style="color:#aaa;">改為</span> 
+                <span style="color:#0f0;">${l.newVal}</span>
+            </div>`;
+    });
+}
         function togglePin(id) { const k = `${currentRoom}_${id}`; if (localPinned[k]) delete localPinned[k]; else localPinned[k] = true; localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned)); renderList(); }
         
         function toggleCallHelp(id) {
