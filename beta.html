@@ -134,6 +134,14 @@
 
             <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 階段(R)/分鐘" oninput="checkDuplicate()">
             <div class="input-hint" id="inputHint">範例：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 12:30 ｜ 80 3 ON</div>
+            <div id="logPanel" style="background:#0a0a0a; border:1px solid #222; border-radius:8px; margin-bottom:15px; overflow:hidden;">
+    <div style="padding:8px 12px; font-size:12px; color:#0f0; background:#111; cursor:pointer; display:flex; justify-content:space-between; align-items:center;" onclick="toggleLog()">
+        <span>📜 最近編輯紀錄 (點擊開關)</span>
+        <span id="logArrow">▼</span>
+    </div>
+    <div id="logList" style="max-height:120px; overflow-y:auto; padding:8px; font-size:11px; display:none; line-height:1.6; border-top:1px solid #222; font-family:monospace;">
+        </div>
+</div>
             <div id="renderArea"></div>
         </div>
     </div>
@@ -346,6 +354,24 @@
             else { tt = Date.now() + ((uv.split(/[:.：]/).length===2?parseInt(uv.split(/[:.：]/)[0])*60+parseInt(uv.split(/[:.：]/)[1]):parseFloat(uv)||0) * 60000); }
             db.ref(`rooms/${currentRoom}/bosses/${id}`).update({ map, ch, targetTime: tt, lastInput: uv, displayValue: dv, startTime: Date.now(), isFlash: flash, updater: myName });
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 3000);
+            const logRef = db.ref(`rooms/${currentRoom}/logs`);
+logRef.push({
+    name: myName, // 這是你的自訂名字或 #代碼
+    boss: `${map}-${ch}`,
+    action: dv,   // 顯示階段狀態，例如: ON、階段1
+    t: Date.now()
+});
+
+// 維持資料庫整潔，只保留最後 100 筆紀錄
+logRef.once('value', snapshot => {
+    if (snapshot.numChildren() > 100) {
+        let count = 0;
+        snapshot.forEach(child => {
+            if (count < snapshot.numChildren() - 100) child.ref.remove();
+            count++;
+        });
+    }
+});
             if (doFocus) doEdit(map, ch, uv);
             document.getElementById('inputHint').classList.remove('warning');
         }
@@ -430,6 +456,7 @@
                 window.currentData = incomingData; renderList();
             });
             initChat();
+            initLogs();
         }
 
         function togglePin(id) { const k = `${currentRoom}_${id}`; if (localPinned[k]) delete localPinned[k]; else localPinned[k] = true; localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned)); renderList(); }
@@ -440,6 +467,45 @@
             if (!b) return;
             db.ref(`rooms/${currentRoom}/bosses/${id}/isCalling`).set(!b.isCalling);
         }
+        // 摺疊紀錄面板開關
+function toggleLog() {
+    const list = document.getElementById('logList');
+    const arrow = document.getElementById('logArrow');
+    if (list.style.display === 'none') {
+        list.style.display = 'block';
+        arrow.innerText = '▲';
+    } else {
+        list.style.display = 'none';
+        arrow.innerText = '▼';
+    }
+}
+
+// 初始化並即時監聽編輯紀錄 (不影響聊天室)
+function initLogs() {
+    db.ref(`rooms/${currentRoom}/logs`).limitToLast(100).on('value', s => {
+        const container = document.getElementById('logList');
+        if(!container) return;
+        container.innerHTML = '';
+        
+        // 將資料轉陣列並按照時間倒序排 (最新的在最上面)
+        const logs = s.val() ? Object.values(s.val()).sort((a,b) => b.t - a.t) : [];
+        
+        logs.forEach(l => {
+            const time = new Date(l.t).toLocaleTimeString('zh-TW', {hour12:false});
+            const nameColor = l.name.startsWith('#') ? '#888' : '#0af';
+            
+            container.innerHTML += `
+                <div style="border-bottom:1px solid #1a1a1a; padding:2px 0;">
+                    <span style="color:#444;">[${time}]</span> 
+                    <span style="color:${nameColor}; font-weight:bold;">${l.name}</span> 
+                    <span style="color:#aaa;">更</span> 
+                    <span style="color:#fff;">${l.boss}</span> 
+                    <span style="color:#aaa;">為</span> 
+                    <span style="color:#0f0;">${l.action}</span>
+                </div>`;
+        });
+    });
+}
 
         function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); i.setSelectionRange(m.length + c.length + 2, i.value.length); }
         function addBoss() { const i = document.getElementById('bossInput'); const p = i.value.trim().split(/\s+/); if (p.length < 3) return; saveBoss(p[0], p[1], p.slice(2).join('')); i.value = ''; }
