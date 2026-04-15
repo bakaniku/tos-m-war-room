@@ -79,7 +79,7 @@
             <div class="title">TOS M FB TIME</div>
             <div class="ver-info">v1.3.7</div>
             <div class="input-group">
-                <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10">
+                <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10" oninput="this.value=this.value.replace('#','')">
                 <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
                 <input type="text" id="roomInput" placeholder="輸入房號" maxlength="6">
                 <button class="btn-solid" onclick="joinRoom()">進入房間</button>
@@ -378,11 +378,35 @@
                     }
                 }
             });
-            myName = document.getElementById('userNameInput').value.trim() || 'No Name';
-            document.getElementById('loginView').style.display = 'none';
-            document.getElementById('mainView').style.display = 'block';
-            document.getElementById('displayID').innerText = currentRoom;
-            updateVolBg(document.getElementById('volRange'));
+            // --- 1. 名稱管制邏輯 ---
+    let inputName = document.getElementById('userNameInput').value.trim();
+    if (!inputName) {
+        let savedID = localStorage.getItem('tos_fixed_id');
+        if (!savedID) {
+            savedID = "#" + Math.floor(1000 + Math.random() * 9000);
+            localStorage.setItem('tos_fixed_id', savedID);
+        }
+        myName = savedID;
+    } else {
+        myName = inputName;
+    }
+
+    // --- 2. 檢查重複名稱與正式登入 ---
+    db.ref(`rooms/${currentRoom}/users`).once('value', snapshot => {
+        const users = snapshot.val() ? Object.values(snapshot.val()) : [];
+        if (users.some(u => u.name === myName)) {
+            myName += "(" + Math.floor(Math.random() * 99).toString().padStart(2, '0') + ")";
+        }
+        
+        // 確定名稱後，執行原本 382~385 行的 UI 更新動作
+        document.getElementById('loginView').style.display = 'none';
+        document.getElementById('mainView').style.display = 'block';
+        document.getElementById('displayID').innerText = currentRoom;
+        updateVolBg(document.getElementById('volRange'));
+
+        // 這裡繼續執行原本 385 行之後的 Firebase 監聽代碼...
+        // 例如：db.ref(`rooms/${currentRoom}/users`).push({ name: myName })...
+    });
             document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
             db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
             db.ref(`rooms/${currentRoom}/users`).on('value', s => { 
