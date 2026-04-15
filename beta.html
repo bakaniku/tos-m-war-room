@@ -432,40 +432,43 @@
             myName += "(" + Math.floor(Math.random() * 99).toString().padStart(2, '0') + ")";
         }
         
-        // 確定名稱後，執行原本 382~385 行的 UI 更新動作
+        // 確定名稱後才執行 UI 切換
         document.getElementById('loginView').style.display = 'none';
         document.getElementById('mainView').style.display = 'block';
         document.getElementById('displayID').innerText = currentRoom;
         updateVolBg(document.getElementById('volRange'));
 
-        // 這裡繼續執行原本 385 行之後的 Firebase 監聽代碼...
-        // 例如：db.ref(`rooms/${currentRoom}/users`).push({ name: myName })...
-    });
-            document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
-            db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
-            db.ref(`rooms/${currentRoom}/users`).on('value', s => { 
-                const u = Object.values(s.val() || {}); 
-                document.getElementById('onlineCount').innerText = u.length; 
-                document.getElementById('onlineUsers').innerText = u.map(x => x.name).join(', '); 
-            });
-            db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
-                const incomingData = s.val() || {};
-                Object.keys(incomingData).forEach(k => {
-                    const b = incomingData[k]; const v = b.lastInput.toString().toUpperCase();
-                    if (v !== lastProcessedInput[k] && b.isFlash) {
-                        if (v === "ON") { if(isOnSfxEnabled) playDing(880); speak(`${b.map}分流${b.ch}重生`); }
-                        else if (v.startsWith("R")) {
-                            const n = parseFloat(v.substring(1)) || 0;
-                            if (n >= 4.0) { if(isR4SfxEnabled) playDing(440); speak(`${b.map}分流${b.ch}階段${n}`); }
-                        }
+        // --- 以下所有監聽器移入此區塊內，確保順序正確 ---
+        document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
+        
+        db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
+        
+        db.ref(`rooms/${currentRoom}/users`).on('value', s => { 
+            const u = Object.values(s.val() || {}); 
+            document.getElementById('onlineCount').innerText = u.length; 
+            document.getElementById('onlineUsers').innerText = u.map(x => x.name).join(', '); 
+        });
+
+        db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
+            const incomingData = s.val() || {};
+            Object.keys(incomingData).forEach(k => {
+                const b = incomingData[k]; const v = b.lastInput.toString().toUpperCase();
+                if (v !== lastProcessedInput[k] && b.isFlash) {
+                    if (v === "ON") { if(isOnSfxEnabled) playDing(880); speak(`${b.map}分流${b.ch}重生`); }
+                    else if (v.startsWith("R")) {
+                        const n = parseFloat(v.substring(1)) || 0;
+                        if (n >= 4.0) { if(isR4SfxEnabled) playDing(440); speak(`${b.map}分流${b.ch}階段${n}`); }
                     }
-                    lastProcessedInput[k] = v;
-                });
-                window.currentData = incomingData; renderList();
+                }
+                lastProcessedInput[k] = v;
             });
-            initChat();
-            initLogs();
-        }
+            window.currentData = incomingData; renderList();
+        });
+
+        initChat();
+        initLogs();
+    });
+}
         let logLimit = 50;
 
 // 控制面板顯示/隱藏 (由 📜 按鈕觸發)
@@ -483,10 +486,9 @@ function toggleLogPanel() {
     }
 }
 
-// 設定顯示則數
 function setLogLimit(num) {
     logLimit = Math.min(100, Math.max(0, parseInt(num) || 0));
-    db.ref(`rooms/${currentRoom}/logs`).limitToLast(100).once('value', () => {
+    db.ref(`rooms/${currentRoom}/logs`).limitToLast(100).once('value', s => {
     });
 }
 
