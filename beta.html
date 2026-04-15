@@ -458,11 +458,10 @@
             currentRoom = id.toUpperCase();
             db.ref('app_version').on('value', (snapshot) => {
                 const latestVersion = snapshot.val();
-                if (latestVersion && latestVersion !== currentVersion) {
-                    alert(`系統有重要更新 (v${latestVersion})，網頁將自動重新整理。`);
-                    location.reload(true);
-                }
-            });
+                if (latestVersion && isNewerVersion(currentVersion, latestVersion)) {
+    alert(`系統有重要更新 (v${latestVersion})，網頁將自動重新整理。`);
+    location.reload(true);
+}
             let inputName = document.getElementById('userNameInput').value.trim();
             if (!inputName) {
                 let savedID = localStorage.getItem('tos_fixed_id');
@@ -501,6 +500,17 @@
                 initChat(); initLogs();
             });
         }
+        function isNewerVersion(curr, late) {
+    const v1 = curr.split('.').map(Number);
+    const v2 = late.split('.').map(Number);
+    for (let i = 0; i < Math.max(v1.length, v2.length); i++) {
+        const n1 = v1[i] || 0;
+        const n2 = v2[i] || 0;
+        if (n2 > n1) return true;
+        if (n2 < n1) return false;
+    }
+    return false;
+}
 
         function togglePin(id) { const k = `${currentRoom}_${id}`; if (localPinned[k]) delete localPinned[k]; else localPinned[k] = true; localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned)); renderList(); }
         function toggleCallHelp(id) {
