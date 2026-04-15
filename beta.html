@@ -136,6 +136,26 @@
 
         .version-tag { font-size: 10px; color: #333; margin-right: 10px; }
 
+        /* 號召按鈕樣式 */
+.call-btn { 
+    width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid #444; 
+    background: #1a1a1a; display: flex; align-items: center; justify-content: center; 
+    cursor: pointer; padding: 0; font-size: 12px; color: #666; transition: 0.2s; flex-shrink: 0; 
+}
+.call-btn.active { border-color: #ff3300; background: #400; color: #ff3300; box-shadow: 0 0 8px rgba(255, 51, 0, 0.5); }
+
+/* 集火中的卡片閃爍特效 */
+.card.calling { 
+    border: 2px solid #ff3300 !important; 
+    animation: call-pulse 1.5s infinite; 
+}
+
+@keyframes call-pulse {
+    0% { box-shadow: 0 0 5px #ff3300; }
+    50% { box-shadow: 0 0 20px #ff3300; background: #200; }
+    100% { box-shadow: 0 0 5px #ff3300; }
+}
+
     </style>
 
 </head>
@@ -524,26 +544,41 @@
 
                 items.forEach(([id, b]) => {
 
-                    const st = getBossStatus(b, id); const card = document.createElement('div'); card.className = 'card';
+                    const st = getBossStatus(b, id); const card = document.createElement('div'); card.className = `card ${b.isCalling ? 'calling' : ''}`;
 
-                    card.innerHTML = `
+                    items.forEach(([id, b]) => {
+    const st = getBossStatus(b, id); 
+    const card = document.createElement('div'); 
+    
+    // 根據號召狀態動態賦予 class 以觸發閃爍特效
+    card.className = `card ${b.isCalling ? 'calling' : ''}`; 
 
-                        <button class="del" onclick="handleDelClick('${id}')">×</button>
+    card.innerHTML = `
+        <button class="del" onclick="handleDelClick('${id}')">×</button>
+        
+        <div class="card-title-row">
+            <button class="pin-btn ${st.pinned ? 'pinned' : ''}" onclick="togglePin('${id}')">★</button>
+            
+            <button class="call-btn ${b.isCalling ? 'active' : ''}" onclick="toggleCallHelp('${id}')">📢</button>
+            
+            <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3>
+        </div>
 
-                        <div class="card-title-row"><button class="pin-btn ${st.pinned?'pinned':''}" onclick="togglePin('${id}')">★</button>
+        <div class="timer-container">
+            <div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color: ${st.isGrey ? '#555' : st.color}">...</div>
+            
+            ${(b.targetTime === 0 && st.weight !== 7) ? 
+                `<button class="btn-next" style="color:${st.isGrey ? '#555' : st.color}; border-color:${st.isGrey ? '#555' : st.color}" onclick="triggerNext('${b.map}','${b.ch}')">
+                    ${b.displayValue === 'ON' ? 'KILL' : 'NEXT'}
+                </button>` : ''}
+        </div>
 
-                        <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3></div>
+        ${b.updater ? `<div style="font-size:10px; color:#444; text-align:right; margin-top:5px;">Last: ${b.updater}</div>` : ''}
+    `;
 
-                        <div class="timer-container"><div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color: ${st.isGrey ? '#555' : st.color}">...</div>
-
-                        ${(b.targetTime === 0 && st.weight !== 7) ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color}; border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')">${b.displayValue === 'ON' ? 'KILL' : 'NEXT'}</button>` : ''}</div>
-
-                        ${b.updater ? `<div style="font-size:10px; color:#444; text-align:right; margin-top:5px;">Last: ${b.updater}</div>` : ''}`;
-
-                    grid.appendChild(card); startTimer(id, b, st.isGrey, st.color);
-
-                });
-
+    grid.appendChild(card); 
+    startTimer(id, b, st.isGrey, st.color);
+});
             };
 
             const pinnedItems = sortItems(all.filter(i => getBossStatus(i[1], i[0]).pinned));
