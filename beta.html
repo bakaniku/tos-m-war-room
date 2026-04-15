@@ -350,7 +350,7 @@
 
             let dv = val, tt = 0, flash = false, uv = val.toString().toUpperCase();
             if (uv.startsWith("00")) { let r = uv.replace("00", ""); uv = (r.length === 2 && !r.includes('.')) ? "R" + r[0] + "." + r[1] : "R" + r; }
-            if (uv.startsWith("XX")) dv = "閒置"; // 優化顯示為「閒置」
+            if (uv.startsWith("XX")) dv = "閒置";
             else if (uv.startsWith("DE")) dv = "已擊殺";
             else if (uv === "ON") { dv = "ON"; flash = true; }
             else if (uv.startsWith("R")) { const rn = uv.substring(1); dv = "階段" + rn; if (parseFloat(rn) >= 4.0) flash = true; }
@@ -454,14 +454,29 @@
             }); unlockAudio();
         }
 
+        // 版本比對函式：支援 1.4.0 > 1.3.10
+        function isNewerVersion(current, latest) {
+            if (!latest) return false;
+            const v1 = current.split('.').map(Number);
+            const v2 = latest.split('.').map(Number);
+            for (let i = 0; i < Math.max(v1.length, v2.length); i++) {
+                const n1 = v1[i] || 0;
+                const n2 = v2[i] || 0;
+                if (n2 > n1) return true;
+                if (n2 < n1) return false;
+            }
+            return false;
+        }
+
         function startSession(id) {
             currentRoom = id.toUpperCase();
             db.ref('app_version').on('value', (snapshot) => {
                 const latestVersion = snapshot.val();
-                if (latestVersion && isNewerVersion(currentVersion, latestVersion)) {
-    alert(`系統有重要更新 (v${latestVersion})，網頁將自動重新整理。`);
-    location.reload(true);
-}
+                if (isNewerVersion(currentVersion, latestVersion)) {
+                    alert(`系統有重要更新 (v${latestVersion})，網頁將自動重新整理。`);
+                    location.reload(true);
+                }
+            });
             let inputName = document.getElementById('userNameInput').value.trim();
             if (!inputName) {
                 let savedID = localStorage.getItem('tos_fixed_id');
@@ -500,17 +515,6 @@
                 initChat(); initLogs();
             });
         }
-        function isNewerVersion(curr, late) {
-    const v1 = curr.split('.').map(Number);
-    const v2 = late.split('.').map(Number);
-    for (let i = 0; i < Math.max(v1.length, v2.length); i++) {
-        const n1 = v1[i] || 0;
-        const n2 = v2[i] || 0;
-        if (n2 > n1) return true;
-        if (n2 < n1) return false;
-    }
-    return false;
-}
 
         function togglePin(id) { const k = `${currentRoom}_${id}`; if (localPinned[k]) delete localPinned[k]; else localPinned[k] = true; localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned)); renderList(); }
         function toggleCallHelp(id) {
