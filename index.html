@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.3.8</title>
+    <title>TOS M FB TIME v1.4.0</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -70,14 +70,13 @@
         .call-btn { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid #444; background: #1a1a1a; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; font-size: 12px; color: #666; transition: 0.2s; flex-shrink: 0; }
         .call-btn.active { border-color: #ff3300; background: #400; color: #ff3300; box-shadow: 0 0 8px rgba(255, 51, 0, 0.5); }
         .card.calling { border: 2px solid #ff3300 !important; animation: call-pulse 1.5s infinite; }
-        @keyframes call-pulse { 0% { box-shadow: 0 0 5px #ff3300; } 50% { box-shadow: 0 0 20px #ff3300; background: #200; } 100% { box-shadow: 0 0 5px #ff3300; } }
     </style>
 </head>
 <body>
     <div id="app">
         <div id="loginView" class="login-view">
             <div class="title">TOS M FB TIME</div>
-            <div class="ver-info">v1.3.8</div>
+            <div class="ver-info">v1.4.0</div>
             <div class="input-group">
                 <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10" oninput="this.value=this.value.replace('#','')">
                 <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
@@ -106,7 +105,7 @@
                     </div>
                 </div>
                 <div class="room-info">
-                    <span class="version-tag">v1.3.8</span>
+                    <span class="version-tag">v1.4.0</span>
                     <button class="btn-danger" id="clearAllBtn" onclick="clearAllBosses()" style="display:none;">一鍵清除</button>
                     <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
@@ -133,16 +132,16 @@
                 <button id="sortMapBtn" class="btn-toggle" onclick="setSort('map')">地圖排序</button>
             </div>
 
+            <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 階段(R)/分鐘" oninput="checkDuplicate()">
+            <div class="input-hint" id="inputHint">範例：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 12:30 ｜ 80 3 ON</div>
+
             <div id="logPanel" style="display:none; background:#0a0a0a; border:1px solid #1a1a1a; border-radius:10px; overflow:hidden; margin-bottom:15px;">
                 <div style="padding:8px 12px; font-size:12px; color:#0f0; background:#111; display:flex; justify-content:space-between; align-items:center;">
                     <span>📜 最近編輯紀錄</span>
                     <button onclick="viewFullLogs()" style="background:none; border:1px solid #444; color:#888; font-size:10px; padding:2px 6px; border-radius:4px; cursor:pointer;">查看完整 100 則</button>
                 </div>
-                <div id="logList" style="max-height:150px; overflow-y:auto; padding:10px; font-size:11px; line-height:1.6; font-family:monospace;"></div>
+                <div id="logList" style="max-height:180px; overflow-y:auto; padding:10px; font-size:11px; line-height:1.6; font-family:monospace;"></div>
             </div>
-
-            <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 階段(R)/分鐘" oninput="checkDuplicate()">
-            <div class="input-hint" id="inputHint">範例：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 12:30 ｜ 80 3 ON</div>
 
             <div id="renderArea"></div>
         </div>
@@ -159,7 +158,7 @@
         let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
         let lastProcessedInput = {};
         const protectedRooms = { 'GABIJA': 'faker', '000000': 'tosm', 'ZEMYNA': 'earth0407', 'SAULE': 'apple', 'ASRINE': 'lostu' };
-        const currentVersion = "1.3.9"; 
+        const currentVersion = "1.4.0"; 
 
         function hasAuth() {
             const pass = protectedRooms[currentRoom];
@@ -184,7 +183,6 @@
         }
 
         function updateVolBg(el) { const val = (el.value - el.min) / (el.max - el.min) * 100; el.style.backgroundSize = val + '% 100%'; }
-        
         function getStatusColor(weight) {
             const colors = { 7:'#9dadc1', 6:'#FF00FF', 5:'#FF1493', 4:'#FF4500', 3:'#FFA500', 2:'#FFFF00', 1:'#00FF00', 0:'#FF3300' };
             if (colorMode === 1) return colors[weight] || '#fff';
@@ -192,7 +190,6 @@
         }
 
         function unlockAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); }
-
         function playDing(freq = 880) { 
             unlockAudio(); 
             const vol = parseFloat(document.getElementById('volRange').value);
@@ -347,15 +344,13 @@
                 renderList(); 
                 return; 
             }
-
             const id = `${map}_${ch}`;
             const oldData = window.currentData ? window.currentData[id] : null;
             const oldStatus = oldData ? (oldData.displayValue || "新建立") : "新建立";
 
             let dv = val, tt = 0, flash = false, uv = val.toString().toUpperCase();
-            
             if (uv.startsWith("00")) { let r = uv.replace("00", ""); uv = (r.length === 2 && !r.includes('.')) ? "R" + r[0] + "." + r[1] : "R" + r; }
-            if (uv.startsWith("XX")) dv = "階段" + (uv.substring(2) || "1");
+            if (uv.startsWith("XX")) dv = "閒置"; // 優化顯示為「閒置」
             else if (uv.startsWith("DE")) dv = "已擊殺";
             else if (uv === "ON") { dv = "ON"; flash = true; }
             else if (uv.startsWith("R")) { const rn = uv.substring(1); dv = "階段" + rn; if (parseFloat(rn) >= 4.0) flash = true; }
@@ -365,7 +360,6 @@
                 map, ch, targetTime: tt, lastInput: uv, displayValue: dv, 
                 startTime: Date.now(), isFlash: flash, updater: myName 
             });
-            
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 3000);
             if (doFocus) doEdit(map, ch, uv);
             document.getElementById('inputHint').classList.remove('warning');
@@ -381,22 +375,6 @@
                     snapshot.forEach(child => { if (count < total - 100) child.ref.remove(); count++; });
                 }
             });
-        }
-
-        function triggerNext(m, c) {
-            db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => {
-                const d = s.val(); if (!d) return; let cur = d.lastInput.toString().toUpperCase();
-                if (cur === "ON") {
-                    saveBoss(m, c, "DE1");
-                    db.ref(`rooms/${currentRoom}/bosses/${m}_${c}/isCalling`).set(false);
-                }
-                else if (cur.startsWith("R")) {
-                    const n = parseFloat(cur.substring(1)) || 0;
-                    let nx = Math.floor(n) + 1;
-                    if (nx >= 5) saveBoss(m, c, "ON"); else saveBoss(m, c, "R" + nx);
-                }
-                else saveBoss(m, c, "ON");
-            }); unlockAudio();
         }
 
         let logDisplayModes = [0, 3, 5, 10]; 
@@ -432,69 +410,6 @@
             alert("--- 最近 100 則編輯紀錄 ---\n" + content);
         }
 
-        function startSession(id) {
-            currentRoom = id.toUpperCase();
-            db.ref('app_version').on('value', (snapshot) => {
-                const latestVersion = snapshot.val();
-                if (latestVersion && (latestVersion !== currentVersion)) {
-                    alert(`系統有重要更新 (v${latestVersion})，網頁將自動重新整理。`);
-                    location.reload(true);
-                }
-            });
-
-            let inputName = document.getElementById('userNameInput').value.trim();
-            if (!inputName) {
-                let savedID = localStorage.getItem('tos_fixed_id');
-                if (!savedID) {
-                    savedID = "#" + Math.floor(1000 + Math.random() * 9000);
-                    localStorage.setItem('tos_fixed_id', savedID);
-                }
-                myName = savedID;
-            } else {
-                myName = inputName;
-            }
-
-            db.ref(`rooms/${currentRoom}/users`).once('value', snapshot => {
-                const users = snapshot.val() ? Object.values(snapshot.val()) : [];
-                if (users.some(u => u.name === myName)) {
-                    myName += "(" + Math.floor(Math.random() * 99).toString().padStart(2, '0') + ")";
-                }
-                
-                document.getElementById('loginView').style.display = 'none';
-                document.getElementById('mainView').style.display = 'block';
-                document.getElementById('displayID').innerText = currentRoom;
-                updateVolBg(document.getElementById('volRange'));
-
-                document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
-                db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
-                
-                db.ref(`rooms/${currentRoom}/users`).on('value', s => { 
-                    const u = Object.values(s.val() || {}); 
-                    document.getElementById('onlineCount').innerText = u.length; 
-                    document.getElementById('onlineUsers').innerText = u.map(x => x.name).join(', '); 
-                });
-
-                db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
-                    const incomingData = s.val() || {};
-                    Object.keys(incomingData).forEach(k => {
-                        const b = incomingData[k]; const v = b.lastInput.toString().toUpperCase();
-                        if (v !== lastProcessedInput[k] && b.isFlash) {
-                            if (v === "ON") { if(isOnSfxEnabled) playDing(880); speak(`${b.map}分流${b.ch}重生`); }
-                            else if (v.startsWith("R")) {
-                                const n = parseFloat(v.substring(1)) || 0;
-                                if (n >= 4.0) { if(isR4SfxEnabled) playDing(440); speak(`${b.map}分流${b.ch}階段${n}`); }
-                            }
-                        }
-                        lastProcessedInput[k] = v;
-                    });
-                    window.currentData = incomingData; renderList();
-                });
-
-                initChat();
-                initLogs();
-            });
-        }
-
         function initLogs() {
             db.ref(`rooms/${currentRoom}/logs`).limitToLast(100).on('value', s => {
                 lastLogData = s.val();
@@ -506,11 +421,9 @@
             const container = document.getElementById('logList');
             const mode = logDisplayModes[currentLogModeIndex];
             if (!container || mode === 0) return;
-            
             let logs = data ? Object.values(data) : [];
             logs.sort((a, b) => b.t - a.t);
             const displayLogs = logs.slice(0, mode);
-            
             container.innerHTML = '';
             displayLogs.forEach(l => {
                 const time = new Date(l.t).toLocaleTimeString('zh-TW', { hour12: false });
@@ -528,15 +441,74 @@
             });
         }
 
+        function triggerNext(m, c) {
+            db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => {
+                const d = s.val(); if (!d) return; let cur = d.lastInput.toString().toUpperCase();
+                if (cur === "ON") { saveBoss(m, c, "DE1"); db.ref(`rooms/${currentRoom}/bosses/${m}_${c}/isCalling`).set(false); }
+                else if (cur.startsWith("R")) {
+                    const n = parseFloat(cur.substring(1)) || 0;
+                    let nx = Math.floor(n) + 1;
+                    if (nx >= 5) saveBoss(m, c, "ON"); else saveBoss(m, c, "R" + nx);
+                }
+                else saveBoss(m, c, "ON");
+            }); unlockAudio();
+        }
+
+        function startSession(id) {
+            currentRoom = id.toUpperCase();
+            db.ref('app_version').on('value', (snapshot) => {
+                const latestVersion = snapshot.val();
+                if (latestVersion && latestVersion !== currentVersion) {
+                    alert(`系統有重要更新 (v${latestVersion})，網頁將自動重新整理。`);
+                    location.reload(true);
+                }
+            });
+            let inputName = document.getElementById('userNameInput').value.trim();
+            if (!inputName) {
+                let savedID = localStorage.getItem('tos_fixed_id');
+                if (!savedID) { savedID = "#" + Math.floor(1000 + Math.random() * 9000); localStorage.setItem('tos_fixed_id', savedID); }
+                myName = savedID;
+            } else { myName = inputName; }
+            db.ref(`rooms/${currentRoom}/users`).once('value', snapshot => {
+                const users = snapshot.val() ? Object.values(snapshot.val()) : [];
+                if (users.some(u => u.name === myName)) { myName += "(" + Math.floor(Math.random() * 99).toString().padStart(2, '0') + ")"; }
+                document.getElementById('loginView').style.display = 'none';
+                document.getElementById('mainView').style.display = 'block';
+                document.getElementById('displayID').innerText = currentRoom;
+                updateVolBg(document.getElementById('volRange'));
+                document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
+                db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
+                db.ref(`rooms/${currentRoom}/users`).on('value', s => { 
+                    const u = Object.values(s.val() || {}); 
+                    document.getElementById('onlineCount').innerText = u.length; 
+                    document.getElementById('onlineUsers').innerText = u.map(x => x.name).join(', '); 
+                });
+                db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
+                    const incomingData = s.val() || {};
+                    Object.keys(incomingData).forEach(k => {
+                        const b = incomingData[k]; const v = b.lastInput.toString().toUpperCase();
+                        if (v !== lastProcessedInput[k] && b.isFlash) {
+                            if (v === "ON") { if(isOnSfxEnabled) playDing(880); speak(`${b.map}分流${b.ch}重生`); }
+                            else if (v.startsWith("R")) {
+                                const n = parseFloat(v.substring(1)) || 0;
+                                if (n >= 4.0) { if(isR4SfxEnabled) playDing(440); speak(`${b.map}分流${b.ch}階段${n}`); }
+                            }
+                        }
+                        lastProcessedInput[k] = v;
+                    });
+                    window.currentData = incomingData; renderList();
+                });
+                initChat(); initLogs();
+            });
+        }
+
         function togglePin(id) { const k = `${currentRoom}_${id}`; if (localPinned[k]) delete localPinned[k]; else localPinned[k] = true; localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned)); renderList(); }
-        
         function toggleCallHelp(id) {
             if (!hasAuth()) { alert("只有管理員可以發起號召！"); return; }
             const b = window.currentData[id];
             if (!b) return;
             db.ref(`rooms/${currentRoom}/bosses/${id}/isCalling`).set(!b.isCalling);
         }
-
         function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); i.setSelectionRange(m.length + c.length + 2, i.value.length); }
         function addBoss() { const i = document.getElementById('bossInput'); const p = i.value.trim().split(/\s+/); if (p.length < 3) return; saveBoss(p[0], p[1], p.slice(2).join('')); i.value = ''; }
         function clearAllBosses() { if (!hasAuth()) return; if (confirm("確定一鍵清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
