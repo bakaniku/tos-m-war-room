@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.3.7</title>
+    <title>TOS M FB TIME v1.3.6</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -82,7 +82,7 @@
     <div id="app">
         <div id="loginView" class="login-view">
             <div class="title">TOS M FB TIME</div>
-            <div class="ver-info">v1.3.7</div>
+            <div class="ver-info">v1.3.6</div>
             <div class="input-group">
                 <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10">
                 <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
@@ -110,7 +110,7 @@
                     </div>
                 </div>
                 <div class="room-info">
-                    <span class="version-tag">v1.3.7</span>
+                    <span class="version-tag">v1.3.6</span>
                     <button class="btn-danger" id="clearAllBtn" onclick="clearAllBosses()" style="display:none;">一鍵清除</button>
                     <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
@@ -350,7 +350,7 @@
         function startSession(id) {
             currentRoom = id.toUpperCase();
             db.ref('app_version').on('value', s => { 
-                if (s.val() && s.val() !== "1.3.7") { alert(`系統更新 (v${s.val()})，網頁將自動重整。`); location.reload(true); } 
+                if (s.val() && s.val() !== "1.3.6") { alert(`系統更新 (v${s.val()})，網頁將自動重整。`); location.reload(true); } 
             });
             myName = document.getElementById('userNameInput').value.trim() || 'No Name';
             document.getElementById('loginView').style.display = 'none'; document.getElementById('mainView').style.display = 'block';
