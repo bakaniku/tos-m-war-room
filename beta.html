@@ -437,46 +437,83 @@ logRef.once('value', snapshot => {
     }
 
     // --- 2. 檢查重複名稱與正式登入 ---
-    db.ref(`rooms/${currentRoom}/users`).once('value', snapshot => {
-        const users = snapshot.val() ? Object.values(snapshot.val()) : [];
+    db.ref(`rooms/${currentRoom}/blacklist/${myName}`).once('value', snapshot => {
+    if (snapshot.exists()) {
+        alert("此身分已被列入黑名單，無法進入房間。");
+        location.reload(); 
+        return;
+    }
+
+    // --- 2. 檢查重複名稱與正式登入 (原本 440~454 行的邏輯移到這裡面) ---
+    db.ref(`rooms/${currentRoom}/users`).once('value', userSnap => {
+        const users = userSnap.val() ? Object.values(userSnap.val()) : [];
         if (users.some(u => u.name === myName)) {
             myName += "(" + Math.floor(Math.random() * 99).toString().padStart(2, '0') + ")";
         }
-        
-        // 確定名稱後，執行原本 382~385 行的 UI 更新動作
+
+        // 隱藏登入介面，顯示主介面
         document.getElementById('loginView').style.display = 'none';
         document.getElementById('mainView').style.display = 'block';
         document.getElementById('displayID').innerText = currentRoom;
         updateVolBg(document.getElementById('volRange'));
 
-        // 這裡繼續執行原本 385 行之後的 Firebase 監聽代碼...
-        // 例如：db.ref(`rooms/${currentRoom}/users`).push({ name: myName })...
+        // 執行後續的監聽與初始化
+        completeStartSession(); 
     });
-            document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
-            db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
-            db.ref(`rooms/${currentRoom}/users`).on('value', s => { 
-                const u = Object.values(s.val() || {}); 
-                document.getElementById('onlineCount').innerText = u.length; 
-                document.getElementById('onlineUsers').innerText = u.map(x => x.name).join(', '); 
-            });
-            db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
-                const incomingData = s.val() || {};
-                Object.keys(incomingData).forEach(k => {
-                    const b = incomingData[k]; const v = b.lastInput.toString().toUpperCase();
-                    if (v !== lastProcessedInput[k] && b.isFlash) {
-                        if (v === "ON") { if(isOnSfxEnabled) playDing(880); speak(`${b.map}分流${b.ch}重生`); }
-                        else if (v.startsWith("R")) {
-                            const n = parseFloat(v.substring(1)) || 0;
-                            if (n >= 4.0) { if(isR4SfxEnabled) playDing(440); speak(`${b.map}分流${b.ch}階段${n}`); }
-                        }
-                    }
-                    lastProcessedInput[k] = v;
-                });
-                window.currentData = incomingData; renderList();
-            });
-            initChat();
-            initLogs();
+});
+            // --- 從原代碼 464 行開始替換 ---
+db.ref(`rooms/${currentRoom}/blacklist/${myName}`).once('value', snapshot => {
+    if (snapshot.exists()) {
+        alert("此身分已被管理員封鎖，無法進入房間。");
+        location.reload(); 
+        return;
+    }
+
+    // 通過黑名單檢查，開始執行原本的監聽邏輯
+    document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
+    
+    // 監控自己是否被即時踢除
+    const myUserRef = db.ref(`rooms/${currentRoom}/users`).push({ name: myName });
+    myUserRef.onDisconnect().remove();
+    myUserRef.on('value', snap => {
+        if (snap.val() && snap.val().status === 'kicked') {
+            alert("你已被管理員踢出並封鎖。");
+            location.reload();
         }
+    });
+
+    // 監聽在線名單 (加入踢除按鈕)
+    db.ref(`rooms/${currentRoom}/users`).on('value', s => {
+        const u = s.val() ? Object.entries(s.val()) : [];
+        document.getElementById('onlineCount').innerText = u.length;
+        const auth = hasAuth(); 
+        document.getElementById('onlineUsers').innerHTML = u.map(([uid, user]) => {
+            const kickBtn = (auth && user.name !== myName) ? 
+                `<span onclick="kickUser('${uid}', '${user.name}')" style="cursor:pointer; color:#f33; margin-left:5px; font-weight:bold;">🚫</span>` : '';
+            return `<span>${user.name}${kickBtn}</span>`;
+        }).join(', ');
+    });
+
+    // 監聽 Boss 資料 (對應原 471 行之後)
+    db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
+        const incomingData = s.val() || {};
+        Object.keys(incomingData).forEach(k => {
+            const b = incomingData[k]; const v = b.lastInput.toString().toUpperCase();
+            if (v !== lastProcessedInput[k] && b.isFlash) {
+                if (v === "ON") { if(isOnSfxEnabled) playDing(880); speak(`${b.map}分流${b.ch}重生`); }
+                else if (v.startsWith("R")) {
+                    const n = parseFloat(v.substring(1)) || 0;
+                    if (n >= 4.0) { if(isR4SfxEnabled) playDing(440); speak(`${b.map}分流${b.ch}階段${n}`); }
+                }
+            }
+            lastProcessedInput[k] = v;
+        });
+        window.currentData = incomingData; renderList();
+    });
+
+    initChat();
+    initLogs();
+});
 
         function togglePin(id) { const k = `${currentRoom}_${id}`; if (localPinned[k]) delete localPinned[k]; else localPinned[k] = true; localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned)); renderList(); }
         
@@ -486,7 +523,28 @@ logRef.once('value', snapshot => {
             if (!b) return;
             db.ref(`rooms/${currentRoom}/bosses/${id}/isCalling`).set(!b.isCalling);
         }
-        // 摺疊紀錄面板開關
+        // 處理管理員點擊 🚫 符號的動作
+function kickUser(uid, targetName) {
+    // 再次確認，避免誤觸
+    if (!confirm(`確定要將 ${targetName} 永久封鎖嗎？`)) return;
+
+    // 1. 在 Firebase 建立黑名單紀錄
+    // 路徑：rooms/房間名/blacklist/使用者代碼
+    db.ref(`rooms/${currentRoom}/blacklist/${targetName}`).set(true);
+
+    // 2. 標記該用戶狀態為 'kicked'
+    // 這會觸發對方網頁內部的監聽器，執行 location.reload()
+    db.ref(`rooms/${currentRoom}/users/${uid}`).update({ status: 'kicked' });
+    
+    // 3. 寫入編輯日誌，讓大家知道有人被封鎖了
+    db.ref(`rooms/${currentRoom}/logs`).push({
+        name: "管理員",
+        boss: "系統管制",
+        oldVal: targetName,
+        newVal: "🚫 永久封鎖",
+        t: Date.now()
+    });
+}
 function toggleLog() {
     const list = document.getElementById('logList');
     const arrow = document.getElementById('logArrow');
