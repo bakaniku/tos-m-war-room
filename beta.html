@@ -1684,6 +1684,22 @@ function toggleCallHelp(id) {
 
     db.ref(`rooms/${currentRoom}/bosses/${id}/isCalling`).set(newState);
 
+    
+
+    if (newState) {
+
+        db.ref(`rooms/${currentRoom}/chat`).push({
+
+            name: "【系統】",
+
+            text: `📣 大家注意！請優先集火：${b.map} - ${b.ch}！`,
+
+            t: Date.now()
+
+        });
+
+        if (isVoiceEnabled) speak(`請支援 ${b.map} 分流 ${b.ch}`);
+
     }
 
 }
