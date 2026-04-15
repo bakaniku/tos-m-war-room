@@ -1663,44 +1663,18 @@ function togglePin(id) { /* ...原本的代碼... */ }
 // 新增的號召功能函式
 
 function toggleCallHelp(id) {
-
-    if (!hasAuth()) {
-
-        alert("只有管理員可以發起號召！");
-
-        return;
-
+    if (!hasAuth()) { 
+        alert("只有管理員可以發起號召！"); 
+        return; 
     }
-
+    
     const b = window.currentData[id];
-
     if (!b) return;
 
     const newState = !b.isCalling;
 
-    
-
-    // 同步到 Firebase
-
+    // 僅保留同步狀態到 Firebase，這會觸發卡片 CSS 的紅框閃爍特效
     db.ref(`rooms/${currentRoom}/bosses/${id}/isCalling`).set(newState);
-
-    
-
-    if (newState) {
-
-        db.ref(`rooms/${currentRoom}/chat`).push({
-
-            name: "【系統】",
-
-            text: `📣 大家注意！請優先集火：${b.map} - ${b.ch}！`,
-
-            t: Date.now()
-
-        });
-
-        if (isVoiceEnabled) speak(`請支援 ${b.map} 分流 ${b.ch}`);
-
-    }
 
 }
 
