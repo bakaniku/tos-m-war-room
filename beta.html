@@ -77,7 +77,7 @@
     <div id="app">
         <div id="loginView" class="login-view">
             <div class="title">TOS M FB TIME</div>
-            <div class="ver-info">v1.3.8</div>
+            <div class="ver-info">v1.3.7</div>
             <div class="input-group">
                 <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10" oninput="this.value=this.value.replace('#','')">
                 <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
@@ -115,7 +115,7 @@
 
             <div class="info-bar">
                 <span class="info-icon">ℹ️</span>
-                <p class="info-text">操作說明：📢 ON音效；🛡️ 階段4音效。管理解鎖：輸入 ADMIN 密碼。</p>
+                <p class="info-text">亮紅光的地圖有空的可以優先去打，大家集中推圖速度快一些。</p>
             </div>
 
             <div id="chatPanel" class="chat-full">
@@ -134,17 +134,6 @@
 
             <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 階段(R)/分鐘" oninput="checkDuplicate()">
             <div class="input-hint" id="inputHint">範例：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 12:30 ｜ 80 3 ON</div>
-            <div id="logPanel" style="background:#0a0a0a; border:1px solid #222; border-radius:8px; margin-bottom:15px; overflow:hidden;">
-    <div style="padding:8px 12px; font-size:12px; color:#0f0; background:#111; display:flex; justify-content:space-between; align-items:center;">
-    <span onclick="toggleLog()" style="cursor:pointer;">📜 最近編輯紀錄 (點擊開關)</span>
-    <span style="color:#555;">
-        顯示 <input type="number" value="50" min="0" max="100" style="width:40px; background:#000; color:#0f0; border:1px solid #333; font-size:10px;" 
-        onchange="setLogLimit(this.value)"> 則
-    </span>
-</div>
-    <div id="logList" style="max-height:120px; overflow-y:auto; padding:8px; font-size:11px; display:none; line-height:1.6; border-top:1px solid #222; font-family:monospace;">
-        </div>
-</div>
             <div id="renderArea"></div>
         </div>
     </div>
@@ -348,49 +337,15 @@
                 renderList(); 
                 return; 
             }
-            // --- 捕捉舊狀態 ---
-    const oldData = window.currentData[`${map}_${ch}`];
-    const oldStatus = oldData ? oldData.displayValue : "新建立";
-
-    const id = `${map}_${ch}`; 
-    let dv = val, tt = 0, flash = false, uv = val.toString().toUpperCase();
-    
-    // ... (這裡保留你原本 352~357 行處理 uv, dv, tt 的邏輯) ...
-    if (uv.startsWith("00")) { let r = uv.replace("00", ""); uv = (r.length === 2 && !r.includes('.')) ? "R" + r[0] + "." + r[1] : "R" + r; }
-    if (uv.startsWith("XX")) dv = "階段" + (uv.substring(2) || "1");
-    else if (uv.startsWith("DE")) dv = "已擊殺";
-    else if (uv === "ON") { dv = "ON"; flash = true; }
-    else if (uv.startsWith("R")) { const rn = uv.substring(1); dv = "階段" + rn; if (parseFloat(rn) >= 4.0) flash = true; }
-    else { tt = Date.now() + ((uv.split(/[:.：]/).length===2?parseInt(uv.split(/[:.：]/)[0])*60+parseInt(uv.split(/[:.：]/)[1]):parseFloat(uv)||0) * 60000); }
-
-    // 執行更新
-    db.ref(`rooms/${currentRoom}/bosses/${id}`).update({ 
-        map, ch, targetTime: tt, lastInput: uv, displayValue: dv, 
-        startTime: Date.now(), isFlash: flash, updater: myName 
-    });
-    
-    setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 3000);
-
-    // --- 修改：寫入更詳細的日誌 (對應截圖 360~366 行) ---
-    const logRef = db.ref(`rooms/${currentRoom}/logs`);
-    logRef.push({
-        name: myName,
-        boss: `${map}-${ch}`,
-        oldVal: oldStatus, // 紀錄舊狀態
-        newVal: dv,        // 紀錄新狀態
-        t: Date.now()
-    });
-
-// 維持資料庫整潔，只保留最後 100 筆紀錄
-logRef.once('value', snapshot => {
-    if (snapshot.numChildren() > 100) {
-        let count = 0;
-        snapshot.forEach(child => {
-            if (count < snapshot.numChildren() - 100) child.ref.remove();
-            count++;
-        });
-    }
-});
+            const id = `${map}_${ch}`; let dv = val, tt = 0, flash = false, uv = val.toString().toUpperCase();
+            if (uv.startsWith("00")) { let r = uv.replace("00", ""); uv = (r.length === 2 && !r.includes('.')) ? "R" + r[0] + "." + r[1] : "R" + r; }
+            if (uv.startsWith("XX")) dv = "階段" + (uv.substring(2) || "1");
+            else if (uv.startsWith("DE")) dv = "已擊殺";
+            else if (uv === "ON") { dv = "ON"; flash = true; }
+            else if (uv.startsWith("R")) { const rn = uv.substring(1); dv = "階段" + rn; if (parseFloat(rn) >= 4.0) flash = true; }
+            else { tt = Date.now() + ((uv.split(/[:.：]/).length===2?parseInt(uv.split(/[:.：]/)[0])*60+parseInt(uv.split(/[:.：]/)[1]):parseFloat(uv)||0) * 60000); }
+            db.ref(`rooms/${currentRoom}/bosses/${id}`).update({ map, ch, targetTime: tt, lastInput: uv, displayValue: dv, startTime: Date.now(), isFlash: flash, updater: myName });
+            setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 3000);
             if (doFocus) doEdit(map, ch, uv);
             document.getElementById('inputHint').classList.remove('warning');
         }
@@ -413,8 +368,6 @@ logRef.once('value', snapshot => {
 
         function startSession(id) {
             currentRoom = id.toUpperCase();
-            
-            // --- 1. 版本監控 (維持原樣) ---
             db.ref('app_version').on('value', (snapshot) => {
                 const latestVersion = snapshot.val();
                 if (latestVersion) {
@@ -425,95 +378,58 @@ logRef.once('value', snapshot => {
                     }
                 }
             });
+            // --- 1. 名稱管制邏輯 ---
+    let inputName = document.getElementById('userNameInput').value.trim();
+    if (!inputName) {
+        let savedID = localStorage.getItem('tos_fixed_id');
+        if (!savedID) {
+            savedID = "#" + Math.floor(1000 + Math.random() * 9000);
+            localStorage.setItem('tos_fixed_id', savedID);
+        }
+        myName = savedID;
+    } else {
+        myName = inputName;
+    }
 
-            // --- 2. 名稱生成邏輯 (修正：確保不填也能產生 ID) ---
-            let inputName = document.getElementById('userNameInput').value.trim();
-            if (!inputName) {
-                let savedID = localStorage.getItem('tos_fixed_id');
-                if (!savedID) {
-                    savedID = "#" + Math.floor(1000 + Math.random() * 9000);
-                    localStorage.setItem('tos_fixed_id', savedID);
-                }
-                myName = savedID;
-            } else {
-                myName = inputName;
-            }
+    // --- 2. 檢查重複名稱與正式登入 ---
+    db.ref(`rooms/${currentRoom}/users`).once('value', snapshot => {
+        const users = snapshot.val() ? Object.values(snapshot.val()) : [];
+        if (users.some(u => u.name === myName)) {
+            myName += "(" + Math.floor(Math.random() * 99).toString().padStart(2, '0') + ")";
+        }
+        
+        // 確定名稱後，執行原本 382~385 行的 UI 更新動作
+        document.getElementById('loginView').style.display = 'none';
+        document.getElementById('mainView').style.display = 'block';
+        document.getElementById('displayID').innerText = currentRoom;
+        updateVolBg(document.getElementById('volRange'));
 
-            // --- 3. 進入正式檢查與登入流程 ---
-            // 先檢查黑名單
-            db.ref(`rooms/${currentRoom}/blacklist/${myName}`).once('value', snapshot => {
-                if (snapshot.exists()) {
-                    alert("此身分已被管理員封鎖，無法進入房間。");
-                    location.reload(); 
-                    return;
-                }
-
-                // 再檢查重複名稱並初始化
-                db.ref(`rooms/${currentRoom}/users`).once('value', userSnap => {
-                    const users = userSnap.val() ? Object.values(userSnap.val()) : [];
-                    if (users.some(u => u.name === myName)) {
-                        myName += "(" + Math.floor(Math.random() * 99).toString().padStart(2, '0') + ")";
-                    }
-
-                    // --- UI 顯示與基本設定 ---
-                    document.getElementById('loginView').style.display = 'none';
-                    document.getElementById('mainView').style.display = 'block';
-                    document.getElementById('displayID').innerText = currentRoom;
-                    updateVolBg(document.getElementById('volRange'));
-
-                    // 綁定輸入事件
-                    const bossInput = document.getElementById('bossInput');
-                    // 移除舊監聽器避免重複綁定
-                    bossInput.replaceWith(bossInput.cloneNode(true)); 
-                    document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
-                    
-                    // --- Firebase 實時監聽區 ---
-                    
-                    // A. 在線名單與被踢偵測
-                    const myUserRef = db.ref(`rooms/${currentRoom}/users`).push({ name: myName });
-                    myUserRef.onDisconnect().remove();
-                    myUserRef.on('value', snap => {
-                        if (snap.val() && snap.val().status === 'kicked') {
-                            alert("你已被管理員踢出並封鎖。");
-                            location.reload();
-                        }
-                    });
-
-                    // B. 在線名單渲染 (含 🚫 按鈕)
-                    db.ref(`rooms/${currentRoom}/users`).on('value', s => {
-                        const u = s.val() ? Object.entries(s.val()) : [];
-                        document.getElementById('onlineCount').innerText = u.length;
-                        const auth = hasAuth(); 
-                        document.getElementById('onlineUsers').innerHTML = u.map(([uid, user]) => {
-                            const kickBtn = (auth && user.name !== myName) ? 
-                                `<span onclick="kickUser('${uid}', '${user.name}')" style="cursor:pointer; color:#f33; margin-left:5px; font-weight:bold;">🚫</span>` : '';
-                            return `<span>${user.name}${kickBtn}</span>`;
-                        }).join(', ');
-                    });
-
-                    // C. Boss 資料監聽
-                    db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
-                        const incomingData = s.val() || {};
-                        Object.keys(incomingData).forEach(k => {
-                            const b = incomingData[k]; const v = b.lastInput.toString().toUpperCase();
-                            if (v !== lastProcessedInput[k] && b.isFlash) {
-                                if (v === "ON") { if(isOnSfxEnabled) playDing(880); speak(`${b.map}分流${b.ch}重生`); }
-                                else if (v.startsWith("R")) {
-                                    const n = parseFloat(v.substring(1)) || 0;
-                                    if (n >= 4.0) { if(isR4SfxEnabled) playDing(440); speak(`${b.map}分流${b.ch}階段${n}`); }
-                                }
-                            }
-                            lastProcessedInput[k] = v;
-                        });
-                        window.currentData = incomingData; 
-                        renderList();
-                    });
-
-                    // D. 其他初始化
-                    initChat();
-                    initLogs();
-                });
+        // 這裡繼續執行原本 385 行之後的 Firebase 監聽代碼...
+        // 例如：db.ref(`rooms/${currentRoom}/users`).push({ name: myName })...
+    });
+            document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
+            db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
+            db.ref(`rooms/${currentRoom}/users`).on('value', s => { 
+                const u = Object.values(s.val() || {}); 
+                document.getElementById('onlineCount').innerText = u.length; 
+                document.getElementById('onlineUsers').innerText = u.map(x => x.name).join(', '); 
             });
+            db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
+                const incomingData = s.val() || {};
+                Object.keys(incomingData).forEach(k => {
+                    const b = incomingData[k]; const v = b.lastInput.toString().toUpperCase();
+                    if (v !== lastProcessedInput[k] && b.isFlash) {
+                        if (v === "ON") { if(isOnSfxEnabled) playDing(880); speak(`${b.map}分流${b.ch}重生`); }
+                        else if (v.startsWith("R")) {
+                            const n = parseFloat(v.substring(1)) || 0;
+                            if (n >= 4.0) { if(isR4SfxEnabled) playDing(440); speak(`${b.map}分流${b.ch}階段${n}`); }
+                        }
+                    }
+                    lastProcessedInput[k] = v;
+                });
+                window.currentData = incomingData; renderList();
+            });
+            initChat();
         }
 
         function togglePin(id) { const k = `${currentRoom}_${id}`; if (localPinned[k]) delete localPinned[k]; else localPinned[k] = true; localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned)); renderList(); }
@@ -524,79 +440,6 @@ logRef.once('value', snapshot => {
             if (!b) return;
             db.ref(`rooms/${currentRoom}/bosses/${id}/isCalling`).set(!b.isCalling);
         }
-        // 處理管理員點擊 🚫 符號的動作
-function kickUser(uid, targetName) {
-    // 再次確認，避免誤觸
-    if (!confirm(`確定要將 ${targetName} 永久封鎖嗎？`)) return;
-
-    // 1. 在 Firebase 建立黑名單紀錄
-    // 路徑：rooms/房間名/blacklist/使用者代碼
-    db.ref(`rooms/${currentRoom}/blacklist/${targetName}`).set(true);
-
-    // 2. 標記該用戶狀態為 'kicked'
-    // 這會觸發對方網頁內部的監聽器，執行 location.reload()
-    db.ref(`rooms/${currentRoom}/users/${uid}`).update({ status: 'kicked' });
-    
-    // 3. 寫入編輯日誌，讓大家知道有人被封鎖了
-    db.ref(`rooms/${currentRoom}/logs`).push({
-        name: "管理員",
-        boss: "系統管制",
-        oldVal: targetName,
-        newVal: "🚫 永久封鎖",
-        t: Date.now()
-    });
-}
-function toggleLog() {
-    const list = document.getElementById('logList');
-    const arrow = document.getElementById('logArrow');
-    if (list.style.display === 'none') {
-        list.style.display = 'block';
-        arrow.innerText = '▲';
-    } else {
-        list.style.display = 'none';
-        arrow.innerText = '▼';
-    }
-}
-// 新增一個變數控制顯示則數
-let logLimit = 50; 
-
-function initLogs() {
-    // 使用變數 logLimit 來決定讀取數量
-    db.ref(`rooms/${currentRoom}/logs`).limitToLast(100).on('value', s => {
-        const container = document.getElementById('logList');
-        if(!container) return;
-        container.innerHTML = '';
-        
-        // 取得資料並按時間倒序
-        let logs = s.val() ? Object.values(s.val()).sort((a,b) => b.t - a.t) : [];
-        
-        // 根據設定切片 (例如只顯示前 50 則)
-        logs = logs.slice(0, logLimit);
-
-        logs.forEach(l => {
-    const time = new Date(l.t).toLocaleTimeString('zh-TW', {hour12:false});
-    const nameColor = l.name.startsWith('#') ? '#888' : '#0af';
-    
-    // 這裡改為你要求的直觀格式
-    container.innerHTML += `
-        <div style="border-bottom:1px solid #1a1a1a; padding:4px 0;">
-            <span style="color:#444;">[${time}]</span> 
-            <span style="color:${nameColor}; font-weight:bold;">${l.name}</span> 
-            <span style="color:#aaa;">將</span> 
-            <span style="color:#fff;">${l.boss}</span> 
-            <span style="color:#f66;">${l.oldVal}</span> 
-            <span style="color:#aaa;">改為</span> 
-            <span style="color:#0f0;">${l.newVal}</span>
-        </div>`;
-});
-    });
-}
-
-// 供管理員手動調整顯示數量的 function (可加在控制列)
-function setLogLimit(num) {
-    logLimit = Math.min(100, Math.max(0, num));
-    initLogs(); // 重新渲染
-}
 
         function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); i.setSelectionRange(m.length + c.length + 2, i.value.length); }
         function addBoss() { const i = document.getElementById('bossInput'); const p = i.value.trim().split(/\s+/); if (p.length < 3) return; saveBoss(p[0], p[1], p.slice(2).join('')); i.value = ''; }
