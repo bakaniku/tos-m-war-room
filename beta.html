@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.4.4</title>
+    <title>TOS M FB TIME v1.4.5</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -72,7 +72,6 @@
         .card.calling { border: 2px solid #ff3300 !important; animation: call-pulse 1.5s infinite; }
         @keyframes call-pulse { 0% { box-shadow: 0 0 5px #ff3300; } 50% { box-shadow: 0 0 20px #ff3300; background: #200; } 100% { box-shadow: 0 0 5px #ff3300; } }
         
-        /* 編輯最多的玩家發光效果 */
         .top-editor {
             display: inline-block;
             padding: 0 4px;
@@ -80,6 +79,7 @@
             animation: editor-glow 2s infinite;
             font-weight: bold !important;
         }
+
         @keyframes editor-glow {
             0% { box-shadow: 0 0 2px #fff; text-shadow: 0 0 2px #fff; }
             50% { box-shadow: 0 0 10px #ffca28; text-shadow: 0 0 5px #ffca28; background: rgba(255, 202, 40, 0.1); }
@@ -128,7 +128,7 @@
                     </div>
                 </div>
                 <div class="room-info">
-                    <span class="version-tag">v1.4.4</span>
+                    <span class="version-tag">v1.4.5</span>
                     <button class="btn-danger" id="clearAllBtn" onclick="clearAllBosses()" style="display:none;">一鍵清除</button>
                     <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
@@ -191,10 +191,11 @@
         let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
         let lastProcessedInput = {};
         const protectedRooms = { 'GABIJA': 'faker', '000000': 'tosm', 'ZEMYNA': 'earth0407', 'SAULE': 'apple', 'ASRINE': 'lostu' };
-        const currentVersion = "1.4.4";
+        const currentVersion = "1.4.5";
 
         let contributorCounts = {};
         let contributorMax = 1;
+        let currentOnlineUsers = [];
 
         function hasAuth() {
             const pass = protectedRooms[currentRoom];
@@ -202,32 +203,18 @@
             return localStorage.getItem(`auth_${currentRoom}`) === pass;
         }
 
-        // 判斷當前用戶是否具有號召權限 (管理員 或 編輯次數最多的玩家且滿5次)
+        // 判斷當前用戶是否具有號召權限 (管理員 或 在線編輯王且滿5次)
         function canIUseCall() {
-    if (hasAuth()) return true;
-    
-    // 找出目前「在線」的使用者中，編輯次數最多的人
-    const onlineCounts = {};
-    Object.keys(contributorCounts).forEach(name => {
-        // 只有名字出現在 currentOnlineUsers 裡的才列入計算
-        if (currentOnlineUsers.includes(name)) {
-            onlineCounts[name] = contributorCounts[name];
+            if (hasAuth()) return true;
+            
+            // 找出目前「在線」的使用者中，編輯次數最多的人
+            const onlineCounts = currentOnlineUsers.map(name => contributorCounts[name] || 0);
+            const currentOnlineMax = Math.max(...onlineCounts, 0);
+            const myCount = contributorCounts[myName] || 0;
+
+            // 權限判定：我的次數等於在線最高、且滿 5 次
+            return (myCount === currentOnlineMax && myCount >= 5);
         }
-    });
-
-    const onlineMax = Math.max(...Object.values(onlineCounts), 0);
-    const myCount = contributorCounts[myName] || 0;
-
-    // 權限判定：我必須在線(這肯定的)、我的次數等於在線最高、且滿 5 次
-    return (myCount === onlineMax && myCount >= 5);
-}
-
-    const onlineMax = Math.max(...Object.values(onlineCounts), 0);
-    const myCount = contributorCounts[myName] || 0;
-
-    // 權限判定：我必須在線(這肯定的)、我的次數等於在線最高、且滿 5 次
-    return (myCount === onlineMax && myCount >= 5);
-}
 
         function checkDuplicate() {
             const input = document.getElementById('bossInput');
@@ -322,7 +309,7 @@
             area.innerHTML = ''; Object.values(timers).forEach(clearInterval); timers = {};
             const all = Object.entries(window.currentData);
             const auth = hasAuth();
-            const myCallAuth = canIUseCall(); // 檢查當前用戶有無號召權限
+            const myCallAuth = canIUseCall();
 
             const clearBtn = document.getElementById('clearAllBtn');
             if (clearBtn) clearBtn.style.display = auth ? 'block' : 'none';
@@ -337,7 +324,6 @@
                     const card = document.createElement('div');
                     card.className = `card ${b.isCalling ? 'calling' : ''}`;
                     
-                    // 只有具備號召權限的人，才會顯示號召按鈕
                     const callBtnHtml = myCallAuth ? `<button class="call-btn ${b.isCalling ? 'active' : ''}" onclick="toggleCallHelp('${id}')">📢</button>` : '';
 
                     card.innerHTML = `
@@ -430,6 +416,7 @@
                 map, ch, targetTime: tt, lastInput: uv, displayValue: dv,
                 startTime: Date.now(), isFlash: flash, updater: myName
             };
+
             if (tt > 0) updatePayload.isCalling = false;
 
             db.ref(`rooms/${currentRoom}/bosses/${id}`).update(updatePayload);
@@ -504,7 +491,7 @@
                 lastLogData = s.val();
                 renderLogs(lastLogData);
                 updateOnlineUsersDisplay();
-                renderList(); // 同步刷新列表，確保號召按鈕權限即時反應
+                renderList(); // 每次紀錄更新都重繪列表以更新權限按鈕
             });
         }
 
@@ -547,29 +534,26 @@
             });
         }
 
-        let currentOnlineUsers = [];
-// ... 前方 getContributorColor 定義保持不變 ...
-const onlineCounts = currentOnlineUsers.map(name => contributorCounts[name] || 0);
-const currentOnlineMax = Math.max(...onlineCounts, 0);
+        function updateOnlineUsersDisplay() {
+            const container = document.getElementById('onlineUsers');
+            if (!container || currentOnlineUsers.length === 0) return;
 
-container.innerHTML = currentOnlineUsers.map(name => {
-    const color = getContributorColor(name);
-    const count = contributorCounts[name] || 0;
-    
-    // 2. 修改此處判斷：必須是在線最高且滿 5 次
-    const isTopEditor = (count === currentOnlineMax && count >= 5); 
+            const onlineCounts = currentOnlineUsers.map(name => contributorCounts[name] || 0);
+            const currentOnlineMax = Math.max(...onlineCounts, 0);
 
-    const title = count > 0 ? `${name}：已編輯 ${count} 次` : name;
-    const className = isTopEditor ? 'top-editor' : '';
-
-    return `<span class="${className}" style="color:${color};" title="${title}">${name}</span>`;
-}).join('<span style="color:#333;"> · </span>');
+            const getLocalColor = (name) => {
+                const count = contributorCounts[name] || 0;
+                if (count === 0) return '#555';
+                const isGuest = name.startsWith('#');
+                const lightness = isGuest ? (40 + (count / contributorMax) * 30) : (55 + (count / contributorMax) * 35);
+                const saturation = isGuest ? (30 + (count / contributorMax) * 40) : (40 + (count / contributorMax) * 60);
+                return `hsl(50, ${saturation}%, ${lightness}%)`;
             };
 
             container.innerHTML = currentOnlineUsers.map(name => {
-                const color = getContributorColor(name);
+                const color = getLocalColor(name);
                 const count = contributorCounts[name] || 0;
-                const isTopEditor = (count === contributorMax && count >= 5);
+                const isTopEditor = (count === currentOnlineMax && count >= 5);
                 const className = isTopEditor ? 'top-editor' : '';
                 return `<span class="${className}" style="color:${color};" title="已編輯 ${count} 次">${name}</span>`;
             }).join('<span style="color:#333;"> · </span>');
@@ -629,6 +613,7 @@ container.innerHTML = currentOnlineUsers.map(name => {
                     document.getElementById('onlineCount').innerText = u.length;
                     currentOnlineUsers = u.map(x => x.name);
                     updateOnlineUsersDisplay();
+                    renderList(); // 人員離線/加入時觸發重繪以更新編輯王按鈕
                 });
 
                 db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
@@ -653,11 +638,7 @@ container.innerHTML = currentOnlineUsers.map(name => {
         function togglePin(id) { const k = `${currentRoom}_${id}`; if (localPinned[k]) delete localPinned[k]; else localPinned[k] = true; localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned)); renderList(); }
         
         function toggleCallHelp(id) {
-            // 使用 canIUseCall 檢查權限 (管理員 或 編輯王)
-            if (!canIUseCall()) { 
-                alert("只有管理員或當前的「編輯王」可以發起號召！\n(需為編輯次數第一名且滿 5 次)"); 
-                return; 
-            }
+            if (!canIUseCall()) { alert("只有管理員或當前「在線」的編輯王可以發起號召！\n(需編輯次數第一且滿 5 次)"); return; }
             const b = window.currentData[id];
             if (!b) return;
             db.ref(`rooms/${currentRoom}/bosses/${id}/isCalling`).set(!b.isCalling);
