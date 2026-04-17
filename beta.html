@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.4.1</title>
+    <title>TOS M FB TIME v1.4.2</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -71,13 +71,22 @@
         .call-btn.active { border-color: #ff3300; background: #400; color: #ff3300; box-shadow: 0 0 8px rgba(255, 51, 0, 0.5); }
         .card.calling { border: 2px solid #ff3300 !important; animation: call-pulse 1.5s infinite; }
         @keyframes call-pulse { 0% { box-shadow: 0 0 5px #ff3300; } 50% { box-shadow: 0 0 20px #ff3300; background: #200; } 100% { box-shadow: 0 0 5px #ff3300; } }
+
+        /* ── FIX 1: 完整紀錄 Modal ── */
+        #logModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:9999; justify-content:center; align-items:center; }
+        #logModal.show { display:flex; }
+        .log-modal-box { background:#111; border:1px solid #333; border-radius:12px; width:90%; max-width:560px; max-height:80vh; display:flex; flex-direction:column; overflow:hidden; }
+        .log-modal-header { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid #222; font-size:13px; color:#0f0; }
+        .log-modal-close { background:none; border:none; color:#888; font-size:20px; cursor:pointer; padding:0; line-height:1; }
+        .log-modal-body { overflow-y:auto; padding:10px 14px; font-size:11px; font-family:monospace; line-height:1.8; flex:1; }
+        .log-modal-body .log-entry { border-bottom:1px solid #1a1a1a; padding:3px 0; }
     </style>
 </head>
 <body>
     <div id="app">
         <div id="loginView" class="login-view">
             <div class="title">TOS M FB TIME</div>
-            <div class="ver-info">v1.4.1</div>
+            <div class="ver-info">v1.4.2</div>
             <div class="input-group">
                 <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10" oninput="this.value=this.value.replace('#','')">
                 <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
@@ -106,12 +115,13 @@
                     </div>
                 </div>
                 <div class="room-info">
-                    <span class="version-tag">v1.4.1</span>
+                    <span class="version-tag">v1.4.2</span>
                     <button class="btn-danger" id="clearAllBtn" onclick="clearAllBosses()" style="display:none;">一鍵清除</button>
                     <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
             </div>
 
+            <!-- FIX 2: 在線人員欄改為 span 容器，由 JS 動態注入帶顏色的名字 -->
             <div class="user-list-bar">在線:<span id="onlineCount" style="color:#0f0;">0</span> | <span id="onlineUsers">載入中...</span></div>
 
             <div class="info-bar">
@@ -148,6 +158,17 @@
         </div>
     </div>
 
+    <!-- FIX 1: 完整100則紀錄 Modal（取代 alert，無字數限制） -->
+    <div id="logModal">
+        <div class="log-modal-box">
+            <div class="log-modal-header">
+                <span>📜 完整編輯紀錄（最近 100 則）</span>
+                <button class="log-modal-close" onclick="closeLogModal()">✕</button>
+            </div>
+            <div class="log-modal-body" id="logModalBody"></div>
+        </div>
+    </div>
+
     <script>
         const firebaseConfig = { apiKey: "AIzaSyAff__U1cLBr92gYmtbWpm80zO4rHvObUI", authDomain: "tos-m-fb.firebaseapp.com", databaseURL: "https://tos-m-fb-default-rtdb.asia-southeast1.firebasedatabase.app", projectId: "tos-m-fb" };
         firebase.initializeApp(firebaseConfig);
@@ -159,11 +180,15 @@
         let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
         let lastProcessedInput = {};
         const protectedRooms = { 'GABIJA': 'faker', '000000': 'tosm', 'ZEMYNA': 'earth0407', 'SAULE': 'apple', 'ASRINE': 'lostu' };
-        const currentVersion = "1.4.1"; 
+        const currentVersion = "1.4.2";
+
+        // 全域貢獻度快取（供人員名單著色使用）
+        let contributorCounts = {};
+        let contributorMax = 1;
 
         function hasAuth() {
             const pass = protectedRooms[currentRoom];
-            if (!pass) return true; 
+            if (!pass) return true;
             return localStorage.getItem(`auth_${currentRoom}`) === pass;
         }
 
@@ -184,6 +209,7 @@
         }
 
         function updateVolBg(el) { const val = (el.value - el.min) / (el.max - el.min) * 100; el.style.backgroundSize = val + '% 100%'; }
+
         function getStatusColor(weight) {
             const colors = { 7:'#9dadc1', 6:'#FF00FF', 5:'#FF1493', 4:'#FF4500', 3:'#FFA500', 2:'#FFFF00', 1:'#00FF00', 0:'#FF3300' };
             if (colorMode === 1) return colors[weight] || '#fff';
@@ -191,14 +217,14 @@
         }
 
         function unlockAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); }
-        function playDing(freq = 880) { 
-            unlockAudio(); 
+        function playDing(freq = 880) {
+            unlockAudio();
             const vol = parseFloat(document.getElementById('volRange').value);
-            const osc = audioCtx.createOscillator(); 
-            const gain = audioCtx.createGain(); 
-            osc.type = 'sine'; osc.frequency.setValueAtTime(freq, audioCtx.currentTime); osc.connect(gain); gain.connect(audioCtx.destination); 
-            gain.gain.setValueAtTime(0, audioCtx.currentTime); gain.gain.linearRampToValueAtTime(vol * 0.3, audioCtx.currentTime + 0.01); 
-            osc.start(); osc.stop(audioCtx.currentTime + 0.3); 
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine'; osc.frequency.setValueAtTime(freq, audioCtx.currentTime); osc.connect(gain); gain.connect(audioCtx.destination);
+            gain.gain.setValueAtTime(0, audioCtx.currentTime); gain.gain.linearRampToValueAtTime(vol * 0.3, audioCtx.currentTime + 0.01);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.3);
         }
 
         function speak(text) {
@@ -257,7 +283,7 @@
         function renderList() {
             const area = document.getElementById('renderArea'); if(!area) return;
             area.innerHTML = ''; Object.values(timers).forEach(clearInterval); timers = {};
-            const all = Object.entries(window.currentData); 
+            const all = Object.entries(window.currentData);
             const auth = hasAuth();
             const clearBtn = document.getElementById('clearAllBtn');
             if (clearBtn) clearBtn.style.display = auth ? 'block' : 'none';
@@ -268,8 +294,8 @@
                 sec.innerHTML = `<div class="section-label">${label}</div><div class="grid"></div>`;
                 area.appendChild(sec); const grid = sec.querySelector('.grid');
                 items.forEach(([id, b]) => {
-                    const st = getBossStatus(b, id); 
-                    const card = document.createElement('div'); 
+                    const st = getBossStatus(b, id);
+                    const card = document.createElement('div');
                     card.className = `card ${b.isCalling ? 'calling' : ''}`;
                     card.innerHTML = `
                         <button class="del" onclick="handleDelClick('${id}')">×</button>
@@ -294,8 +320,8 @@
             const killedItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight === 7);
             const activeItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight !== 7);
             drawBox(sortItems(killedItems), "已擊殺區間");
-            if (currentSort === 'time') { drawBox(sortItems(activeItems), "全域時間排序 (閒置置底)"); } 
-            else if (currentSort === 'map') { drawBox(activeItems.sort((a,b) => getBossStatus(b[1], b[0]).mapLv - getBossStatus(a[1], a[0]).mapLv || a[1].ch - b[1].ch), "全域地圖等級排序"); } 
+            if (currentSort === 'time') { drawBox(sortItems(activeItems), "全域時間排序 (閒置置底)"); }
+            else if (currentSort === 'map') { drawBox(activeItems.sort((a,b) => getBossStatus(b[1], b[0]).mapLv - getBossStatus(a[1], a[0]).mapLv || a[1].ch - b[1].ch), "全域地圖等級排序"); }
             else {
                 const stages = [], timersList = [], idleList = [];
                 activeItems.forEach(([id, b]) => { const st = getBossStatus(b, id); if (st.isGrey) idleList.push([id, b]); else if (b.targetTime > 0) timersList.push([id, b]); else stages.push([id, b]); });
@@ -305,26 +331,26 @@
 
         function startTimer(id, b, isGrey, statusColor) {
             const up = () => {
-                const el = document.getElementById(`t_${id}`); 
-                if(!el) return; 
+                const el = document.getElementById(`t_${id}`);
+                if(!el) return;
                 const now = Date.now();
                 if (b.targetTime > 0) {
                     const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
                     el.innerText = `${Math.floor(a/3600)}:${Math.floor((a%3600)/60).toString().padStart(2,'0')}:${(a%60).toString().padStart(2,'0')}`;
                     if (!isGrey) el.style.color = d <= 0 ? '#ff3300' : '#00FF00';
                 } else {
-                    const diff = Math.max(0, now - b.startTime); 
+                    const diff = Math.max(0, now - b.startTime);
                     const m = Math.floor(diff / 60000);
                     const s = Math.floor((diff % 60000) / 1000);
-                    const isK = b.lastInput.toString().toUpperCase().startsWith("DE"); 
+                    const isK = b.lastInput.toString().toUpperCase().startsWith("DE");
                     const mat = b.displayValue.match(/[\d.]+/);
                     const lv = b.displayValue === "ON" ? 99 : (mat ? Math.floor(parseFloat(mat[0])) : 0);
                     const isW = (lv < 2 && m >= 12) || (lv >= 2 && lv < 3 && m >= 7) || (lv >= 3 && lv < 4 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
                     el.innerHTML = `<span>${isK ? "已擊殺" : b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isGrey && !isK) ? '⚠️' : ''}`;
                     if (!isGrey) el.style.color = statusColor;
                 }
-            }; 
-            up(); 
+            };
+            up();
             timers[id] = setInterval(up, 1000);
         }
 
@@ -336,14 +362,15 @@
             else { saveBoss(b.map, b.ch, "XX1"); }
         }
 
+        // ── FIX 3: saveBoss 在有倒數時間時自動取消號召 ──
         function saveBoss(map, ch, val, doFocus = false) {
             const pass = protectedRooms[currentRoom];
-            if (pass && map.toUpperCase() === "ADMIN" && ch === pass) { 
-                localStorage.setItem(`auth_${currentRoom}`, pass); 
-                alert("管理員權限已解鎖！"); 
-                document.getElementById('bossInput').value = ''; 
-                renderList(); 
-                return; 
+            if (pass && map.toUpperCase() === "ADMIN" && ch === pass) {
+                localStorage.setItem(`auth_${currentRoom}`, pass);
+                alert("管理員權限已解鎖！");
+                document.getElementById('bossInput').value = '';
+                renderList();
+                return;
             }
             const id = `${map}_${ch}`;
             const oldData = window.currentData ? window.currentData[id] : null;
@@ -357,10 +384,17 @@
             else if (uv.startsWith("R")) { const rn = uv.substring(1); dv = "階段" + rn; if (parseFloat(rn) >= 4.0) flash = true; }
             else { tt = Date.now() + ((uv.split(/[:.：]/).length===2?parseInt(uv.split(/[:.：]/)[0])*60+parseInt(uv.split(/[:.：]/)[1]):parseFloat(uv)||0) * 60000); }
 
-            db.ref(`rooms/${currentRoom}/bosses/${id}`).update({ 
-                map, ch, targetTime: tt, lastInput: uv, displayValue: dv, 
-                startTime: Date.now(), isFlash: flash, updater: myName 
-            });
+            const updatePayload = {
+                map, ch, targetTime: tt, lastInput: uv, displayValue: dv,
+                startTime: Date.now(), isFlash: flash, updater: myName
+            };
+
+            // FIX 3: 進入計時倒數時，自動取消號召狀態
+            if (tt > 0) {
+                updatePayload.isCalling = false;
+            }
+
+            db.ref(`rooms/${currentRoom}/bosses/${id}`).update(updatePayload);
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 3000);
             if (doFocus) doEdit(map, ch, uv);
             document.getElementById('inputHint').classList.remove('warning');
@@ -374,16 +408,16 @@
                 const total = snapshot.numChildren();
                 if (total > 100) {
                     let count = 0;
-                    snapshot.forEach(child => { 
-                        if (count < total - 100) child.ref.remove(); 
-                        count++; 
+                    snapshot.forEach(child => {
+                        if (count < total - 100) child.ref.remove();
+                        count++;
                     });
                 }
             });
         }
 
-        let logDisplayModes = [0, 3, 5, 10]; 
-        let currentLogModeIndex = 2; 
+        let logDisplayModes = [0, 3, 5, 10];
+        let currentLogModeIndex = 2;
         let lastLogData = null;
 
         function cycleLogMode() {
@@ -405,23 +439,52 @@
             }
         }
 
+        // ── FIX 1: 用 Modal 顯示完整100則，取代 alert（無字數截斷問題）──
         function viewFullLogs() {
             if (!lastLogData) { alert("尚無編輯紀錄"); return; }
             const logs = Object.values(lastLogData).sort((a, b) => b.t - a.t);
-            const totalCount = logs.length;
-            
-            let content = logs.map((l, index) => {
+            const body = document.getElementById('logModalBody');
+            body.innerHTML = '';
+
+            const counts = {};
+            logs.forEach(l => { counts[l.name] = (counts[l.name] || 0) + 1; });
+            const maxEdit = Math.max(...Object.values(counts), 1);
+
+            const getColor = (name) => {
+                if (name.startsWith('#')) return '#888';
+                const count = counts[name] || 0;
+                const lightness = 50 + (count / maxEdit) * 35;
+                const saturation = 40 + (count / maxEdit) * 60;
+                return `hsl(50, ${saturation}%, ${lightness}%)`;
+            };
+
+            logs.forEach((l, index) => {
                 const time = new Date(l.t).toLocaleTimeString('zh-TW', { hour12: false });
-                return `${index + 1}. [${time}] ${l.name}：${l.boss} (${l.oldVal} -> ${l.newVal})`;
-            }).join('\n');
-            
-            alert(`--- 最近 ${totalCount} 則編輯紀錄 ---\n\n` + content);
+                const nameColor = getColor(l.name);
+                const entry = document.createElement('div');
+                entry.className = 'log-entry';
+                entry.innerHTML = `<span style="color:#444;">${index + 1}. [${time}]</span> <span style="color:${nameColor}; font-weight:bold;">${l.name}</span> <span style="color:#aaa;">將</span> <span style="color:#fff;">${l.boss}</span> <span style="color:#f66;">${l.oldVal}</span> <span style="color:#aaa;">改為</span> <span style="color:#0f0;">${l.newVal}</span>`;
+                body.appendChild(entry);
+            });
+
+            document.getElementById('logModal').classList.add('show');
         }
+
+        function closeLogModal() {
+            document.getElementById('logModal').classList.remove('show');
+        }
+
+        // 點擊 Modal 背景關閉
+        document.getElementById('logModal').addEventListener('click', function(e) {
+            if (e.target === this) closeLogModal();
+        });
 
         function initLogs() {
             db.ref(`rooms/${currentRoom}/logs`).limitToLast(100).on('value', s => {
                 lastLogData = s.val();
                 renderLogs(lastLogData);
+                // FIX 2: 每次 log 更新時同步更新人員名單顏色
+                updateOnlineUsersDisplay();
             });
         }
 
@@ -434,16 +497,15 @@
             logs.sort((a, b) => b.t - a.t);
 
             // 統計次數計算顏色
-            const counts = {};
-            logs.forEach(l => { counts[l.name] = (counts[l.name] || 0) + 1; });
-            const maxEdit = Math.max(...Object.values(counts), 1);
+            contributorCounts = {};
+            logs.forEach(l => { contributorCounts[l.name] = (contributorCounts[l.name] || 0) + 1; });
+            contributorMax = Math.max(...Object.values(contributorCounts), 1);
 
             const getContributorColor = (name) => {
                 if (name.startsWith('#')) return '#888';
-                const count = counts[name] || 0;
-                // 金黃色 HSL 模型: 次數多者亮度更高、飽和度更亮
-                const lightness = 50 + (count / maxEdit) * 35;
-                const saturation = 40 + (count / maxEdit) * 60;
+                const count = contributorCounts[name] || 0;
+                const lightness = 50 + (count / contributorMax) * 35;
+                const saturation = 40 + (count / contributorMax) * 60;
                 return `hsl(50, ${saturation}%, ${lightness}%)`;
             };
 
@@ -463,6 +525,30 @@
                         <span style="color:#0f0;">${l.newVal}</span>
                     </div>`;
             });
+        }
+
+        // ── FIX 2: 用貢獻度著色在線名單 ──
+        let currentOnlineUsers = [];
+
+        function updateOnlineUsersDisplay() {
+            const container = document.getElementById('onlineUsers');
+            if (!container || currentOnlineUsers.length === 0) return;
+
+            const getContributorColor = (name) => {
+                if (name.startsWith('#')) return '#777';
+                const count = contributorCounts[name] || 0;
+                if (count === 0) return '#777';
+                const lightness = 50 + (count / contributorMax) * 35;
+                const saturation = 40 + (count / contributorMax) * 60;
+                return `hsl(50, ${saturation}%, ${lightness}%)`;
+            };
+
+            container.innerHTML = currentOnlineUsers.map(name => {
+                const color = getContributorColor(name);
+                const count = contributorCounts[name] || 0;
+                const title = count > 0 ? `${name}：已編輯 ${count} 次` : name;
+                return `<span style="color:${color};" title="${title}">${name}</span>`;
+            }).join('<span style="color:#333;"> · </span>');
         }
 
         function triggerNext(m, c) {
@@ -515,11 +601,15 @@
                 updateVolBg(document.getElementById('volRange'));
                 document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
                 db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
-                db.ref(`rooms/${currentRoom}/users`).on('value', s => { 
-                    const u = Object.values(s.val() || {}); 
-                    document.getElementById('onlineCount').innerText = u.length; 
-                    document.getElementById('onlineUsers').innerText = u.map(x => x.name).join(', '); 
+
+                // FIX 2: 在線用戶監聽，儲存名單後呼叫著色函式
+                db.ref(`rooms/${currentRoom}/users`).on('value', s => {
+                    const u = Object.values(s.val() || {});
+                    document.getElementById('onlineCount').innerText = u.length;
+                    currentOnlineUsers = u.map(x => x.name);
+                    updateOnlineUsersDisplay();
                 });
+
                 db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
                     const incomingData = s.val() || {};
                     Object.keys(incomingData).forEach(k => {
