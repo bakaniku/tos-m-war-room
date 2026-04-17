@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.4.2</title>
+    <title>TOS M FB TIME v1.4.3</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -71,6 +71,20 @@
         .call-btn.active { border-color: #ff3300; background: #400; color: #ff3300; box-shadow: 0 0 8px rgba(255, 51, 0, 0.5); }
         .card.calling { border: 2px solid #ff3300 !important; animation: call-pulse 1.5s infinite; }
         @keyframes call-pulse { 0% { box-shadow: 0 0 5px #ff3300; } 50% { box-shadow: 0 0 20px #ff3300; background: #200; } 100% { box-shadow: 0 0 5px #ff3300; } }
+        /* 編輯最多的玩家發光效果 */
+.top-editor {
+    display: inline-block;
+    padding: 0 4px;
+    border-radius: 4px;
+    animation: editor-glow 2s infinite;
+    font-weight: bold !important;
+}
+
+@keyframes editor-glow {
+    0% { box-shadow: 0 0 2px #fff; text-shadow: 0 0 2px #fff; }
+    50% { box-shadow: 0 0 10px #ffca28; text-shadow: 0 0 5px #ffca28; background: rgba(255, 202, 40, 0.1); }
+    100% { box-shadow: 0 0 2px #fff; text-shadow: 0 0 2px #fff; }
+}
 
         /* ── FIX 1: 完整紀錄 Modal ── */
         #logModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:9999; justify-content:center; align-items:center; }
@@ -86,7 +100,7 @@
     <div id="app">
         <div id="loginView" class="login-view">
             <div class="title">TOS M FB TIME</div>
-            <div class="ver-info">v1.4.2</div>
+            <div class="ver-info">v1.4.3</div>
             <div class="input-group">
                 <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10" oninput="this.value=this.value.replace('#','')">
                 <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
@@ -115,7 +129,7 @@
                     </div>
                 </div>
                 <div class="room-info">
-                    <span class="version-tag">v1.4.2</span>
+                    <span class="version-tag">v1.4.3</span>
                     <button class="btn-danger" id="clearAllBtn" onclick="clearAllBosses()" style="display:none;">一鍵清除</button>
                     <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
@@ -180,7 +194,7 @@
         let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
         let lastProcessedInput = {};
         const protectedRooms = { 'GABIJA': 'faker', '000000': 'tosm', 'ZEMYNA': 'earth0407', 'SAULE': 'apple', 'ASRINE': 'lostu' };
-        const currentVersion = "1.4.2";
+        const currentVersion = "1.4.3";
 
         // 全域貢獻度快取（供人員名單著色使用）
         let contributorCounts = {};
@@ -501,13 +515,15 @@
             logs.forEach(l => { contributorCounts[l.name] = (contributorCounts[l.name] || 0) + 1; });
             contributorMax = Math.max(...Object.values(contributorCounts), 1);
 
-            const getContributorColor = (name) => {
-                if (name.startsWith('#')) return '#888';
-                const count = contributorCounts[name] || 0;
-                const lightness = 50 + (count / contributorMax) * 35;
-                const saturation = 40 + (count / contributorMax) * 60;
-                return `hsl(50, ${saturation}%, ${lightness}%)`;
-            };
+        const getContributorColor = (name) => {
+            const count = contributorCounts[name] || 0;
+            const isGuest = name.startsWith('#');
+            if (count === 0) return '#777'; 
+            // 同步亮燈邏輯
+            const lightness = isGuest ? (40 + (count / contributorMax) * 30) : (55 + (count / contributorMax) * 35);
+            const saturation = isGuest ? (30 + (count / contributorMax) * 40) : (40 + (count / contributorMax) * 60);
+            return `hsl(50, ${saturation}%, ${lightness}%)`;
+        };
 
             const displayLogs = logs.slice(0, mode);
             container.innerHTML = '';
@@ -530,24 +546,36 @@
         // ── FIX 2: 用貢獻度著色在線名單 ──
         let currentOnlineUsers = [];
 
+        // ── 修正版：用貢獻度著色在線名單 ──
         function updateOnlineUsersDisplay() {
             const container = document.getElementById('onlineUsers');
             if (!container || currentOnlineUsers.length === 0) return;
 
             const getContributorColor = (name) => {
-                if (name.startsWith('#')) return '#777';
                 const count = contributorCounts[name] || 0;
-                if (count === 0) return '#777';
-                const lightness = 50 + (count / contributorMax) * 35;
-                const saturation = 40 + (count / contributorMax) * 60;
-                return `hsl(50, ${saturation}%, ${lightness}%)`;
+                // 基礎著色邏輯：訪客(#)給予較暗的基礎色，正式名稱給予明亮色
+                const baseHue = 50; // 金黃色系
+                if (count === 0) return '#555'; // 沒貢獻的依然灰色
+                
+                const isGuest = name.startsWith('#');
+                // 訪客亮度範圍 40-70%，正式名稱 55-90%
+                const lightness = isGuest ? (40 + (count / contributorMax) * 30) : (55 + (count / contributorMax) * 35);
+                const saturation = isGuest ? (30 + (count / contributorMax) * 40) : (40 + (count / contributorMax) * 60);
+                
+                return `hsl(${baseHue}, ${saturation}%, ${lightness}%)`;
             };
 
             container.innerHTML = currentOnlineUsers.map(name => {
                 const color = getContributorColor(name);
                 const count = contributorCounts[name] || 0;
+                const isTopEditor = (count === contributorMax && count > 0); // 是否為編輯王
+                
                 const title = count > 0 ? `${name}：已編輯 ${count} 次` : name;
-                return `<span style="color:${color};" title="${title}">${name}</span>`;
+                
+                // 如果是編輯王，加上 top-editor class
+                const className = isTopEditor ? 'top-editor' : '';
+                
+                return `<span class="${className}" style="color:${color};" title="${title}">${name}</span>`;
             }).join('<span style="color:#333;"> · </span>');
         }
 
