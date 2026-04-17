@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.4.3</title>
+    <title>TOS M FB TIME v1.4.4</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -71,22 +71,21 @@
         .call-btn.active { border-color: #ff3300; background: #400; color: #ff3300; box-shadow: 0 0 8px rgba(255, 51, 0, 0.5); }
         .card.calling { border: 2px solid #ff3300 !important; animation: call-pulse 1.5s infinite; }
         @keyframes call-pulse { 0% { box-shadow: 0 0 5px #ff3300; } 50% { box-shadow: 0 0 20px #ff3300; background: #200; } 100% { box-shadow: 0 0 5px #ff3300; } }
+        
         /* 編輯最多的玩家發光效果 */
-.top-editor {
-    display: inline-block;
-    padding: 0 4px;
-    border-radius: 4px;
-    animation: editor-glow 2s infinite;
-    font-weight: bold !important;
-}
+        .top-editor {
+            display: inline-block;
+            padding: 0 4px;
+            border-radius: 4px;
+            animation: editor-glow 2s infinite;
+            font-weight: bold !important;
+        }
+        @keyframes editor-glow {
+            0% { box-shadow: 0 0 2px #fff; text-shadow: 0 0 2px #fff; }
+            50% { box-shadow: 0 0 10px #ffca28; text-shadow: 0 0 5px #ffca28; background: rgba(255, 202, 40, 0.1); }
+            100% { box-shadow: 0 0 2px #fff; text-shadow: 0 0 2px #fff; }
+        }
 
-@keyframes editor-glow {
-    0% { box-shadow: 0 0 2px #fff; text-shadow: 0 0 2px #fff; }
-    50% { box-shadow: 0 0 10px #ffca28; text-shadow: 0 0 5px #ffca28; background: rgba(255, 202, 40, 0.1); }
-    100% { box-shadow: 0 0 2px #fff; text-shadow: 0 0 2px #fff; }
-}
-
-        /* ── FIX 1: 完整紀錄 Modal ── */
         #logModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:9999; justify-content:center; align-items:center; }
         #logModal.show { display:flex; }
         .log-modal-box { background:#111; border:1px solid #333; border-radius:12px; width:90%; max-width:560px; max-height:80vh; display:flex; flex-direction:column; overflow:hidden; }
@@ -100,7 +99,7 @@
     <div id="app">
         <div id="loginView" class="login-view">
             <div class="title">TOS M FB TIME</div>
-            <div class="ver-info">v1.4.3</div>
+            <div class="ver-info">v1.4.5</div>
             <div class="input-group">
                 <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10" oninput="this.value=this.value.replace('#','')">
                 <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
@@ -129,13 +128,12 @@
                     </div>
                 </div>
                 <div class="room-info">
-                    <span class="version-tag">v1.4.3</span>
+                    <span class="version-tag">v1.4.4</span>
                     <button class="btn-danger" id="clearAllBtn" onclick="clearAllBosses()" style="display:none;">一鍵清除</button>
                     <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
                 </div>
             </div>
 
-            <!-- FIX 2: 在線人員欄改為 span 容器，由 JS 動態注入帶顏色的名字 -->
             <div class="user-list-bar">在線:<span id="onlineCount" style="color:#0f0;">0</span> | <span id="onlineUsers">載入中...</span></div>
 
             <div class="info-bar">
@@ -172,7 +170,6 @@
         </div>
     </div>
 
-    <!-- FIX 1: 完整100則紀錄 Modal（取代 alert，無字數限制） -->
     <div id="logModal">
         <div class="log-modal-box">
             <div class="log-modal-header">
@@ -194,9 +191,8 @@
         let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
         let lastProcessedInput = {};
         const protectedRooms = { 'GABIJA': 'faker', '000000': 'tosm', 'ZEMYNA': 'earth0407', 'SAULE': 'apple', 'ASRINE': 'lostu' };
-        const currentVersion = "1.4.3";
+        const currentVersion = "1.4.4";
 
-        // 全域貢獻度快取（供人員名單著色使用）
         let contributorCounts = {};
         let contributorMax = 1;
 
@@ -205,6 +201,33 @@
             if (!pass) return true;
             return localStorage.getItem(`auth_${currentRoom}`) === pass;
         }
+
+        // 判斷當前用戶是否具有號召權限 (管理員 或 編輯次數最多的玩家且滿5次)
+        function canIUseCall() {
+    if (hasAuth()) return true;
+    
+    // 找出目前「在線」的使用者中，編輯次數最多的人
+    const onlineCounts = {};
+    Object.keys(contributorCounts).forEach(name => {
+        // 只有名字出現在 currentOnlineUsers 裡的才列入計算
+        if (currentOnlineUsers.includes(name)) {
+            onlineCounts[name] = contributorCounts[name];
+        }
+    });
+
+    const onlineMax = Math.max(...Object.values(onlineCounts), 0);
+    const myCount = contributorCounts[myName] || 0;
+
+    // 權限判定：我必須在線(這肯定的)、我的次數等於在線最高、且滿 5 次
+    return (myCount === onlineMax && myCount >= 5);
+}
+
+    const onlineMax = Math.max(...Object.values(onlineCounts), 0);
+    const myCount = contributorCounts[myName] || 0;
+
+    // 權限判定：我必須在線(這肯定的)、我的次數等於在線最高、且滿 5 次
+    return (myCount === onlineMax && myCount >= 5);
+}
 
         function checkDuplicate() {
             const input = document.getElementById('bossInput');
@@ -299,6 +322,8 @@
             area.innerHTML = ''; Object.values(timers).forEach(clearInterval); timers = {};
             const all = Object.entries(window.currentData);
             const auth = hasAuth();
+            const myCallAuth = canIUseCall(); // 檢查當前用戶有無號召權限
+
             const clearBtn = document.getElementById('clearAllBtn');
             if (clearBtn) clearBtn.style.display = auth ? 'block' : 'none';
 
@@ -311,11 +336,15 @@
                     const st = getBossStatus(b, id);
                     const card = document.createElement('div');
                     card.className = `card ${b.isCalling ? 'calling' : ''}`;
+                    
+                    // 只有具備號召權限的人，才會顯示號召按鈕
+                    const callBtnHtml = myCallAuth ? `<button class="call-btn ${b.isCalling ? 'active' : ''}" onclick="toggleCallHelp('${id}')">📢</button>` : '';
+
                     card.innerHTML = `
                         <button class="del" onclick="handleDelClick('${id}')">×</button>
                         <div class="card-title-row">
                             <button class="pin-btn ${st.pinned ? 'pinned' : ''}" onclick="togglePin('${id}')">★</button>
-                            <button class="call-btn ${b.isCalling ? 'active' : ''}" onclick="toggleCallHelp('${id}')">📢</button>
+                            ${callBtnHtml}
                             <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3>
                         </div>
                         <div class="timer-container">
@@ -376,7 +405,6 @@
             else { saveBoss(b.map, b.ch, "XX1"); }
         }
 
-        // ── FIX 3: saveBoss 在有倒數時間時自動取消號召 ──
         function saveBoss(map, ch, val, doFocus = false) {
             const pass = protectedRooms[currentRoom];
             if (pass && map.toUpperCase() === "ADMIN" && ch === pass) {
@@ -402,11 +430,7 @@
                 map, ch, targetTime: tt, lastInput: uv, displayValue: dv,
                 startTime: Date.now(), isFlash: flash, updater: myName
             };
-
-            // FIX 3: 進入計時倒數時，自動取消號召狀態
-            if (tt > 0) {
-                updatePayload.isCalling = false;
-            }
+            if (tt > 0) updatePayload.isCalling = false;
 
             db.ref(`rooms/${currentRoom}/bosses/${id}`).update(updatePayload);
             setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 3000);
@@ -414,18 +438,13 @@
             document.getElementById('inputHint').classList.remove('warning');
 
             const logRef = db.ref(`rooms/${currentRoom}/logs`);
-            logRef.push({
-                name: myName, boss: `${map}-${ch}`, oldVal: oldStatus, newVal: dv, t: Date.now()
-            });
+            logRef.push({ name: myName, boss: `${map}-${ch}`, oldVal: oldStatus, newVal: dv, t: Date.now() });
 
             logRef.once('value', snapshot => {
                 const total = snapshot.numChildren();
                 if (total > 100) {
                     let count = 0;
-                    snapshot.forEach(child => {
-                        if (count < total - 100) child.ref.remove();
-                        count++;
-                    });
+                    snapshot.forEach(child => { if (count < total - 100) child.ref.remove(); count++; });
                 }
             });
         }
@@ -442,18 +461,12 @@
             const btn = document.getElementById('logBtn');
 
             if (mode === 0) {
-                panel.style.display = 'none';
-                btnText.innerText = 'OFF';
-                btn.style.opacity = '0.3';
+                panel.style.display = 'none'; btnText.innerText = 'OFF'; btn.style.opacity = '0.3';
             } else {
-                panel.style.display = 'block';
-                btnText.innerText = mode;
-                btn.style.opacity = '1';
-                renderLogs(lastLogData);
+                panel.style.display = 'block'; btnText.innerText = mode; btn.style.opacity = '1'; renderLogs(lastLogData);
             }
         }
 
-        // ── FIX 1: 用 Modal 顯示完整100則，取代 alert（無字數截斷問題）──
         function viewFullLogs() {
             if (!lastLogData) { alert("尚無編輯紀錄"); return; }
             const logs = Object.values(lastLogData).sort((a, b) => b.t - a.t);
@@ -480,25 +493,18 @@
                 entry.innerHTML = `<span style="color:#444;">${index + 1}. [${time}]</span> <span style="color:${nameColor}; font-weight:bold;">${l.name}</span> <span style="color:#aaa;">將</span> <span style="color:#fff;">${l.boss}</span> <span style="color:#f66;">${l.oldVal}</span> <span style="color:#aaa;">改為</span> <span style="color:#0f0;">${l.newVal}</span>`;
                 body.appendChild(entry);
             });
-
             document.getElementById('logModal').classList.add('show');
         }
 
-        function closeLogModal() {
-            document.getElementById('logModal').classList.remove('show');
-        }
-
-        // 點擊 Modal 背景關閉
-        document.getElementById('logModal').addEventListener('click', function(e) {
-            if (e.target === this) closeLogModal();
-        });
+        function closeLogModal() { document.getElementById('logModal').classList.remove('show'); }
+        document.getElementById('logModal').addEventListener('click', function(e) { if (e.target === this) closeLogModal(); });
 
         function initLogs() {
             db.ref(`rooms/${currentRoom}/logs`).limitToLast(100).on('value', s => {
                 lastLogData = s.val();
                 renderLogs(lastLogData);
-                // FIX 2: 每次 log 更新時同步更新人員名單顏色
                 updateOnlineUsersDisplay();
+                renderList(); // 同步刷新列表，確保號召按鈕權限即時反應
             });
         }
 
@@ -510,20 +516,18 @@
             let logs = data ? Object.values(data) : [];
             logs.sort((a, b) => b.t - a.t);
 
-            // 統計次數計算顏色
             contributorCounts = {};
             logs.forEach(l => { contributorCounts[l.name] = (contributorCounts[l.name] || 0) + 1; });
             contributorMax = Math.max(...Object.values(contributorCounts), 1);
 
-        const getContributorColor = (name) => {
-            const count = contributorCounts[name] || 0;
-            const isGuest = name.startsWith('#');
-            if (count === 0) return '#777'; 
-            // 同步亮燈邏輯
-            const lightness = isGuest ? (40 + (count / contributorMax) * 30) : (55 + (count / contributorMax) * 35);
-            const saturation = isGuest ? (30 + (count / contributorMax) * 40) : (40 + (count / contributorMax) * 60);
-            return `hsl(50, ${saturation}%, ${lightness}%)`;
-        };
+            const getContributorColor = (name) => {
+                const count = contributorCounts[name] || 0;
+                const isGuest = name.startsWith('#');
+                if (count === 0) return '#777';
+                const lightness = isGuest ? (40 + (count / contributorMax) * 30) : (55 + (count / contributorMax) * 35);
+                const saturation = isGuest ? (30 + (count / contributorMax) * 40) : (40 + (count / contributorMax) * 60);
+                return `hsl(50, ${saturation}%, ${lightness}%)`;
+            };
 
             const displayLogs = logs.slice(0, mode);
             container.innerHTML = '';
@@ -543,39 +547,31 @@
             });
         }
 
-        // ── FIX 2: 用貢獻度著色在線名單 ──
         let currentOnlineUsers = [];
+// ... 前方 getContributorColor 定義保持不變 ...
+const onlineCounts = currentOnlineUsers.map(name => contributorCounts[name] || 0);
+const currentOnlineMax = Math.max(...onlineCounts, 0);
 
-        // ── 修正版：用貢獻度著色在線名單 ──
-        function updateOnlineUsersDisplay() {
-            const container = document.getElementById('onlineUsers');
-            if (!container || currentOnlineUsers.length === 0) return;
+container.innerHTML = currentOnlineUsers.map(name => {
+    const color = getContributorColor(name);
+    const count = contributorCounts[name] || 0;
+    
+    // 2. 修改此處判斷：必須是在線最高且滿 5 次
+    const isTopEditor = (count === currentOnlineMax && count >= 5); 
 
-            const getContributorColor = (name) => {
-                const count = contributorCounts[name] || 0;
-                // 基礎著色邏輯：訪客(#)給予較暗的基礎色，正式名稱給予明亮色
-                const baseHue = 50; // 金黃色系
-                if (count === 0) return '#555'; // 沒貢獻的依然灰色
-                
-                const isGuest = name.startsWith('#');
-                // 訪客亮度範圍 40-70%，正式名稱 55-90%
-                const lightness = isGuest ? (40 + (count / contributorMax) * 30) : (55 + (count / contributorMax) * 35);
-                const saturation = isGuest ? (30 + (count / contributorMax) * 40) : (40 + (count / contributorMax) * 60);
-                
-                return `hsl(${baseHue}, ${saturation}%, ${lightness}%)`;
+    const title = count > 0 ? `${name}：已編輯 ${count} 次` : name;
+    const className = isTopEditor ? 'top-editor' : '';
+
+    return `<span class="${className}" style="color:${color};" title="${title}">${name}</span>`;
+}).join('<span style="color:#333;"> · </span>');
             };
 
             container.innerHTML = currentOnlineUsers.map(name => {
                 const color = getContributorColor(name);
                 const count = contributorCounts[name] || 0;
-                const isTopEditor = (count === contributorMax && count > 0); // 是否為編輯王
-                
-                const title = count > 0 ? `${name}：已編輯 ${count} 次` : name;
-                
-                // 如果是編輯王，加上 top-editor class
+                const isTopEditor = (count === contributorMax && count >= 5);
                 const className = isTopEditor ? 'top-editor' : '';
-                
-                return `<span class="${className}" style="color:${color};" title="${title}">${name}</span>`;
+                return `<span class="${className}" style="color:${color};" title="已編輯 ${count} 次">${name}</span>`;
             }).join('<span style="color:#333;"> · </span>');
         }
 
@@ -597,10 +593,8 @@
             const v1 = current.split('.').map(Number);
             const v2 = latest.split('.').map(Number);
             for (let i = 0; i < Math.max(v1.length, v2.length); i++) {
-                const n1 = v1[i] || 0;
-                const n2 = v2[i] || 0;
-                if (n2 > n1) return true;
-                if (n2 < n1) return false;
+                const n1 = v1[i] || 0; const n2 = v2[i] || 0;
+                if (n2 > n1) return true; if (n2 < n1) return false;
             }
             return false;
         }
@@ -630,7 +624,6 @@
                 document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
                 db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
 
-                // FIX 2: 在線用戶監聽，儲存名單後呼叫著色函式
                 db.ref(`rooms/${currentRoom}/users`).on('value', s => {
                     const u = Object.values(s.val() || {});
                     document.getElementById('onlineCount').innerText = u.length;
@@ -658,12 +651,18 @@
         }
 
         function togglePin(id) { const k = `${currentRoom}_${id}`; if (localPinned[k]) delete localPinned[k]; else localPinned[k] = true; localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned)); renderList(); }
+        
         function toggleCallHelp(id) {
-            if (!hasAuth()) { alert("只有管理員可以發起號召！"); return; }
+            // 使用 canIUseCall 檢查權限 (管理員 或 編輯王)
+            if (!canIUseCall()) { 
+                alert("只有管理員或當前的「編輯王」可以發起號召！\n(需為編輯次數第一名且滿 5 次)"); 
+                return; 
+            }
             const b = window.currentData[id];
             if (!b) return;
             db.ref(`rooms/${currentRoom}/bosses/${id}/isCalling`).set(!b.isCalling);
         }
+
         function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); i.setSelectionRange(m.length + c.length + 2, i.value.length); }
         function addBoss() { const i = document.getElementById('bossInput'); const p = i.value.trim().split(/\s+/); if (p.length < 3) return; saveBoss(p[0], p[1], p.slice(2).join('')); i.value = ''; }
         function clearAllBosses() { if (!hasAuth()) return; if (confirm("確定一鍵清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
