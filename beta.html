@@ -348,15 +348,39 @@
             drawBox(pinnedItems, "置頂追蹤區 ★");
             const killedItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight === 7);
             const activeItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight !== 7);
-            drawBox(sortItems(killedItems), "已擊殺區間");
-            if (currentSort === 'time') { drawBox(sortItems(activeItems), "全域時間排序 (閒置置底)"); }
-            else if (currentSort === 'map') { drawBox(activeItems.sort((a,b) => getBossStatus(b[1], b[0]).mapLv - getBossStatus(a[1], a[0]).mapLv || a[1].ch - b[1].ch), "全域地圖等級排序"); }
-            else {
-                const stages = [], timersList = [], idleList = [];
-                activeItems.forEach(([id, b]) => { const st = getBossStatus(b, id); if (st.isGrey) idleList.push([id, b]); else if (b.targetTime > 0) timersList.push([id, b]); else stages.push([id, b]); });
-                drawBox(sortItems(stages), "階段追蹤區"); drawBox(timersList.sort((a,b)=>a[1].targetTime - b[1].targetTime), "重生計時區"); drawBox(idleList, "超時閒置區");
-            }
-        }
+            if (currentSort === 'time') {
+    // 時間排序維持現狀：區分已擊殺與活躍中
+    const killedItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight === 7);
+    const activeItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight !== 7);
+    drawBox(sortItems(killedItems), "已擊殺區間");
+    drawBox(sortItems(activeItems), "全域時間排序 (閒置置底)");
+} 
+else if (currentSort === 'map') {
+    // 地圖排序：不獨立區分「已擊殺」，全部放在一起依照等級排
+    // 排序規則：地圖等級(大->小) > 分流(小->大)
+    const allForMap = otherItems.sort((a, b) => {
+        const stA = getBossStatus(a[1], a[0]);
+        const stB = getBossStatus(b[1], b[0]);
+        return stB.mapLv - stA.mapLv || a[1].ch - b[1].ch;
+    });
+    drawBox(allForMap, "全域地圖等級排序 (含已擊殺)");
+} 
+else {
+    // 分組排序邏輯保持不變...
+    const killedItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight === 7);
+    const activeItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight !== 7);
+    drawBox(sortItems(killedItems), "已擊殺區間");
+    const stages = [], timersList = [], idleList = [];
+    activeItems.forEach(([id, b]) => { 
+        const st = getBossStatus(b, id); 
+        if (st.isGrey) idleList.push([id, b]); 
+        else if (b.targetTime > 0) timersList.push([id, b]); 
+        else stages.push([id, b]); 
+    });
+    drawBox(sortItems(stages), "階段追蹤區"); 
+    drawBox(timersList.sort((a,b)=>a[1].targetTime - b[1].targetTime), "重生計時區"); 
+    drawBox(idleList, "超時閒置區");
+}
 
         function startTimer(id, b, isGrey, statusColor) {
             const up = () => {
