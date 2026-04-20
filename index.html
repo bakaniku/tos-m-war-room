@@ -595,7 +595,7 @@ function renderList() {
                 <button class="del" onclick="handleDelClick('${id}')">×</button>
                 <div class="card-title-row">
                     <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3>
-                    ${maxHtml}
+                    ${b.isMax ? '<span class="max-badge">MAX</span>' : ''}
                 </div>
                 <div class="timer-container">
                     <div class="stage-row" id="sr_${id}">
@@ -607,6 +607,7 @@ function renderList() {
                 <div class="card-actions">
                     <button class="pin-btn ${st.pinned ? 'pinned' : ''}" onclick="togglePin('${id}')">★</button>
                     ${callHtml}
+                    ${maxHtml}
                     ${b.updater ? `<span class="updater-txt">${b.updater}</span>` : ''}
                 </div>
             `;
@@ -669,7 +670,7 @@ function startTimer(id, b, isGrey, statusColor) {
         const elapsedEl = document.getElementById(`e_${id}`);
         if (!stageEl) return;
         const now = Date.now();
-        const maxBadge = b.isMax ? `<span class="max-badge">MAX</span>` : '';
+        const maxBadge = ''; // MAX badge 已移至標題列，此處不再顯示
 
         if (b.targetTime > 0) {
             // 倒數計時：stage-label 顯示倒數，elapsed-row 顯示結束現實時間
