@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.4.8</title>
+    <title>TOS M FB TIME v1.4.9</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -39,7 +39,23 @@
         .input-hint.warning { color: #f33; font-weight: bold; }
         .sort-row { margin: 10px 0; display: flex; gap: 8px; flex-wrap: wrap; }
         .grid-section { margin-bottom: 30px; }
-        .section-label { color: #555; font-size: 11px; border-left: 2px solid #333; padding-left: 8px; text-transform: uppercase; margin-bottom: 10px; }
+        .section-label {
+            color: #555; font-size: 11px; border-left: 2px solid #333;
+            padding-left: 8px; text-transform: uppercase; margin-bottom: 10px;
+        }
+        /* 可收縮的 section-label */
+        .section-label.collapsible {
+            cursor: pointer; user-select: none;
+            display: flex; align-items: center; gap: 6px;
+            border-left-color: #444;
+        }
+        .section-label.collapsible:hover { color: #888; border-left-color: #666; }
+        .section-label.collapsible .collapse-arrow {
+            font-size: 9px; transition: transform 0.2s; display: inline-block;
+        }
+        .section-label.collapsible.collapsed .collapse-arrow { transform: rotate(-90deg); }
+        .collapsible-body { overflow: hidden; transition: max-height 0.25s ease, opacity 0.2s ease; }
+        .collapsible-body.collapsed { max-height: 0 !important; opacity: 0; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
         /* ═══ 卡片：flex column，高度由內容決定 ═══ */
         .card {
@@ -70,8 +86,8 @@
         .timer-sub { font-size: 13px; opacity: 0.8; }
         .flash-anim { animation: flash 0.5s step-end 10; }
         @keyframes flash { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
-        /* NEXT/KILL 按鈕 */
-        .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-block; margin-top: 6px; border: 2px solid; align-self: flex-start; }
+        /* NEXT/KILL 按鈕：在計時器上方，margin-bottom 留間距 */
+        .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-block; margin-bottom: 5px; border: 2px solid; align-self: flex-start; }
         .btn-next:disabled { opacity: 0.3; cursor: not-allowed; filter: grayscale(0.5); }
         /* 底部 actions 列 */
         .card-actions {
@@ -108,9 +124,9 @@
             cursor: pointer; padding: 0; font-size: 12px; color: #777;
             transition: 0.2s; flex-shrink: 0;
         }
-        /* 無號召時：紅色待機樣式（預示下一個是優先） */
+        /* 無號召時：無彩色低調樣式 */
         .call-btn.idle {
-            border-color: #882200; background: #1a0800; color: #882200;
+            border-color: #444; background: #1a1a1a; color: #555;
         }
         .call-btn.priority-1 {
             border-color: #ff3300; background: #300800;
@@ -184,7 +200,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.4.8</div>
+        <div class="ver-info">v1.4.9</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10" oninput="this.value=this.value.replace('#','')">
             <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
@@ -207,6 +223,7 @@
                     <button id="onSfxBtn" title="ON 重生音效" class="audio-btn" onclick="toggleOnSfx()">📢</button>
                     <button id="r4SfxBtn" title="階段4音效" class="audio-btn" onclick="toggleR4Sfx()">🛡️</button>
                     <button id="warnBtn" class="audio-btn" onclick="toggleWarn()">⚠️</button>
+                    <button id="pinAlertBtn" class="audio-btn" onclick="togglePinAlert()" title="置頂提醒：開啟後語音/閃爍只提醒置頂卡片">📌</button>
                     <button id="colorModeBtn" class="audio-btn active" onclick="toggleColorMode()">🎨</button>
                     <span class="chat-wrap" style="position:relative;">
                         <button id="chatBtn" class="audio-btn active" onclick="toggleChat()">💬</button>
@@ -216,7 +233,7 @@
                 </div>
             </div>
             <div class="room-info">
-                <span class="version-tag">v1.4.8</span>
+                <span class="version-tag">v1.4.9</span>
                 <button class="btn-danger" id="clearAllBtn" onclick="clearAllBosses()" style="display:none;">一鍵清除</button>
                 <button style="background:none;color:#444;" onclick="location.reload()">退出</button>
             </div>
@@ -282,14 +299,16 @@ const db = firebase.database();
 /* ════════ 全域狀態 ════════ */
 let currentRoom = '', timers = {}, currentSort = 'time';
 let isVoiceEnabled = false, isOnSfxEnabled = false, isR4SfxEnabled = false;
-let myName = 'No Name', showWarningIcon = false, colorMode = 1;
+let myName = 'No Name', showWarningIcon = false, colorMode = 1, pinAlertMode = false;
 let audioCtx = null, chatMode = 'full', lastReadMsgTime = 0;
 window.currentData = {};
 let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
 let lastProcessedInput = {};
 const protectedRooms = { 'GABIJA':'faker','000000':'tosm','ZEMYNA':'earth0407','SAULE':'apple','ASRINE':'lostu' };
-const currentVersion = "1.4.8";
+const currentVersion = "1.4.9";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
+// 擊殺區收縮狀態（每次進房預設收縮）
+let killedSectionCollapsed = true;
 
 /* ════════ 權限 ════════ */
 function hasAuth() {
@@ -424,6 +443,7 @@ function toggleOnSfx()     { isOnSfxEnabled=!isOnSfxEnabled;   document.getEleme
 function toggleR4Sfx()     { isR4SfxEnabled=!isR4SfxEnabled;   document.getElementById('r4SfxBtn').classList.toggle('active',isR4SfxEnabled);   unlockAudio(); if(isR4SfxEnabled) playDing(440); }
 function toggleWarn()      { showWarningIcon=!showWarningIcon;  document.getElementById('warnBtn').classList.toggle('active',showWarningIcon);   renderList(); }
 function toggleColorMode() { colorMode=colorMode===1?2:1; document.getElementById('colorModeBtn').innerText=colorMode===1?'🎨':'🖌️'; renderList(); }
+function togglePinAlert()  { pinAlertMode=!pinAlertMode; document.getElementById('pinAlertBtn').classList.toggle('active',pinAlertMode); }
 
 function toggleChat() {
     const panel = document.getElementById('chatPanel');
@@ -490,11 +510,26 @@ function renderList() {
     const clearBtn = document.getElementById('clearAllBtn');
     if (clearBtn) clearBtn.style.display = auth ? 'block' : 'none';
 
-    const drawBox = (items, label) => {
+    // collapsible: 傳 true 表示此 section 可收縮（擊殺區專用）
+    const drawBox = (items, label, collapsible = false) => {
         if (!items.length) return;
         const sec = document.createElement('div');
         sec.className = 'grid-section';
-        sec.innerHTML = `<div class="section-label">${label}</div><div class="grid"></div>`;
+
+        if (collapsible) {
+            const isCollapsed = killedSectionCollapsed;
+            sec.innerHTML = `
+                <div class="section-label collapsible ${isCollapsed ? 'collapsed' : ''}" onclick="toggleKilledSection(this)">
+                    <span class="collapse-arrow">▼</span>
+                    ${label} <span style="color:#444;font-size:10px;">(${items.length})</span>
+                </div>
+                <div class="collapsible-body ${isCollapsed ? 'collapsed' : ''}" style="max-height:${isCollapsed ? '0' : '2000px'}">
+                    <div class="grid"></div>
+                </div>`;
+        } else {
+            sec.innerHTML = `<div class="section-label">${label}</div><div class="grid"></div>`;
+        }
+
         area.appendChild(sec);
         const grid = sec.querySelector('.grid');
 
@@ -545,8 +580,8 @@ function renderList() {
                     <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3>
                 </div>
                 <div class="timer-container">
-                    <div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color:${st.isGrey ? '#555' : st.color}">...</div>
                     ${nextHtml}
+                    <div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color:${st.isGrey ? '#555' : st.color}">...</div>
                 </div>
                 <div class="card-actions">
                     <button class="pin-btn ${st.pinned ? 'pinned' : ''}" onclick="togglePin('${id}')">★</button>
@@ -567,7 +602,7 @@ function renderList() {
     if (currentSort === 'time') {
         const killed = otherItems.filter(i => getBossStatus(i[1],i[0]).weight === 7);
         const active = otherItems.filter(i => getBossStatus(i[1],i[0]).weight !== 7);
-        drawBox(sortItems(killed), "已擊殺區間");
+        drawBox(sortItems(killed), "已擊殺區間", true);
         drawBox(sortItems(active), "全域時間排序 (閒置置底)");
     } else if (currentSort === 'map') {
         const allForMap = otherItems.sort((a, b) => {
@@ -578,7 +613,7 @@ function renderList() {
     } else {
         const killed = otherItems.filter(i => getBossStatus(i[1],i[0]).weight === 7);
         const active = otherItems.filter(i => getBossStatus(i[1],i[0]).weight !== 7);
-        drawBox(sortItems(killed), "已擊殺區間");
+        drawBox(sortItems(killed), "已擊殺區間", true);
         const stages = [], timersList = [], idleList = [];
         active.forEach(([id, b]) => {
             const st = getBossStatus(b, id);
@@ -592,7 +627,21 @@ function renderList() {
     }
 }
 
-/* ════════ 計時器（含 MAX badge、結束現實時間） ════════ */
+/* ════════ 擊殺區展開/收縮 ════════ */
+function toggleKilledSection(labelEl) {
+    killedSectionCollapsed = !killedSectionCollapsed;
+    labelEl.classList.toggle('collapsed', killedSectionCollapsed);
+    const body = labelEl.nextElementSibling;
+    if (killedSectionCollapsed) {
+        body.style.maxHeight = '0';
+        body.classList.add('collapsed');
+    } else {
+        body.style.maxHeight = '2000px';
+        body.classList.remove('collapsed');
+    }
+}
+
+
 function startTimer(id, b, isGrey, statusColor) {
     const up = () => {
         const el = document.getElementById(`t_${id}`);
@@ -856,10 +905,15 @@ function startSession(id) {
             Object.keys(incoming).forEach(k => {
                 const b = incoming[k], v = b.lastInput.toString().toUpperCase();
                 if (v !== lastProcessedInput[k] && b.isFlash) {
-                    if (v === "ON") { if (isOnSfxEnabled) playDing(880); speak(`${b.map}分流${b.ch}重生`); }
-                    else if (v.startsWith("R")) {
-                        const n = parseFloat(v.substring(1)) || 0;
-                        if (n >= 4.0) { if (isR4SfxEnabled) playDing(440); speak(`${b.map}分流${b.ch}階段${n}`); }
+                    // 置頂提醒模式：只有置頂卡片才觸發語音/音效
+                    const isPinned = !!localPinned[`${currentRoom}_${k}`];
+                    const shouldAlert = !pinAlertMode || isPinned;
+                    if (shouldAlert) {
+                        if (v === "ON") { if (isOnSfxEnabled) playDing(880); speak(`${b.map}分流${b.ch}重生`); }
+                        else if (v.startsWith("R")) {
+                            const n = parseFloat(v.substring(1)) || 0;
+                            if (n >= 4.0) { if (isR4SfxEnabled) playDing(440); speak(`${b.map}分流${b.ch}階段${n}`); }
+                        }
                     }
                 }
                 lastProcessedInput[k] = v;
