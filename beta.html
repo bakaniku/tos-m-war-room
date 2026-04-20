@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.4.7</title>
+    <title>TOS M FB TIME v1.4.8</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -41,12 +41,18 @@
         .grid-section { margin-bottom: 30px; }
         .section-label { color: #555; font-size: 11px; border-left: 2px solid #333; padding-left: 8px; text-transform: uppercase; margin-bottom: 10px; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
-        /* ═══ 卡片：flex column，底部 actions 固定最下方 ═══ */
+        /* ═══ 卡片：flex column，高度由內容決定 ═══ */
         .card {
-            background: #111; padding: 12px 12px 10px; border-radius: 8px;
+            background: #111; padding: 12px 12px 8px; border-radius: 8px;
             position: relative; border: 1px solid #222;
-            display: flex; flex-direction: column; min-height: 130px;
+            display: flex; flex-direction: column;
         }
+        /* 無 NEXT/KILL 的卡片（計時中、已擊殺）：上下 padding 縮小，更緊緻 */
+        .card.compact {
+            padding: 8px 12px 6px;
+        }
+        .card.compact .timer-container { margin-top: 4px; }
+        .card.compact .card-actions { margin-top: 5px; padding-top: 5px; }
         .card-title-row { display: flex; align-items: center; gap: 0; margin-bottom: 0; }
         /* 地圖-分流：不再塞按鈕，文字可以完整顯示 */
         .card h3 {
@@ -66,10 +72,11 @@
         @keyframes flash { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
         /* NEXT/KILL 按鈕 */
         .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-block; margin-top: 6px; border: 2px solid; align-self: flex-start; }
-        /* 底部 actions 列：★ 📢 M 固定在最下方 */
+        .btn-next:disabled { opacity: 0.3; cursor: not-allowed; filter: grayscale(0.5); }
+        /* 底部 actions 列 */
         .card-actions {
             display: flex; align-items: center; gap: 6px;
-            margin-top: auto; padding-top: 8px;
+            margin-top: 8px; padding-top: 6px;
             border-top: 1px solid #1a1a1a;
         }
         .card-actions .updater-txt {
@@ -177,7 +184,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.4.7</div>
+        <div class="ver-info">v1.4.8</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10" oninput="this.value=this.value.replace('#','')">
             <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
@@ -209,7 +216,7 @@
                 </div>
             </div>
             <div class="room-info">
-                <span class="version-tag">v1.4.7</span>
+                <span class="version-tag">v1.4.8</span>
                 <button class="btn-danger" id="clearAllBtn" onclick="clearAllBosses()" style="display:none;">一鍵清除</button>
                 <button style="background:none;color:#444;" onclick="location.reload()">退出</button>
             </div>
@@ -281,7 +288,7 @@ window.currentData = {};
 let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
 let lastProcessedInput = {};
 const protectedRooms = { 'GABIJA':'faker','000000':'tosm','ZEMYNA':'earth0407','SAULE':'apple','ASRINE':'lostu' };
-const currentVersion = "1.4.7";
+const currentVersion = "1.4.8";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 
 /* ════════ 權限 ════════ */
@@ -522,10 +529,15 @@ function renderList() {
             const maxTitle = b.isMax ? '取消滿員' : '標記滿員';
             const maxHtml  = `<button class="max-btn ${maxClass}" onclick="toggleMax('${id}')" title="${maxTitle}">M</button>`;
 
-            // ── NEXT/KILL 按鈕 ──
-            const nextHtml = (b.targetTime === 0 && st.weight !== 7)
-                ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color};border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')">${b.displayValue==='ON'?'KILL':'NEXT'}</button>`
+            // ── NEXT/KILL 按鈕：閃爍中鎖定，防止重複點擊 ──
+            const hasNext = (b.targetTime === 0 && st.weight !== 7);
+            const isLocked = !!b.isFlash;
+            const nextHtml = hasNext
+                ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color};border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')" ${isLocked ? 'disabled title="處理中，請稍候..."' : ''}>${b.displayValue==='ON'?'KILL':'NEXT'}</button>`
                 : '';
+
+            // 無 NEXT/KILL → 加 compact class，縮小 padding
+            if (!hasNext) cardClass += ' compact';
 
             card.innerHTML = `
                 <button class="del" onclick="handleDelClick('${id}')">×</button>
