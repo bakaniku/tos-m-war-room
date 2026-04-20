@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.4.9</title>
+    <title>TOS M FB TIME v1.5.0</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -31,9 +31,9 @@
         .vol-range { -webkit-appearance: none; width: 60px; height: 4px; background: #333; border-radius: 2px; outline: none; margin: 0 5px; background-image: linear-gradient(#0f0, #0f0); background-repeat: no-repeat; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: #0f0; border-radius: 50%; cursor: pointer; border: 2px solid #111; }
         .user-list-bar { font-size: 12px; color: #555; margin-bottom: 8px; border-bottom: 1px solid #222; padding-bottom: 8px; }
-        .info-bar { background: #111; border-radius: 6px; padding: 8px 12px; border: 1px solid #333; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; }
-        .info-icon { color: #0af; font-size: 14px; }
-        .info-text { font-size: 12px; color: #888; margin: 0; line-height: 1.4; }
+        .notice-bar { background: #111; border-radius: 6px; padding: 8px 12px; border: 1px solid #333; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; min-height: 36px; }
+        .notice-icon { color: #0af; font-size: 14px; flex-shrink: 0; }
+        .notice-text { font-size: 12px; color: #aaa; margin: 0; line-height: 1.4; flex: 1; white-space: pre-wrap; word-break: break-all; }
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; margin-bottom: 5px; font-size: 16px; color: #fff; padding: 8px 0; box-sizing: border-box; }
         .input-hint { font-size: 11px; color: #444; margin-bottom: 15px; transition: color 0.2s; }
         .input-hint.warning { color: #f33; font-weight: bold; }
@@ -77,17 +77,25 @@
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         .del { position: absolute; top: 6px; right: 6px; color: #333; background: none; border: none; font-size: 15px; cursor: pointer; padding: 4px; line-height: 1; }
-        /* 計時器區：baseline 對齊讓「階段X」大字與「(mm:ss)」小字基線齊 */
-        .timer-container { flex: 1; display: flex; flex-direction: column; justify-content: flex-start; margin-top: 6px; }
-        .timer {
-            font-size: 18px; font-weight: bold; font-family: monospace;
-            display: flex; align-items: baseline; gap: 3px; flex-wrap: wrap;
+        /* 計時器區 */
+        .timer-container { flex: 1; display: flex; flex-direction: column; justify-content: flex-start; margin-top: 6px; gap: 2px; }
+        /* 第一行：階段文字 + NEXT/KILL 按鈕同行 */
+        .stage-row { display: flex; align-items: baseline; gap: 6px; flex-wrap: nowrap; }
+        .stage-label {
+            font-size: 18px; font-weight: bold; font-family: sans-serif;
+            white-space: nowrap;
         }
-        .timer-sub { font-size: 13px; opacity: 0.8; }
-        .flash-anim { animation: flash 0.5s step-end 10; }
+        .stage-label.flash-anim { animation: flash 0.5s step-end 10; }
         @keyframes flash { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
-        /* NEXT/KILL 按鈕：在計時器上方，margin-bottom 留間距 */
-        .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-block; margin-bottom: 5px; border: 2px solid; align-self: flex-start; }
+        /* 第二行：(經過時間) 或倒數計時，數字用等寬 */
+        .elapsed-row {
+            font-size: 13px; font-family: monospace; opacity: 0.75;
+            display: flex; align-items: baseline; gap: 4px; min-height: 16px;
+        }
+        /* 倒數計時時 stage-label 改回 monospace（數字對齊） */
+        .stage-label.countdown { font-family: monospace; }
+        /* NEXT/KILL 按鈕：內嵌在 stage-row，緊貼階段文字 */
+        .btn-next { background: #000; font-size: 11px; font-weight: bold; padding: 3px 9px; border-radius: 5px; cursor: pointer; display: inline-block; border: 2px solid; flex-shrink: 0; vertical-align: baseline; }
         .btn-next:disabled { opacity: 0.3; cursor: not-allowed; filter: grayscale(0.5); }
         /* 底部 actions 列 */
         .card-actions {
@@ -200,7 +208,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.4.9</div>
+        <div class="ver-info">v1.5.0</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10" oninput="this.value=this.value.replace('#','')">
             <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
@@ -233,7 +241,7 @@
                 </div>
             </div>
             <div class="room-info">
-                <span class="version-tag">v1.4.9</span>
+                <span class="version-tag">v1.5.0</span>
                 <button class="btn-danger" id="clearAllBtn" onclick="clearAllBosses()" style="display:none;">一鍵清除</button>
                 <button style="background:none;color:#444;" onclick="location.reload()">退出</button>
             </div>
@@ -241,9 +249,17 @@
 
         <div class="user-list-bar">在線:<span id="onlineCount" style="color:#0f0;">0</span> | <span id="onlineUsers">載入中...</span></div>
 
-        <div class="info-bar">
-            <span class="info-icon">ℹ️</span>
-            <p class="info-text">亮紅光的地圖有空的可以優先去打，大家集中推圖速度快一些。</p>
+        <div id="noticeBar" class="notice-bar">
+            <span class="notice-icon">📢</span>
+            <span id="noticeText" class="notice-text">（尚無公告）</span>
+            <button id="noticeEditBtn" onclick="toggleNoticeEdit()" style="display:none; background:none; border:1px solid #444; color:#888; font-size:10px; padding:2px 7px; border-radius:4px; cursor:pointer; margin-left:auto; flex-shrink:0;">編輯</button>
+        </div>
+        <div id="noticeEditArea" style="display:none; background:#0d0d0d; border:1px solid #333; border-radius:6px; padding:8px 12px; margin-bottom:10px;">
+            <textarea id="noticeInput" maxlength="120" rows="2" style="width:100%; background:#000; border:1px solid #333; color:#fff; font-size:13px; padding:6px; border-radius:4px; resize:none; box-sizing:border-box; outline:none;"></textarea>
+            <div style="display:flex; gap:8px; margin-top:6px; justify-content:flex-end;">
+                <button onclick="saveNotice()" style="background:#0f0; color:#000; border:none; padding:4px 14px; border-radius:5px; font-weight:bold; cursor:pointer; font-size:12px;">儲存</button>
+                <button onclick="toggleNoticeEdit()" style="background:none; border:1px solid #444; color:#888; padding:4px 10px; border-radius:5px; cursor:pointer; font-size:12px;">取消</button>
+            </div>
         </div>
 
         <div id="chatPanel" class="chat-full">
@@ -305,7 +321,7 @@ window.currentData = {};
 let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
 let lastProcessedInput = {};
 const protectedRooms = { 'GABIJA':'faker','000000':'tosm','ZEMYNA':'earth0407','SAULE':'apple','ASRINE':'lostu' };
-const currentVersion = "1.4.9";
+const currentVersion = "1.5.0";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 // 擊殺區收縮狀態（每次進房預設收縮）
 let killedSectionCollapsed = true;
@@ -551,7 +567,7 @@ function renderList() {
                 // 有操作權限：顯示可點按鈕
                 // 無號召 → 暗紅色待機（idle），表示下一個會是優先
                 const callClass = cp === 1 ? 'priority-1' : cp === 2 ? 'priority-2' : 'idle';
-                const callIcon  = cp === 1 ? '🔴' : cp === 2 ? '🟠' : '🔴';
+                const callIcon  = cp === 1 ? '🔴' : cp === 2 ? '🟠' : '⬤';
                 const callTitle = cp > 0 ? '取消號召' : '發起號召';
                 callHtml = `<button class="call-btn ${callClass}" onclick="toggleCallHelp('${id}')" title="${callTitle}">${callIcon}</button>`;
             } else if (cp > 0) {
@@ -580,8 +596,11 @@ function renderList() {
                     <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3>
                 </div>
                 <div class="timer-container">
-                    ${nextHtml}
-                    <div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color:${st.isGrey ? '#555' : st.color}">...</div>
+                    <div class="stage-row" id="sr_${id}">
+                        <span class="stage-label" id="t_${id}" style="color:${st.isGrey ? '#555' : st.color}">...</span>
+                        ${nextHtml}
+                    </div>
+                    <div class="elapsed-row" id="e_${id}"></div>
                 </div>
                 <div class="card-actions">
                     <button class="pin-btn ${st.pinned ? 'pinned' : ''}" onclick="togglePin('${id}')">★</button>
@@ -642,23 +661,31 @@ function toggleKilledSection(labelEl) {
 }
 
 
+/* ════════ 計時器 ════════ */
 function startTimer(id, b, isGrey, statusColor) {
     const up = () => {
-        const el = document.getElementById(`t_${id}`);
-        if (!el) return;
+        const stageEl   = document.getElementById(`t_${id}`);
+        const elapsedEl = document.getElementById(`e_${id}`);
+        if (!stageEl) return;
         const now = Date.now();
         const maxBadge = b.isMax ? `<span class="max-badge">MAX</span>` : '';
 
         if (b.targetTime > 0) {
+            // 倒數計時：stage-label 顯示倒數，elapsed-row 顯示結束現實時間
             const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
-            // 現實結束時間（HH:MM）
-            const endDate = new Date(b.targetTime);
-            const endHH = endDate.getHours().toString().padStart(2, '0');
-            const endMM = endDate.getMinutes().toString().padStart(2, '0');
-            const endTimeStr = `<span style="font-size:11px;opacity:0.5;margin-left:5px;font-weight:normal;">${endHH}:${endMM}</span>`;
-            el.innerHTML = `${Math.floor(a/3600)}:${Math.floor((a%3600)/60).toString().padStart(2,'0')}:${(a%60).toString().padStart(2,'0')}${endTimeStr}${maxBadge}`;
-            if (!isGrey) el.style.color = d <= 0 ? '#ff3300' : '#00FF00';
+            const hh = Math.floor(a/3600), mm = Math.floor((a%3600)/60), ss = a%60;
+            stageEl.innerHTML = `${hh}:${mm.toString().padStart(2,'0')}:${ss.toString().padStart(2,'0')}${maxBadge}`;
+            stageEl.className = 'stage-label countdown';
+            if (!isGrey) stageEl.style.color = d <= 0 ? '#ff3300' : '#00FF00';
+            if (elapsedEl) {
+                const endDate = new Date(b.targetTime);
+                const eHH = endDate.getHours().toString().padStart(2,'0');
+                const eMM = endDate.getMinutes().toString().padStart(2,'0');
+                elapsedEl.innerHTML = `<span style="opacity:0.4;">${eHH}:${eMM}</span>`;
+                elapsedEl.style.color = '';
+            }
         } else {
+            // 階段/ON/已擊殺：stage-label 顯示狀態，elapsed-row 顯示經過時間
             const diff = Math.max(0, now - b.startTime);
             const m = Math.floor(diff / 60000);
             const s = Math.floor((diff % 60000) / 1000);
@@ -667,8 +694,13 @@ function startTimer(id, b, isGrey, statusColor) {
             const lv  = b.displayValue === "ON" ? 99 : (mat ? Math.floor(parseFloat(mat[0])) : 0);
             const isW = (lv < 2 && m >= 12) || (lv >= 2 && lv < 3 && m >= 7) ||
                         (lv >= 3 && lv < 4 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
-            el.innerHTML = `<span>${isK ? "已擊殺" : b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isGrey && !isK) ? '⚠️' : ''}${maxBadge}`;
-            if (!isGrey) el.style.color = statusColor;
+            stageEl.innerHTML = `${isK ? "已擊殺" : b.displayValue}${maxBadge}`;
+            stageEl.className = `stage-label${b.isFlash ? ' flash-anim' : ''}`;
+            if (!isGrey) stageEl.style.color = statusColor;
+            if (elapsedEl) {
+                elapsedEl.innerHTML = `(${m}:${s.toString().padStart(2,'0')})${(showWarningIcon && isW && !isGrey && !isK) ? ' ⚠️' : ''}`;
+                elapsedEl.style.color = isGrey ? '#444' : '#666';
+            }
         }
     };
     up();
@@ -924,7 +956,53 @@ function startSession(id) {
 
         initChat();
         initLogs();
+        initNotice();
     });
+}
+
+/* ════════ 管理者留言板 ════════ */
+function initNotice() {
+    // 顯示編輯按鈕（僅管理員）
+    if (hasAuth()) {
+        const btn = document.getElementById('noticeEditBtn');
+        if (btn) btn.style.display = 'inline-block';
+    }
+    // 監聽公告變動
+    db.ref(`rooms/${currentRoom}/notice`).on('value', s => {
+        const text = s.val() || '';
+        const el = document.getElementById('noticeText');
+        if (el) {
+            el.textContent = text || '（尚無公告）';
+            el.style.color = text ? '#ccc' : '#555';
+        }
+        // 同步到編輯框
+        const input = document.getElementById('noticeInput');
+        if (input && document.getElementById('noticeEditArea').style.display === 'none') {
+            input.value = text;
+        }
+    });
+}
+
+function toggleNoticeEdit() {
+    const area = document.getElementById('noticeEditArea');
+    const isOpen = area.style.display !== 'none';
+    if (!isOpen) {
+        // 開啟時同步當前公告內容到 textarea
+        const current = document.getElementById('noticeText').textContent;
+        const input = document.getElementById('noticeInput');
+        input.value = (current === '（尚無公告）') ? '' : current;
+        area.style.display = 'block';
+        input.focus();
+    } else {
+        area.style.display = 'none';
+    }
+}
+
+function saveNotice() {
+    if (!hasAuth()) { alert("只有管理員可以編輯公告。"); return; }
+    const text = document.getElementById('noticeInput').value.trim();
+    db.ref(`rooms/${currentRoom}/notice`).set(text);
+    document.getElementById('noticeEditArea').style.display = 'none';
 }
 
 /* ════════ 其他功能 ════════ */
