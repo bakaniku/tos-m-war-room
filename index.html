@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.4.5</title>
+    <title>TOS M FB TIME v1.5.0</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -31,30 +31,86 @@
         .vol-range { -webkit-appearance: none; width: 60px; height: 4px; background: #333; border-radius: 2px; outline: none; margin: 0 5px; background-image: linear-gradient(#0f0, #0f0); background-repeat: no-repeat; }
         .vol-range::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; background: #0f0; border-radius: 50%; cursor: pointer; border: 2px solid #111; }
         .user-list-bar { font-size: 12px; color: #555; margin-bottom: 8px; border-bottom: 1px solid #222; padding-bottom: 8px; }
-        .info-bar { background: #111; border-radius: 6px; padding: 8px 12px; border: 1px solid #333; margin-bottom: 15px; display: flex; align-items: center; gap: 8px; }
-        .info-icon { color: #0af; font-size: 14px; }
-        .info-text { font-size: 12px; color: #888; margin: 0; line-height: 1.4; }
+        .notice-bar { background: #111; border-radius: 6px; padding: 8px 12px; border: 1px solid #333; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; min-height: 36px; }
+        .notice-icon { color: #0af; font-size: 14px; flex-shrink: 0; }
+        .notice-text { font-size: 12px; color: #aaa; margin: 0; line-height: 1.4; flex: 1; white-space: pre-wrap; word-break: break-all; }
         .main-input { width: 100%; text-align: left; border: none; border-bottom: 2px solid #0f0; background: #050505; margin-bottom: 5px; font-size: 16px; color: #fff; padding: 8px 0; box-sizing: border-box; }
         .input-hint { font-size: 11px; color: #444; margin-bottom: 15px; transition: color 0.2s; }
         .input-hint.warning { color: #f33; font-weight: bold; }
         .sort-row { margin: 10px 0; display: flex; gap: 8px; flex-wrap: wrap; }
         .grid-section { margin-bottom: 30px; }
-        .section-label { color: #555; font-size: 11px; border-left: 2px solid #333; padding-left: 8px; text-transform: uppercase; margin-bottom: 10px; }
+        .section-label {
+            color: #555; font-size: 11px; border-left: 2px solid #333;
+            padding-left: 8px; text-transform: uppercase; margin-bottom: 10px;
+        }
+        /* 可收縮的 section-label */
+        .section-label.collapsible {
+            cursor: pointer; user-select: none;
+            display: flex; align-items: center; gap: 6px;
+            border-left-color: #444;
+        }
+        .section-label.collapsible:hover { color: #888; border-left-color: #666; }
+        .section-label.collapsible .collapse-arrow {
+            font-size: 9px; transition: transform 0.2s; display: inline-block;
+        }
+        .section-label.collapsible.collapsed .collapse-arrow { transform: rotate(-90deg); }
+        .collapsible-body { overflow: hidden; transition: max-height 0.25s ease, opacity 0.2s ease; }
+        .collapsible-body.collapsed { max-height: 0 !important; opacity: 0; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
-        .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
-        .card-title-row { display: flex; align-items: center; gap: 8px; margin-bottom: 0; }
-        .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; border-bottom: 1px dashed #444; line-height: 1.2; }
-        .pin-btn { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid #444; background: #1a1a1a; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; font-size: 12px; color: #666; transition: 0.2s; flex-shrink: 0; }
-        .pin-btn.pinned { border-color: #ffca28; background: #2a2200; color: #ffca28; box-shadow: 0 0 5px rgba(255, 202, 40, 0.3); }
-        .del { position: absolute; top: 8px; right: 8px; color: #444; background: none; border: none; font-size: 16px; cursor: pointer; padding: 5px; line-height: 1; }
-        .timer { font-size: 18px; font-weight: bold; margin-top: 8px; font-family: monospace; display: flex; align-items: center; }
-        .timer-sub { font-size: 14px; margin-left: 4px; opacity: 0.8; }
-        .flash-anim { animation: flash 0.5s step-end 10; }
-        @keyframes flash { 0%, 100% { opacity: 1; color: #fff; } 50% { opacity: 0.3; } }
-        .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-block; margin-top: 8px; border: 2px solid; }
+        /* ═══ 卡片：flex column，高度由內容決定 ═══ */
+        .card {
+            background: #111; padding: 12px 12px 8px; border-radius: 8px;
+            position: relative; border: 1px solid #222;
+            display: flex; flex-direction: column;
+        }
+        /* 無 NEXT/KILL 的卡片（計時中、已擊殺）：上下 padding 縮小，更緊緻 */
+        .card.compact {
+            padding: 8px 12px 6px;
+        }
+        .card.compact .timer-container { margin-top: 4px; }
+        .card.compact .card-actions { margin-top: 5px; padding-top: 5px; }
+        .card-title-row { display: flex; align-items: center; gap: 0; margin-bottom: 0; }
+        /* 地圖-分流：不再塞按鈕，文字可以完整顯示 */
+        .card h3 {
+            margin: 0; color: #aaa; font-size: 15px; font-weight: bold;
+            cursor: pointer; border-bottom: 1px dashed #333; line-height: 1.3;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .del { position: absolute; top: 6px; right: 6px; color: #333; background: none; border: none; font-size: 15px; cursor: pointer; padding: 4px; line-height: 1; }
+        /* 計時器區 */
+        .timer-container { flex: 1; display: flex; flex-direction: column; justify-content: flex-start; margin-top: 6px; gap: 2px; }
+        /* 第一行：階段文字 + NEXT/KILL 按鈕同行 */
+        .stage-row { display: flex; align-items: baseline; gap: 6px; flex-wrap: nowrap; }
+        .stage-label {
+            font-size: 18px; font-weight: bold; font-family: sans-serif;
+            white-space: nowrap;
+        }
+        .stage-label.flash-anim { animation: flash 0.5s step-end 10; }
+        @keyframes flash { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
+        /* 第二行：(經過時間) 或倒數計時，數字用等寬 */
+        .elapsed-row {
+            font-size: 13px; font-family: monospace; opacity: 0.75;
+            display: flex; align-items: baseline; gap: 4px; min-height: 16px;
+        }
+        /* 倒數計時時 stage-label 改回 monospace（數字對齊） */
+        .stage-label.countdown { font-family: monospace; }
+        /* NEXT/KILL 按鈕：內嵌在 stage-row，緊貼階段文字 */
+        .btn-next { background: #000; font-size: 11px; font-weight: bold; padding: 3px 9px; border-radius: 5px; cursor: pointer; display: inline-block; border: 2px solid; flex-shrink: 0; vertical-align: baseline; }
+        .btn-next:disabled { opacity: 0.3; cursor: not-allowed; filter: grayscale(0.5); }
+        /* 底部 actions 列 */
+        .card-actions {
+            display: flex; align-items: center; gap: 6px;
+            margin-top: 8px; padding-top: 6px;
+            border-top: 1px solid #1a1a1a;
+        }
+        .card-actions .updater-txt {
+            margin-left: auto; font-size: 10px; color: #333; white-space: nowrap;
+        }
+        .pin-btn { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid #444; background: #1a1a1a; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; font-size: 11px; color: #666; transition: 0.2s; flex-shrink: 0; }
+        .pin-btn.pinned { border-color: #ffca28; background: #2a2200; color: #ffca28; box-shadow: 0 0 5px rgba(255,202,40,0.3); }
         #chatPanel { margin-bottom: 15px; background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 10px; overflow: hidden; transition: all 0.3s ease; }
         #chatPanel.chat-hidden { display: none; }
-        .chat-msgs { overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; transition: height 0.3s ease; }
+        .chat-msgs { overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
         #chatPanel.chat-mini .chat-msgs { height: 50px; }
         #chatPanel.chat-full .chat-msgs { height: 150px; }
         .msg-row { display: flex; gap: 8px; align-items: center; }
@@ -67,23 +123,76 @@
         .chat-dot { position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; background: #f00; border-radius: 50%; display: none; }
         .chat-dot.show { display: block; }
         .version-tag { font-size: 10px; color: #333; margin-right: 10px; }
-        .call-btn { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid #444; background: #1a1a1a; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; font-size: 12px; color: #666; transition: 0.2s; flex-shrink: 0; }
-        .call-btn.active { border-color: #ff3300; background: #400; color: #ff3300; box-shadow: 0 0 8px rgba(255, 51, 0, 0.5); }
-        .card.calling { border: 2px solid #ff3300 !important; animation: call-pulse 1.5s infinite; }
-        @keyframes call-pulse { 0% { box-shadow: 0 0 5px #ff3300; } 50% { box-shadow: 0 0 20px #ff3300; background: #200; } 100% { box-shadow: 0 0 5px #ff3300; } }
-        
-        .top-editor {
-            display: inline-block;
-            padding: 0 4px;
-            border-radius: 4px;
-            animation: editor-glow 2s infinite;
-            font-weight: bold !important;
+
+        /* ═══ 號召按鈕 ═══ */
+        .call-btn {
+            width: 20px; height: 20px; border-radius: 50%;
+            border: 1.5px solid #555; background: #1a1a1a;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; padding: 0; font-size: 12px; color: #777;
+            transition: 0.2s; flex-shrink: 0;
+        }
+        /* 無號召時：無彩色低調樣式 */
+        .call-btn.idle {
+            border-color: #444; background: #1a1a1a; color: #555;
+        }
+        .call-btn.priority-1 {
+            border-color: #ff3300; background: #300800;
+            color: #ff3300; box-shadow: 0 0 7px rgba(255,51,0,0.6);
+        }
+        .call-btn.priority-2 {
+            border-color: #ff8800; background: #301a00;
+            color: #ff8800; box-shadow: 0 0 7px rgba(255,136,0,0.6);
+        }
+        /* 非管理員只能看的號召圖示（span） */
+        .call-indicator { font-size: 13px; flex-shrink: 0; line-height: 1; }
+
+        /* ═══ MAX 按鈕 ═══ */
+        .max-btn {
+            width: 20px; height: 20px; border-radius: 50%;
+            border: 1.5px solid #444; background: #1a1a1a;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; padding: 0;
+            font-size: 10px; font-weight: 900; font-family: sans-serif;
+            color: #555; transition: 0.2s; flex-shrink: 0;
+        }
+        .max-btn.maxed {
+            border-color: #00aaff; background: #00243a;
+            color: #00aaff; box-shadow: 0 0 7px rgba(0,170,255,0.6);
         }
 
+        /* ═══ MAX バッジ（計時器行內） ═══ */
+        .max-badge {
+            display: inline-block; font-size: 10px; font-weight: 900;
+            color: #00aaff; background: #00243a;
+            border: 1px solid #00aaff; border-radius: 4px;
+            padding: 0 4px; vertical-align: middle;
+            animation: max-pulse 2s infinite;
+        }
+        @keyframes max-pulse {
+            0%,100%{ opacity:1; box-shadow:0 0 4px rgba(0,170,255,0.4); }
+            50%{ opacity:0.75; box-shadow:0 0 10px rgba(0,170,255,0.9); }
+        }
+
+        /* ═══ 號召卡片邊框 ═══ */
+        .card.calling-1 { border: 2px solid #ff3300 !important; animation: cpulse1 1.5s infinite; }
+        .card.calling-2 { border: 2px solid #ff8800 !important; animation: cpulse2 1.5s infinite; }
+        @keyframes cpulse1 {
+            0%  { box-shadow:0 0 5px #ff3300; }
+            50% { box-shadow:0 0 20px #ff3300; background:#1e0000; }
+            100%{ box-shadow:0 0 5px #ff3300; }
+        }
+        @keyframes cpulse2 {
+            0%  { box-shadow:0 0 5px #ff8800; }
+            50% { box-shadow:0 0 20px #ff8800; background:#1e0e00; }
+            100%{ box-shadow:0 0 5px #ff8800; }
+        }
+
+        .top-editor { display:inline-block; padding:0 4px; border-radius:4px; animation:editor-glow 2s infinite; font-weight:bold!important; }
         @keyframes editor-glow {
-            0% { box-shadow: 0 0 2px #fff; text-shadow: 0 0 2px #fff; }
-            50% { box-shadow: 0 0 10px #ffca28; text-shadow: 0 0 5px #ffca28; background: rgba(255, 202, 40, 0.1); }
-            100% { box-shadow: 0 0 2px #fff; text-shadow: 0 0 2px #fff; }
+            0%  { box-shadow:0 0 2px #fff; text-shadow:0 0 2px #fff; }
+            50% { box-shadow:0 0 10px #ffca28; text-shadow:0 0 5px #ffca28; background:rgba(255,202,40,0.1); }
+            100%{ box-shadow:0 0 2px #fff; text-shadow:0 0 2px #fff; }
         }
 
         #logModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:9999; justify-content:center; align-items:center; }
@@ -96,597 +205,861 @@
     </style>
 </head>
 <body>
-    <div id="app">
-        <div id="loginView" class="login-view">
-            <div class="title">TOS M FB TIME</div>
-            <div class="ver-info">v1.4.5</div>
-            <div class="input-group">
-                <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10" oninput="this.value=this.value.replace('#','')">
-                <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
-                <input type="text" id="roomInput" placeholder="輸入房號" maxlength="6">
-                <button class="btn-solid" onclick="joinRoom()">進入房間</button>
-            </div>
-        </div>
-
-        <div id="mainView" style="display:none;">
-            <div class="header">
-                <div class="room-info">
-                    <span class="room-id" id="displayID"></span>
-                    <svg class="copy-icon" onclick="copyRoomID()" viewBox="0 0 24 24" fill="none" stroke="#0f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                    <div class="audio-controls">
-                        <button id="voiceBtn" class="audio-btn" onclick="toggleVoice()">🔊</button>
-                        <input type="range" id="volRange" class="vol-range" min="0" max="1" step="0.01" value="0.5" oninput="updateVolBg(this)">
-                        <button id="onSfxBtn" title="ON 重生音效" class="audio-btn" onclick="toggleOnSfx()">📢</button>
-                        <button id="r4SfxBtn" title="階段4音效" class="audio-btn" onclick="toggleR4Sfx()">🛡️</button>
-                        <button id="warnBtn" class="audio-btn active" onclick="toggleWarn()">⚠️</button>
-                        <button id="colorModeBtn" class="audio-btn active" onclick="toggleColorMode()">🎨</button>
-                        <span class="chat-wrap" style="position:relative;">
-                            <button id="chatBtn" class="audio-btn active" onclick="toggleChat()">💬</button>
-                            <span id="chatDot" class="chat-dot"></span>
-                            <button id="logBtn" title="切換紀錄顯示" class="audio-btn active" onclick="cycleLogMode()">📜 <span id="logBtnText" style="font-size:10px;">5</span></button>
-                        </span>
-                    </div>
-                </div>
-                <div class="room-info">
-                    <span class="version-tag">v1.4.5</span>
-                    <button class="btn-danger" id="clearAllBtn" onclick="clearAllBosses()" style="display:none;">一鍵清除</button>
-                    <button style="background:none; color:#444;" onclick="location.reload()">退出</button>
-                </div>
-            </div>
-
-            <div class="user-list-bar">在線:<span id="onlineCount" style="color:#0f0;">0</span> | <span id="onlineUsers">載入中...</span></div>
-
-            <div class="info-bar">
-                <span class="info-icon">ℹ️</span>
-                <p class="info-text">亮紅光的地圖有空的可以優先去打，大家集中推圖速度快一些。</p>
-            </div>
-
-            <div id="chatPanel" class="chat-full">
-                <div class="chat-msgs" id="chatMsgs"></div>
-                <div class="chat-input-row">
-                    <input type="text" id="chatInput" placeholder="輸入訊息…" maxlength="80">
-                    <button onclick="sendMsg()">送出</button>
-                </div>
-            </div>
-
-            <div class="sort-row">
-                <button id="sortTimeBtn" class="btn-toggle active" onclick="setSort('time')">時間排序</button>
-                <button id="sortGroupBtn" class="btn-toggle" onclick="setSort('group')">分組排序</button>
-                <button id="sortMapBtn" class="btn-toggle" onclick="setSort('map')">地圖排序</button>
-            </div>
-
-            <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 階段(R)/分鐘" oninput="checkDuplicate()">
-            <div class="input-hint" id="inputHint">範例：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 12:30 ｜ 80 3 ON</div>
-
-            <div id="logPanel" style="display:none; background:#0a0a0a; border:1px solid #1a1a1a; border-radius:10px; overflow:hidden; margin-bottom:15px;">
-                <div style="padding:8px 12px; font-size:12px; color:#0f0; background:#111; display:flex; justify-content:space-between; align-items:center;">
-                    <span>📜 最近編輯紀錄</span>
-                    <button onclick="viewFullLogs()" style="background:none; border:1px solid #444; color:#888; font-size:10px; padding:2px 6px; border-radius:4px; cursor:pointer;">查看完整 100 則</button>
-                </div>
-                <div id="logList" style="max-height:180px; overflow-y:auto; padding:10px; font-size:11px; line-height:1.6; font-family:monospace;"></div>
-            </div>
-
-            <div id="renderArea"></div>
+<div id="app">
+    <div id="loginView" class="login-view">
+        <div class="title">TOS M FB TIME</div>
+        <div class="ver-info">v1.5.0</div>
+        <div class="input-group">
+            <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10" oninput="this.value=this.value.replace('#','')">
+            <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
+            <input type="text" id="roomInput" placeholder="輸入房號" maxlength="6">
+            <button class="btn-solid" onclick="joinRoom()">進入房間</button>
         </div>
     </div>
 
-    <div id="logModal">
-        <div class="log-modal-box">
-            <div class="log-modal-header">
-                <span>📜 完整編輯紀錄（最近 100 則）</span>
-                <button class="log-modal-close" onclick="closeLogModal()">✕</button>
+    <div id="mainView" style="display:none;">
+        <div class="header">
+            <div class="room-info">
+                <span class="room-id" id="displayID"></span>
+                <svg class="copy-icon" onclick="copyRoomID()" viewBox="0 0 24 24" fill="none" stroke="#0f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                <div class="audio-controls">
+                    <button id="voiceBtn" class="audio-btn" onclick="toggleVoice()">🔊</button>
+                    <input type="range" id="volRange" class="vol-range" min="0" max="1" step="0.01" value="0.5" oninput="updateVolBg(this)">
+                    <button id="onSfxBtn" title="ON 重生音效" class="audio-btn" onclick="toggleOnSfx()">📢</button>
+                    <button id="r4SfxBtn" title="階段4音效" class="audio-btn" onclick="toggleR4Sfx()">🛡️</button>
+                    <button id="warnBtn" class="audio-btn" onclick="toggleWarn()">⚠️</button>
+                    <button id="pinAlertBtn" class="audio-btn" onclick="togglePinAlert()" title="置頂提醒：開啟後語音/閃爍只提醒置頂卡片">📌</button>
+                    <button id="colorModeBtn" class="audio-btn active" onclick="toggleColorMode()">🎨</button>
+                    <span class="chat-wrap" style="position:relative;">
+                        <button id="chatBtn" class="audio-btn active" onclick="toggleChat()">💬</button>
+                        <span id="chatDot" class="chat-dot"></span>
+                        <button id="logBtn" title="切換紀錄顯示" class="audio-btn active" onclick="cycleLogMode()">📜 <span id="logBtnText" style="font-size:10px;">3</span></button>
+                    </span>
+                </div>
             </div>
-            <div class="log-modal-body" id="logModalBody"></div>
+            <div class="room-info">
+                <span class="version-tag">v1.5.0</span>
+                <button class="btn-danger" id="clearAllBtn" onclick="clearAllBosses()" style="display:none;">一鍵清除</button>
+                <button style="background:none;color:#444;" onclick="location.reload()">退出</button>
+            </div>
         </div>
+
+        <div class="user-list-bar">在線:<span id="onlineCount" style="color:#0f0;">0</span> | <span id="onlineUsers">載入中...</span></div>
+
+        <div id="noticeBar" class="notice-bar">
+            <span class="notice-icon">📢</span>
+            <span id="noticeText" class="notice-text">（尚無公告）</span>
+            <button id="noticeEditBtn" onclick="toggleNoticeEdit()" style="display:none; background:none; border:1px solid #444; color:#888; font-size:10px; padding:2px 7px; border-radius:4px; cursor:pointer; margin-left:auto; flex-shrink:0;">編輯</button>
+        </div>
+        <div id="noticeEditArea" style="display:none; background:#0d0d0d; border:1px solid #333; border-radius:6px; padding:8px 12px; margin-bottom:10px;">
+            <textarea id="noticeInput" maxlength="120" rows="2" style="width:100%; background:#000; border:1px solid #333; color:#fff; font-size:13px; padding:6px; border-radius:4px; resize:none; box-sizing:border-box; outline:none;"></textarea>
+            <div style="display:flex; gap:8px; margin-top:6px; justify-content:flex-end;">
+                <button onclick="saveNotice()" style="background:#0f0; color:#000; border:none; padding:4px 14px; border-radius:5px; font-weight:bold; cursor:pointer; font-size:12px;">儲存</button>
+                <button onclick="toggleNoticeEdit()" style="background:none; border:1px solid #444; color:#888; padding:4px 10px; border-radius:5px; cursor:pointer; font-size:12px;">取消</button>
+            </div>
+        </div>
+
+        <div id="chatPanel" class="chat-full">
+            <div class="chat-msgs" id="chatMsgs"></div>
+            <div class="chat-input-row">
+                <input type="text" id="chatInput" placeholder="輸入訊息…" maxlength="80">
+                <button onclick="sendMsg()">送出</button>
+            </div>
+        </div>
+
+        <div class="sort-row">
+            <button id="sortTimeBtn" class="btn-toggle active" onclick="setSort('time')">時間排序</button>
+            <button id="sortGroupBtn" class="btn-toggle" onclick="setSort('group')">分組排序</button>
+            <button id="sortMapBtn" class="btn-toggle" onclick="setSort('map')">地圖排序</button>
+        </div>
+
+        <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 階段(R)/分鐘" oninput="checkDuplicate()">
+        <div class="input-hint" id="inputHint">範例：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 12:30 ｜ 80 3 ON</div>
+
+        <div id="logPanel" style="display:none; background:#0a0a0a; border:1px solid #1a1a1a; border-radius:10px; overflow:hidden; margin-bottom:15px;">
+            <div style="padding:8px 12px; font-size:12px; color:#0f0; background:#111; display:flex; justify-content:space-between; align-items:center;">
+                <span>📜 最近編輯紀錄</span>
+                <button onclick="viewFullLogs()" style="background:none;border:1px solid #444;color:#888;font-size:10px;padding:2px 6px;border-radius:4px;cursor:pointer;">查看完整 100 則</button>
+            </div>
+            <div id="logList" style="max-height:180px; overflow-y:auto; padding:10px; font-size:11px; line-height:1.6; font-family:monospace;"></div>
+        </div>
+
+        <div id="renderArea"></div>
     </div>
+</div>
 
-    <script>
-        const firebaseConfig = { apiKey: "AIzaSyAff__U1cLBr92gYmtbWpm80zO4rHvObUI", authDomain: "tos-m-fb.firebaseapp.com", databaseURL: "https://tos-m-fb-default-rtdb.asia-southeast1.firebasedatabase.app", projectId: "tos-m-fb" };
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
-        let currentRoom = '', timers = {}, currentSort = 'time', isVoiceEnabled = false;
-        let isOnSfxEnabled = false, isR4SfxEnabled = false;
-        let myName = 'No Name', showWarningIcon = true, colorMode = 1, audioCtx = null, chatMode = 'full', lastReadMsgTime = 0;
-        window.currentData = {};
-        let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
-        let lastProcessedInput = {};
-        const protectedRooms = { 'GABIJA': 'faker', '000000': 'tosm', 'ZEMYNA': 'earth0407', 'SAULE': 'apple', 'ASRINE': 'lostu' };
-        const currentVersion = "1.4.5";
+<div id="logModal">
+    <div class="log-modal-box">
+        <div class="log-modal-header">
+            <span>📜 完整編輯紀錄（最近 100 則）</span>
+            <button class="log-modal-close" onclick="closeLogModal()">✕</button>
+        </div>
+        <div class="log-modal-body" id="logModalBody"></div>
+    </div>
+</div>
 
-        let contributorCounts = {};
-        let contributorMax = 1;
-        let currentOnlineUsers = [];
+<script>
+/* ════════ Firebase ════════ */
+const firebaseConfig = {
+    apiKey: "AIzaSyAff__U1cLBr92gYmtbWpm80zO4rHvObUI",
+    authDomain: "tos-m-fb.firebaseapp.com",
+    databaseURL: "https://tos-m-fb-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "tos-m-fb"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
 
-        function hasAuth() {
-            const pass = protectedRooms[currentRoom];
-            if (!pass) return true;
-            return localStorage.getItem(`auth_${currentRoom}`) === pass;
-        }
+/* ════════ 全域狀態 ════════ */
+let currentRoom = '', timers = {}, currentSort = 'time';
+let isVoiceEnabled = false, isOnSfxEnabled = false, isR4SfxEnabled = false;
+let myName = 'No Name', showWarningIcon = false, colorMode = 1, pinAlertMode = false;
+let audioCtx = null, chatMode = 'full', lastReadMsgTime = 0;
+window.currentData = {};
+let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
+let lastProcessedInput = {};
+const protectedRooms = { 'GABIJA':'faker','000000':'tosm','ZEMYNA':'earth0407','SAULE':'apple','ASRINE':'lostu' };
+const currentVersion = "1.5.0";
+let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
+// 擊殺區收縮狀態（每次進房預設收縮）
+let killedSectionCollapsed = true;
 
-        // 判斷當前用戶是否具有號召權限 (管理員 或 在線編輯王且滿5次)
-        function canIUseCall() {
-            if (hasAuth()) return true;
-            
-            // 找出目前「在線」的使用者中，編輯次數最多的人
-            const onlineCounts = currentOnlineUsers.map(name => contributorCounts[name] || 0);
-            const currentOnlineMax = Math.max(...onlineCounts, 0);
-            const myCount = contributorCounts[myName] || 0;
-
-            // 權限判定：我的次數等於在線最高、且滿 5 次
-            return (myCount === currentOnlineMax && myCount >= 5);
-        }
-
-        function checkDuplicate() {
-            const input = document.getElementById('bossInput');
-            const hint = document.getElementById('inputHint');
-            const p = input.value.trim().split(/\s+/);
-            if (p.length >= 2) {
-                const id = `${p[0]}_${p[1]}`;
-                if (window.currentData && window.currentData[id]) {
-                    hint.innerText = `⚠️ 該地圖分流已存在於列表中！`;
-                    hint.classList.add('warning');
-                    return;
-                }
-            }
-            hint.innerText = `範例：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 12:30 ｜ 80 3 ON`;
-            hint.classList.remove('warning');
-        }
-
-        function updateVolBg(el) { const val = (el.value - el.min) / (el.max - el.min) * 100; el.style.backgroundSize = val + '% 100%'; }
-
-        function getStatusColor(weight) {
-            const colors = { 7:'#9dadc1', 6:'#FF00FF', 5:'#FF1493', 4:'#FF4500', 3:'#FFA500', 2:'#FFFF00', 1:'#00FF00', 0:'#FF3300' };
-            if (colorMode === 1) return colors[weight] || '#fff';
-            return (weight === 7) ? '#9dadc1' : (weight === 6) ? '#FF00FF' : (weight === 5) ? '#FF1493' : (weight >= 2 && weight <= 4) ? '#FFFF00' : (weight === 1) ? '#00FF00' : '#FF3300';
-        }
-
-        function unlockAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); }
-        function playDing(freq = 880) {
-            unlockAudio();
-            const vol = parseFloat(document.getElementById('volRange').value);
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.type = 'sine'; osc.frequency.setValueAtTime(freq, audioCtx.currentTime); osc.connect(gain); gain.connect(audioCtx.destination);
-            gain.gain.setValueAtTime(0, audioCtx.currentTime); gain.gain.linearRampToValueAtTime(vol * 0.3, audioCtx.currentTime + 0.01);
-            osc.start(); osc.stop(audioCtx.currentTime + 0.3);
-        }
-
-        function speak(text) {
-            if (!isVoiceEnabled) return;
-            window.speechSynthesis.cancel();
-            const msg = new SpeechSynthesisUtterance(text);
-            msg.volume = parseFloat(document.getElementById('volRange').value);
-            msg.lang = 'zh-TW'; msg.rate = 1.1;
-            window.speechSynthesis.speak(msg);
-        }
-
-        function toggleVoice() { isVoiceEnabled = !isVoiceEnabled; document.getElementById('voiceBtn').classList.toggle('active', isVoiceEnabled); unlockAudio(); if (isVoiceEnabled) speak("語音開啟"); }
-        function toggleOnSfx() { isOnSfxEnabled = !isOnSfxEnabled; document.getElementById('onSfxBtn').classList.toggle('active', isOnSfxEnabled); unlockAudio(); if(isOnSfxEnabled) playDing(880); }
-        function toggleR4Sfx() { isR4SfxEnabled = !isR4SfxEnabled; document.getElementById('r4SfxBtn').classList.toggle('active', isR4SfxEnabled); unlockAudio(); if(isR4SfxEnabled) playDing(440); }
-        function toggleWarn() { showWarningIcon = !showWarningIcon; document.getElementById('warnBtn').classList.toggle('active', showWarningIcon); renderList(); }
-        function toggleColorMode() { colorMode = colorMode === 1 ? 2 : 1; document.getElementById('colorModeBtn').innerText = colorMode === 1 ? '🎨' : '🖌️'; renderList(); }
-
-        function toggleChat() {
-            const panel = document.getElementById('chatPanel');
-            const btn = document.getElementById('chatBtn');
-            if (chatMode === 'full') { chatMode = 'hidden'; panel.className = 'chat-hidden'; btn.className = 'audio-btn'; btn.style.opacity = '0.3'; }
-            else if (chatMode === 'hidden') { chatMode = 'mini'; panel.className = 'chat-mini'; btn.className = 'audio-btn active'; btn.style.opacity = '1'; lastReadMsgTime = Date.now(); document.getElementById('chatDot').classList.remove('show'); }
-            else { chatMode = 'full'; panel.className = 'chat-full'; btn.className = 'audio-btn active'; btn.style.opacity = '1'; }
-            scrollChat();
-        }
-
-        function scrollChat() { const el = document.getElementById('chatMsgs'); if(el) setTimeout(() => { el.scrollTop = el.scrollHeight; }, 100); }
-        function sendMsg() { const i = document.getElementById('chatInput'); if (!i.value.trim()) return; db.ref(`rooms/${currentRoom}/chat`).push({ name: myName, text: i.value.trim(), t: Date.now() }); i.value = ''; }
-
-        function getBossStatus(b, bossId) {
-            const now = Date.now(), twoHours = 7200000;
-            const isGrey = b.lastInput.toString().toUpperCase().startsWith("XX") || (b.targetTime > 0 && (now - b.targetTime > twoHours)) || (b.targetTime === 0 && (now - b.startTime > twoHours));
-            let weight = -1; const stageVal = parseFloat((b.displayValue || '').match(/[\d.]+/)) || 0;
-            if (b.lastInput.toString().toUpperCase().startsWith("DE")) weight = 7;
-            else if (b.displayValue === "ON") weight = 6;
-            else if (b.displayValue.includes("階段4")) weight = 5;
-            else if (b.displayValue.includes("階段3")) weight = 4;
-            else if (b.displayValue.includes("階段2")) weight = 3;
-            else if (b.displayValue.includes("階段1")) weight = 2;
-            else if (b.targetTime > 0) weight = (b.targetTime > now) ? 1 : 0;
-            return { isGrey, weight, stageVal, color: getStatusColor(weight), mapLv: parseInt((b.map || '').match(/\d+/)) || 0, pinned: !!localPinned[`${currentRoom}_${bossId}`] };
-        }
-
-        function sortItems(items) {
-            return items.sort((a, b) => {
-                const sA = getBossStatus(a[1], a[0]), sB = getBossStatus(b[1], b[0]);
-                if (sA.isGrey !== sB.isGrey) return sA.isGrey ? 1 : -1;
-                const sw = (w) => (w === 7 ? -1 : (w === 0 ? 1.5 : w));
-                if (sA.weight !== sB.weight) return sw(sB.weight) - sw(sA.weight);
-                if (sA.weight >= 2 && sA.weight <= 5) return sB.stageVal - sA.stageVal;
-                if (sA.weight <= 1.5) return a[1].targetTime - b[1].targetTime;
-                return sB.mapLv - sA.mapLv;
-            });
-        }
-
-        function renderList() {
-            const area = document.getElementById('renderArea'); if(!area) return;
-            area.innerHTML = ''; Object.values(timers).forEach(clearInterval); timers = {};
-            const all = Object.entries(window.currentData);
-            const auth = hasAuth();
-            const myCallAuth = canIUseCall();
-
-            const clearBtn = document.getElementById('clearAllBtn');
-            if (clearBtn) clearBtn.style.display = auth ? 'block' : 'none';
-
-            const drawBox = (items, label) => {
-                if (items.length === 0) return;
-                const sec = document.createElement('div'); sec.className = 'grid-section';
-                sec.innerHTML = `<div class="section-label">${label}</div><div class="grid"></div>`;
-                area.appendChild(sec); const grid = sec.querySelector('.grid');
-                items.forEach(([id, b]) => {
-                    const st = getBossStatus(b, id);
-                    const card = document.createElement('div');
-                    card.className = `card ${b.isCalling ? 'calling' : ''}`;
-                    
-                    const callBtnHtml = myCallAuth ? `<button class="call-btn ${b.isCalling ? 'active' : ''}" onclick="toggleCallHelp('${id}')">📢</button>` : '';
-
-                    card.innerHTML = `
-                        <button class="del" onclick="handleDelClick('${id}')">×</button>
-                        <div class="card-title-row">
-                            <button class="pin-btn ${st.pinned ? 'pinned' : ''}" onclick="togglePin('${id}')">★</button>
-                            ${callBtnHtml}
-                            <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3>
-                        </div>
-                        <div class="timer-container">
-                            <div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color: ${st.isGrey ? '#555' : st.color}">...</div>
-                            ${(b.targetTime === 0 && st.weight !== 7) ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color}; border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')">${b.displayValue === 'ON' ? 'KILL' : 'NEXT'}</button>` : ''}
-                        </div>
-                        ${b.updater ? `<div style="font-size:10px; color:#444; text-align:right; margin-top:5px;">Last: ${b.updater}</div>` : ''}
-                    `;
-                    grid.appendChild(card); startTimer(id, b, st.isGrey, st.color);
-                });
-            };
-
-            const pinnedItems = sortItems(all.filter(i => getBossStatus(i[1], i[0]).pinned));
-            const otherItems = all.filter(i => !getBossStatus(i[1], i[0]).pinned);
-            drawBox(pinnedItems, "置頂追蹤區 ★");
-            const killedItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight === 7);
-            const activeItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight !== 7);
-            if (currentSort === 'time') {
-    // 時間排序維持現狀：區分已擊殺與活躍中
-    const killedItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight === 7);
-    const activeItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight !== 7);
-    drawBox(sortItems(killedItems), "已擊殺區間");
-    drawBox(sortItems(activeItems), "全域時間排序 (閒置置底)");
-} 
-else if (currentSort === 'map') {
-    // 地圖排序：不獨立區分「已擊殺」，全部放在一起依照等級排
-    // 排序規則：地圖等級(大->小) > 分流(小->大)
-    const allForMap = otherItems.sort((a, b) => {
-        const stA = getBossStatus(a[1], a[0]);
-        const stB = getBossStatus(b[1], b[0]);
-        return stB.mapLv - stA.mapLv || a[1].ch - b[1].ch;
-    });
-    drawBox(allForMap, "全域地圖等級排序 (含已擊殺)");
-} 
-else {
-    // 分組排序邏輯保持不變...
-    const killedItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight === 7);
-    const activeItems = otherItems.filter(i => getBossStatus(i[1], i[0]).weight !== 7);
-    drawBox(sortItems(killedItems), "已擊殺區間");
-    const stages = [], timersList = [], idleList = [];
-    activeItems.forEach(([id, b]) => { 
-        const st = getBossStatus(b, id); 
-        if (st.isGrey) idleList.push([id, b]); 
-        else if (b.targetTime > 0) timersList.push([id, b]); 
-        else stages.push([id, b]); 
-    });
-    drawBox(sortItems(stages), "階段追蹤區"); 
-    drawBox(timersList.sort((a,b)=>a[1].targetTime - b[1].targetTime), "重生計時區"); 
-    drawBox(idleList, "超時閒置區");
+/* ════════ 權限 ════════ */
+function hasAuth() {
+    const pass = protectedRooms[currentRoom];
+    if (!pass) return true;
+    return localStorage.getItem(`auth_${currentRoom}`) === pass;
 }
-        }
 
-        function startTimer(id, b, isGrey, statusColor) {
-            const up = () => {
-                const el = document.getElementById(`t_${id}`);
-                if(!el) return;
-                const now = Date.now();
-                if (b.targetTime > 0) {
-                    const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
-                    el.innerText = `${Math.floor(a/3600)}:${Math.floor((a%3600)/60).toString().padStart(2,'0')}:${(a%60).toString().padStart(2,'0')}`;
-                    if (!isGrey) el.style.color = d <= 0 ? '#ff3300' : '#00FF00';
-                } else {
-                    const diff = Math.max(0, now - b.startTime);
-                    const m = Math.floor(diff / 60000);
-                    const s = Math.floor((diff % 60000) / 1000);
-                    const isK = b.lastInput.toString().toUpperCase().startsWith("DE");
-                    const mat = b.displayValue.match(/[\d.]+/);
-                    const lv = b.displayValue === "ON" ? 99 : (mat ? Math.floor(parseFloat(mat[0])) : 0);
-                    const isW = (lv < 2 && m >= 12) || (lv >= 2 && lv < 3 && m >= 7) || (lv >= 3 && lv < 4 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
-                    el.innerHTML = `<span>${isK ? "已擊殺" : b.displayValue}</span><span class="timer-sub">(${m}:${s.toString().padStart(2,'0')})</span>${(showWarningIcon && isW && !isGrey && !isK) ? '⚠️' : ''}`;
-                    if (!isGrey) el.style.color = statusColor;
+function canIUseCall() {
+    if (hasAuth()) return true;
+    const onlineCounts = currentOnlineUsers.map(n => contributorCounts[n] || 0);
+    const onlineMax = Math.max(...onlineCounts, 0);
+    const myCount = contributorCounts[myName] || 0;
+    return (myCount === onlineMax && myCount >= 5);
+}
+
+/* ════════ 號召槽位工具 ════════
+   callPriority: 0(無) / 1(🔴優先) / 2(🟠次要)
+   全房間同時上限 2 個。
+   - 自己已有號召 → 點擊取消（設 0）
+   - 空槽位 → 取最小空槽 (1 → 2)
+   - 兩槽都被他人佔用 → 提示已滿
+*/
+function getCallSlots() {
+    const data = window.currentData || {};
+    let p1id = null, p2id = null;
+    Object.entries(data).forEach(([id, b]) => {
+        if ((b.callPriority || 0) === 1) p1id = id;
+        if ((b.callPriority || 0) === 2) p2id = id;
+    });
+    return { p1id, p2id };
+}
+
+function toggleCallHelp(id) {
+    if (!canIUseCall()) {
+        alert("只有管理員或當前「在線」的編輯王可以發起號召！\n(需編輯次數第一且滿 5 次)");
+        return;
+    }
+    const b = window.currentData[id];
+    if (!b) return;
+    const cur = b.callPriority || 0;
+    const ref = db.ref(`rooms/${currentRoom}/bosses/${id}/callPriority`);
+
+    if (cur > 0) {
+        // 取消號召
+        ref.set(0);
+        // 若取消的是 🔴優先(1)，檢查是否有 🟠次要(2) → 自動升為 🔴(1)
+        if (cur === 1) {
+            const { p2id } = getCallSlots();
+            // p2id 是當前的次要，但 cur id 還沒更新，需在 set 完成後檢查
+            // 使用 once 確保在 set(0) 後才讀取最新狀態
+            db.ref(`rooms/${currentRoom}/bosses/${id}/callPriority`).set(0).then(() => {
+                const slots = getCallSlots();
+                if (slots.p2id) {
+                    db.ref(`rooms/${currentRoom}/bosses/${slots.p2id}/callPriority`).set(1);
                 }
-            };
-            up();
-            timers[id] = setInterval(up, 1000);
+            });
+        }
+        return;
+    }
+
+    const { p1id, p2id } = getCallSlots();
+    if (!p1id)       { ref.set(1); }
+    else if (!p2id)  { ref.set(2); }
+    else             { alert("號召名額已滿（最多同時 2 個）！\n請先取消現有號召再新增。"); }
+}
+
+/* ════════ MAX（所有人可操作） ════════
+   isMax: true / false
+   進入計時（targetTime > 0）或擊殺（DE...）時自動清除。
+*/
+function toggleMax(id) {
+    const b = window.currentData[id];
+    if (!b) return;
+    db.ref(`rooms/${currentRoom}/bosses/${id}/isMax`).set(!b.isMax);
+}
+
+/* ════════ 重複檢查 ════════ */
+function checkDuplicate() {
+    const input = document.getElementById('bossInput');
+    const hint  = document.getElementById('inputHint');
+    const p = input.value.trim().split(/\s+/);
+    if (p.length >= 2) {
+        const id = `${p[0]}_${p[1]}`;
+        if (window.currentData && window.currentData[id]) {
+            hint.innerText = '⚠️ 該地圖分流已存在於列表中！';
+            hint.classList.add('warning');
+            return;
+        }
+    }
+    hint.innerText = '範例：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 12:30 ｜ 80 3 ON';
+    hint.classList.remove('warning');
+}
+
+function updateVolBg(el) {
+    const val = (el.value - el.min) / (el.max - el.min) * 100;
+    el.style.backgroundSize = val + '% 100%';
+}
+
+function getStatusColor(weight) {
+    const colors = {7:'#9dadc1',6:'#FF00FF',5:'#FF1493',4:'#FF4500',3:'#FFA500',2:'#FFFF00',1:'#00FF00',0:'#FF3300'};
+    if (colorMode === 1) return colors[weight] || '#fff';
+    return weight===7?'#9dadc1':weight===6?'#FF00FF':weight===5?'#FF1493':(weight>=2&&weight<=4)?'#FFFF00':weight===1?'#00FF00':'#FF3300';
+}
+
+/* ════════ 音效 ════════ */
+function unlockAudio() {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+function playDing(freq = 880) {
+    unlockAudio();
+    const vol = parseFloat(document.getElementById('volRange').value);
+    const osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+    osc.type = 'sine'; osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    gain.gain.setValueAtTime(0, audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(vol * 0.3, audioCtx.currentTime + 0.01);
+    osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+}
+function speak(text) {
+    if (!isVoiceEnabled) return;
+    window.speechSynthesis.cancel();
+    const msg = new SpeechSynthesisUtterance(text);
+    msg.volume = parseFloat(document.getElementById('volRange').value);
+    msg.lang = 'zh-TW'; msg.rate = 1.1;
+    window.speechSynthesis.speak(msg);
+}
+
+function toggleVoice()     { isVoiceEnabled=!isVoiceEnabled;   document.getElementById('voiceBtn').classList.toggle('active',isVoiceEnabled);   unlockAudio(); if(isVoiceEnabled) speak("語音開啟"); }
+function toggleOnSfx()     { isOnSfxEnabled=!isOnSfxEnabled;   document.getElementById('onSfxBtn').classList.toggle('active',isOnSfxEnabled);   unlockAudio(); if(isOnSfxEnabled) playDing(880); }
+function toggleR4Sfx()     { isR4SfxEnabled=!isR4SfxEnabled;   document.getElementById('r4SfxBtn').classList.toggle('active',isR4SfxEnabled);   unlockAudio(); if(isR4SfxEnabled) playDing(440); }
+function toggleWarn()      { showWarningIcon=!showWarningIcon;  document.getElementById('warnBtn').classList.toggle('active',showWarningIcon);   renderList(); }
+function toggleColorMode() { colorMode=colorMode===1?2:1; document.getElementById('colorModeBtn').innerText=colorMode===1?'🎨':'🖌️'; renderList(); }
+function togglePinAlert()  { pinAlertMode=!pinAlertMode; document.getElementById('pinAlertBtn').classList.toggle('active',pinAlertMode); }
+
+function toggleChat() {
+    const panel = document.getElementById('chatPanel');
+    const btn   = document.getElementById('chatBtn');
+    if      (chatMode==='full')   { chatMode='hidden'; panel.className='chat-hidden'; btn.classList.remove('active'); btn.style.opacity='0.3'; }
+    else if (chatMode==='hidden') { chatMode='mini';   panel.className='chat-mini';   btn.classList.add('active');   btn.style.opacity='1'; lastReadMsgTime=Date.now(); document.getElementById('chatDot').classList.remove('show'); }
+    else                          { chatMode='full';   panel.className='chat-full';   btn.classList.add('active');   btn.style.opacity='1'; }
+    scrollChat();
+}
+
+function scrollChat() { const el = document.getElementById('chatMsgs'); if(el) setTimeout(() => { el.scrollTop = el.scrollHeight; }, 100); }
+function sendMsg() {
+    const i = document.getElementById('chatInput');
+    if (!i.value.trim()) return;
+    db.ref(`rooms/${currentRoom}/chat`).push({ name: myName, text: i.value.trim(), t: Date.now() });
+    i.value = '';
+}
+
+/* ════════ Boss 狀態 ════════ */
+function getBossStatus(b, bossId) {
+    const now = Date.now(), twoHours = 7200000;
+    const isGrey = b.lastInput.toString().toUpperCase().startsWith("XX") ||
+                   (b.targetTime > 0 && (now - b.targetTime > twoHours)) ||
+                   (b.targetTime === 0 && (now - b.startTime > twoHours));
+    let weight = -1;
+    const stageVal = parseFloat((b.displayValue || '').match(/[\d.]+/)) || 0;
+    if      (b.lastInput.toString().toUpperCase().startsWith("DE")) weight = 7;
+    else if (b.displayValue === "ON")            weight = 6;
+    else if (b.displayValue.includes("階段4"))   weight = 5;
+    else if (b.displayValue.includes("階段3"))   weight = 4;
+    else if (b.displayValue.includes("階段2"))   weight = 3;
+    else if (b.displayValue.includes("階段1"))   weight = 2;
+    else if (b.targetTime > 0) weight = (b.targetTime > now) ? 1 : 0;
+    return {
+        isGrey, weight, stageVal,
+        color: getStatusColor(weight),
+        mapLv: parseInt((b.map || '').match(/\d+/)) || 0,
+        pinned: !!localPinned[`${currentRoom}_${bossId}`]
+    };
+}
+
+function sortItems(items) {
+    return items.sort((a, b) => {
+        const sA = getBossStatus(a[1], a[0]), sB = getBossStatus(b[1], b[0]);
+        if (sA.isGrey !== sB.isGrey) return sA.isGrey ? 1 : -1;
+        const sw = w => (w === 7 ? -1 : (w === 0 ? 1.5 : w));
+        if (sA.weight !== sB.weight) return sw(sB.weight) - sw(sA.weight);
+        if (sA.weight >= 2 && sA.weight <= 5) return sB.stageVal - sA.stageVal;
+        if (sA.weight <= 1.5) return a[1].targetTime - b[1].targetTime;
+        return sB.mapLv - sA.mapLv;
+    });
+}
+
+/* ════════ 渲染列表 ════════ */
+function renderList() {
+    const area = document.getElementById('renderArea');
+    if (!area) return;
+    area.innerHTML = '';
+    Object.values(timers).forEach(clearInterval);
+    timers = {};
+
+    const all = Object.entries(window.currentData);
+    const auth = hasAuth(), myCallAuth = canIUseCall();
+    const clearBtn = document.getElementById('clearAllBtn');
+    if (clearBtn) clearBtn.style.display = auth ? 'block' : 'none';
+
+    // collapsible: 傳 true 表示此 section 可收縮（擊殺區專用）
+    const drawBox = (items, label, collapsible = false) => {
+        if (!items.length) return;
+        const sec = document.createElement('div');
+        sec.className = 'grid-section';
+
+        if (collapsible) {
+            const isCollapsed = killedSectionCollapsed;
+            sec.innerHTML = `
+                <div class="section-label collapsible ${isCollapsed ? 'collapsed' : ''}" onclick="toggleKilledSection(this)">
+                    <span class="collapse-arrow">▼</span>
+                    ${label} <span style="color:#444;font-size:10px;">(${items.length})</span>
+                </div>
+                <div class="collapsible-body ${isCollapsed ? 'collapsed' : ''}" style="max-height:${isCollapsed ? '0' : '2000px'}">
+                    <div class="grid"></div>
+                </div>`;
+        } else {
+            sec.innerHTML = `<div class="section-label">${label}</div><div class="grid"></div>`;
         }
 
-        function handleDelClick(id) {
-            const b = window.currentData[id]; if (!b) return;
-            const st = getBossStatus(b, id); const auth = hasAuth();
-            if ((st.weight === 6 || st.weight === 5) && !auth) { alert("「ON」與「階段 4」的卡片非常重要，僅限管理員操作。"); return; }
-            if (st.isGrey) { if (auth) db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); else alert("只有管理權限可以完全刪除卡片。"); }
-            else { saveBoss(b.map, b.ch, "XX1"); }
-        }
+        area.appendChild(sec);
+        const grid = sec.querySelector('.grid');
 
-        function saveBoss(map, ch, val, doFocus = false) {
-            const pass = protectedRooms[currentRoom];
-            if (pass && map.toUpperCase() === "ADMIN" && ch === pass) {
-                localStorage.setItem(`auth_${currentRoom}`, pass);
-                alert("管理員權限已解鎖！");
-                document.getElementById('bossInput').value = '';
-                renderList();
-                return;
+        items.forEach(([id, b]) => {
+            const st = getBossStatus(b, id);
+            const cp = b.callPriority || 0;
+
+            // 卡片外框
+            let cardClass = 'card';
+            if (cp === 1) cardClass += ' calling-1';
+            else if (cp === 2) cardClass += ' calling-2';
+
+            const card = document.createElement('div');
+            card.className = cardClass;
+
+            // ── 號召按鈕 ──
+            let callHtml = '';
+            if (myCallAuth) {
+                // 有操作權限：顯示可點按鈕
+                // 無號召 → 暗紅色待機（idle），表示下一個會是優先
+                const callClass = cp === 1 ? 'priority-1' : cp === 2 ? 'priority-2' : 'idle';
+                const callIcon  = cp === 1 ? '🔴' : cp === 2 ? '🟠' : '⬤';
+                const callTitle = cp > 0 ? '取消號召' : '發起號召';
+                callHtml = `<button class="call-btn ${callClass}" onclick="toggleCallHelp('${id}')" title="${callTitle}">${callIcon}</button>`;
+            } else if (cp > 0) {
+                // 無操作權限但有號召中 → 純顯示
+                callHtml = `<span class="call-indicator" title="${cp===1?'優先號召':'次要號召'}">${cp===1?'🔴':'🟠'}</span>`;
             }
-            const id = `${map}_${ch}`;
-            const oldData = window.currentData ? window.currentData[id] : null;
-            const oldStatus = oldData ? (oldData.displayValue || "新建立") : "新建立";
 
-            let dv = val, tt = 0, flash = false, uv = val.toString().toUpperCase();
-            if (uv.startsWith("00")) { let r = uv.replace("00", ""); uv = (r.length === 2 && !r.includes('.')) ? "R" + r[0] + "." + r[1] : "R" + r; }
-            if (uv.startsWith("XX")) dv = "閒置";
-            else if (uv.startsWith("DE")) dv = "已擊殺";
-            else if (uv === "ON") { dv = "ON"; flash = true; }
-            else if (uv.startsWith("R")) { const rn = uv.substring(1); dv = "階段" + rn; if (parseFloat(rn) >= 4.0) flash = true; }
-            else { tt = Date.now() + ((uv.split(/[:.：]/).length===2?parseInt(uv.split(/[:.：]/)[0])*60+parseInt(uv.split(/[:.：]/)[1]):parseFloat(uv)||0) * 60000); }
+            // ── MAX 按鈕（所有人可點） ──
+            const maxClass = b.isMax ? 'maxed' : '';
+            const maxTitle = b.isMax ? '取消滿員' : '標記滿員';
+            const maxHtml  = `<button class="max-btn ${maxClass}" onclick="toggleMax('${id}')" title="${maxTitle}">M</button>`;
 
-            const updatePayload = {
-                map, ch, targetTime: tt, lastInput: uv, displayValue: dv,
-                startTime: Date.now(), isFlash: flash, updater: myName
-            };
+            // ── NEXT/KILL 按鈕：閃爍中鎖定，防止重複點擊 ──
+            const hasNext = (b.targetTime === 0 && st.weight !== 7);
+            const isLocked = !!b.isFlash;
+            const nextHtml = hasNext
+                ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color};border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')" ${isLocked ? 'disabled title="處理中，請稍候..."' : ''}>${b.displayValue==='ON'?'KILL':'NEXT'}</button>`
+                : '';
 
-            if (tt > 0) updatePayload.isCalling = false;
+            // 無 NEXT/KILL → 加 compact class，縮小 padding
+            if (!hasNext) cardClass += ' compact';
 
-            db.ref(`rooms/${currentRoom}/bosses/${id}`).update(updatePayload);
-            setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 3000);
-            if (doFocus) doEdit(map, ch, uv);
-            document.getElementById('inputHint').classList.remove('warning');
+            card.innerHTML = `
+                <button class="del" onclick="handleDelClick('${id}')">×</button>
+                <div class="card-title-row">
+                    <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3>
+                </div>
+                <div class="timer-container">
+                    <div class="stage-row" id="sr_${id}">
+                        <span class="stage-label" id="t_${id}" style="color:${st.isGrey ? '#555' : st.color}">...</span>
+                        ${nextHtml}
+                    </div>
+                    <div class="elapsed-row" id="e_${id}"></div>
+                </div>
+                <div class="card-actions">
+                    <button class="pin-btn ${st.pinned ? 'pinned' : ''}" onclick="togglePin('${id}')">★</button>
+                    ${callHtml}
+                    ${maxHtml}
+                    ${b.updater ? `<span class="updater-txt">${b.updater}</span>` : ''}
+                </div>
+            `;
+            grid.appendChild(card);
+            startTimer(id, b, st.isGrey, st.color);
+        });
+    };
 
-            const logRef = db.ref(`rooms/${currentRoom}/logs`);
-            logRef.push({ name: myName, boss: `${map}-${ch}`, oldVal: oldStatus, newVal: dv, t: Date.now() });
+    const pinnedItems = sortItems(all.filter(i =>  getBossStatus(i[1],i[0]).pinned));
+    const otherItems  =            all.filter(i => !getBossStatus(i[1],i[0]).pinned);
+    drawBox(pinnedItems, "置頂追蹤區 ★");
 
-            logRef.once('value', snapshot => {
-                const total = snapshot.numChildren();
-                if (total > 100) {
-                    let count = 0;
-                    snapshot.forEach(child => { if (count < total - 100) child.ref.remove(); count++; });
-                }
-            });
-        }
+    if (currentSort === 'time') {
+        const killed = otherItems.filter(i => getBossStatus(i[1],i[0]).weight === 7);
+        const active = otherItems.filter(i => getBossStatus(i[1],i[0]).weight !== 7);
+        drawBox(sortItems(killed), "已擊殺區間", true);
+        drawBox(sortItems(active), "全域時間排序 (閒置置底)");
+    } else if (currentSort === 'map') {
+        const allForMap = otherItems.sort((a, b) => {
+            const sA = getBossStatus(a[1],a[0]), sB = getBossStatus(b[1],b[0]);
+            return sB.mapLv - sA.mapLv || a[1].ch - b[1].ch;
+        });
+        drawBox(allForMap, "全域地圖等級排序 (含已擊殺)");
+    } else {
+        const killed = otherItems.filter(i => getBossStatus(i[1],i[0]).weight === 7);
+        const active = otherItems.filter(i => getBossStatus(i[1],i[0]).weight !== 7);
+        drawBox(sortItems(killed), "已擊殺區間", true);
+        const stages = [], timersList = [], idleList = [];
+        active.forEach(([id, b]) => {
+            const st = getBossStatus(b, id);
+            if (st.isGrey)        idleList.push([id, b]);
+            else if (b.targetTime > 0) timersList.push([id, b]);
+            else                  stages.push([id, b]);
+        });
+        drawBox(sortItems(stages), "階段追蹤區");
+        drawBox(timersList.sort((a,b) => a[1].targetTime - b[1].targetTime), "重生計時區");
+        drawBox(idleList, "超時閒置區");
+    }
+}
 
-        let logDisplayModes = [0, 3, 5, 10];
-        let currentLogModeIndex = 2;
-        let lastLogData = null;
+/* ════════ 擊殺區展開/收縮 ════════ */
+function toggleKilledSection(labelEl) {
+    killedSectionCollapsed = !killedSectionCollapsed;
+    labelEl.classList.toggle('collapsed', killedSectionCollapsed);
+    const body = labelEl.nextElementSibling;
+    if (killedSectionCollapsed) {
+        body.style.maxHeight = '0';
+        body.classList.add('collapsed');
+    } else {
+        body.style.maxHeight = '2000px';
+        body.classList.remove('collapsed');
+    }
+}
 
-        function cycleLogMode() {
-            currentLogModeIndex = (currentLogModeIndex + 1) % logDisplayModes.length;
-            const mode = logDisplayModes[currentLogModeIndex];
-            const panel = document.getElementById('logPanel');
-            const btnText = document.getElementById('logBtnText');
-            const btn = document.getElementById('logBtn');
 
-            if (mode === 0) {
-                panel.style.display = 'none'; btnText.innerText = 'OFF'; btn.style.opacity = '0.3';
-            } else {
-                panel.style.display = 'block'; btnText.innerText = mode; btn.style.opacity = '1'; renderLogs(lastLogData);
+/* ════════ 計時器 ════════ */
+function startTimer(id, b, isGrey, statusColor) {
+    const up = () => {
+        const stageEl   = document.getElementById(`t_${id}`);
+        const elapsedEl = document.getElementById(`e_${id}`);
+        if (!stageEl) return;
+        const now = Date.now();
+        const maxBadge = b.isMax ? `<span class="max-badge">MAX</span>` : '';
+
+        if (b.targetTime > 0) {
+            // 倒數計時：stage-label 顯示倒數，elapsed-row 顯示結束現實時間
+            const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
+            const hh = Math.floor(a/3600), mm = Math.floor((a%3600)/60), ss = a%60;
+            stageEl.innerHTML = `${hh}:${mm.toString().padStart(2,'0')}:${ss.toString().padStart(2,'0')}${maxBadge}`;
+            stageEl.className = 'stage-label countdown';
+            if (!isGrey) stageEl.style.color = d <= 0 ? '#ff3300' : '#00FF00';
+            if (elapsedEl) {
+                const endDate = new Date(b.targetTime);
+                const eHH = endDate.getHours().toString().padStart(2,'0');
+                const eMM = endDate.getMinutes().toString().padStart(2,'0');
+                elapsedEl.innerHTML = `<span style="opacity:0.4;">${eHH}:${eMM}</span>`;
+                elapsedEl.style.color = '';
+            }
+        } else {
+            // 階段/ON/已擊殺：stage-label 顯示狀態，elapsed-row 顯示經過時間
+            const diff = Math.max(0, now - b.startTime);
+            const m = Math.floor(diff / 60000);
+            const s = Math.floor((diff % 60000) / 1000);
+            const isK = b.lastInput.toString().toUpperCase().startsWith("DE");
+            const mat = b.displayValue.match(/[\d.]+/);
+            const lv  = b.displayValue === "ON" ? 99 : (mat ? Math.floor(parseFloat(mat[0])) : 0);
+            const isW = (lv < 2 && m >= 12) || (lv >= 2 && lv < 3 && m >= 7) ||
+                        (lv >= 3 && lv < 4 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
+            stageEl.innerHTML = `${isK ? "已擊殺" : b.displayValue}${maxBadge}`;
+            stageEl.className = `stage-label${b.isFlash ? ' flash-anim' : ''}`;
+            if (!isGrey) stageEl.style.color = statusColor;
+            if (elapsedEl) {
+                elapsedEl.innerHTML = `(${m}:${s.toString().padStart(2,'0')})${(showWarningIcon && isW && !isGrey && !isK) ? ' ⚠️' : ''}`;
+                elapsedEl.style.color = isGrey ? '#444' : '#666';
             }
         }
+    };
+    up();
+    timers[id] = setInterval(up, 1000);
+}
 
-        function viewFullLogs() {
-            if (!lastLogData) { alert("尚無編輯紀錄"); return; }
-            const logs = Object.values(lastLogData).sort((a, b) => b.t - a.t);
-            const body = document.getElementById('logModalBody');
-            body.innerHTML = '';
+/* ════════ saveBoss ════════ */
+function saveBoss(map, ch, val, doFocus = false) {
+    const pass = protectedRooms[currentRoom];
+    if (pass && map.toUpperCase() === "ADMIN" && ch === pass) {
+        localStorage.setItem(`auth_${currentRoom}`, pass);
+        alert("管理員權限已解鎖！");
+        document.getElementById('bossInput').value = '';
+        renderList(); return;
+    }
 
-            const counts = {};
-            logs.forEach(l => { counts[l.name] = (counts[l.name] || 0) + 1; });
-            const maxEdit = Math.max(...Object.values(counts), 1);
+    const id = `${map}_${ch}`;
+    const oldData = window.currentData ? window.currentData[id] : null;
+    const oldStatus = oldData ? (oldData.displayValue || "新建立") : "新建立";
 
-            const getColor = (name) => {
-                if (name.startsWith('#')) return '#888';
-                const count = counts[name] || 0;
-                const lightness = 50 + (count / maxEdit) * 35;
-                const saturation = 40 + (count / maxEdit) * 60;
-                return `hsl(50, ${saturation}%, ${lightness}%)`;
-            };
+    let dv = val, tt = 0, flash = false, uv = val.toString().toUpperCase();
+    if (uv.startsWith("00")) {
+        let r = uv.replace("00", "");
+        uv = (r.length === 2 && !r.includes('.')) ? ("R" + r[0] + "." + r[1]) : ("R" + r);
+    }
+    if      (uv.startsWith("XX"))  { dv = "閒置"; }
+    else if (uv.startsWith("DE"))  { dv = "已擊殺"; }
+    else if (uv === "ON")          { dv = "ON"; flash = true; }
+    else if (uv.startsWith("R"))   { const rn = uv.substring(1); dv = "階段" + rn; if (parseFloat(rn) >= 4.0) flash = true; }
+    else {
+        const parts = uv.split(/[:.：]/);
+        tt = Date.now() + ((parts.length === 2
+            ? parseInt(parts[0]) * 60 + parseInt(parts[1])
+            : parseFloat(uv) || 0) * 60000);
+    }
 
-            logs.forEach((l, index) => {
-                const time = new Date(l.t).toLocaleTimeString('zh-TW', { hour12: false });
-                const nameColor = getColor(l.name);
-                const entry = document.createElement('div');
-                entry.className = 'log-entry';
-                entry.innerHTML = `<span style="color:#444;">${index + 1}. [${time}]</span> <span style="color:${nameColor}; font-weight:bold;">${l.name}</span> <span style="color:#aaa;">將</span> <span style="color:#fff;">${l.boss}</span> <span style="color:#f66;">${l.oldVal}</span> <span style="color:#aaa;">改為</span> <span style="color:#0f0;">${l.newVal}</span>`;
-                body.appendChild(entry);
-            });
-            document.getElementById('logModal').classList.add('show');
-        }
+    const updatePayload = {
+        map, ch, targetTime: tt, lastInput: uv, displayValue: dv,
+        startTime: Date.now(), isFlash: flash, updater: myName
+    };
 
-        function closeLogModal() { document.getElementById('logModal').classList.remove('show'); }
-        document.getElementById('logModal').addEventListener('click', function(e) { if (e.target === this) closeLogModal(); });
+    // 進入計時 或 擊殺 → 自動清除號召優先度 & MAX 標記
+    if (tt > 0 || uv.startsWith("DE")) {
+        const oldCP = oldData ? (oldData.callPriority || 0) : 0;
+        updatePayload.callPriority = 0;
+        updatePayload.isMax = false;
 
-        function initLogs() {
-            db.ref(`rooms/${currentRoom}/logs`).limitToLast(100).on('value', s => {
-                lastLogData = s.val();
-                renderLogs(lastLogData);
-                updateOnlineUsersDisplay();
-                renderList(); // 每次紀錄更新都重繪列表以更新權限按鈕
-            });
-        }
-
-        function renderLogs(data) {
-            const container = document.getElementById('logList');
-            const mode = logDisplayModes[currentLogModeIndex];
-            if (!container || mode === 0) return;
-
-            let logs = data ? Object.values(data) : [];
-            logs.sort((a, b) => b.t - a.t);
-
-            contributorCounts = {};
-            logs.forEach(l => { contributorCounts[l.name] = (contributorCounts[l.name] || 0) + 1; });
-            contributorMax = Math.max(...Object.values(contributorCounts), 1);
-
-            const getContributorColor = (name) => {
-                const count = contributorCounts[name] || 0;
-                const isGuest = name.startsWith('#');
-                if (count === 0) return '#777';
-                const lightness = isGuest ? (40 + (count / contributorMax) * 30) : (55 + (count / contributorMax) * 35);
-                const saturation = isGuest ? (30 + (count / contributorMax) * 40) : (40 + (count / contributorMax) * 60);
-                return `hsl(50, ${saturation}%, ${lightness}%)`;
-            };
-
-            const displayLogs = logs.slice(0, mode);
-            container.innerHTML = '';
-            displayLogs.forEach(l => {
-                const time = new Date(l.t).toLocaleTimeString('zh-TW', { hour12: false });
-                const nameColor = getContributorColor(l.name);
-                container.innerHTML += `
-                    <div style="border-bottom:1px solid #1a1a1a; padding:4px 0;">
-                        <span style="color:#444;">[${time}]</span> 
-                        <span style="color:${nameColor}; font-weight:bold;">${l.name}</span> 
-                        <span style="color:#aaa;">將</span> 
-                        <span style="color:#fff;">${l.boss}</span> 
-                        <span style="color:#f66;">${l.oldVal}</span> 
-                        <span style="color:#aaa;">改為</span> 
-                        <span style="color:#0f0;">${l.newVal}</span>
-                    </div>`;
-            });
-        }
-
-        function updateOnlineUsersDisplay() {
-            const container = document.getElementById('onlineUsers');
-            if (!container || currentOnlineUsers.length === 0) return;
-
-            const onlineCounts = currentOnlineUsers.map(name => contributorCounts[name] || 0);
-            const currentOnlineMax = Math.max(...onlineCounts, 0);
-
-            const getLocalColor = (name) => {
-                const count = contributorCounts[name] || 0;
-                if (count === 0) return '#555';
-                const isGuest = name.startsWith('#');
-                const lightness = isGuest ? (40 + (count / contributorMax) * 30) : (55 + (count / contributorMax) * 35);
-                const saturation = isGuest ? (30 + (count / contributorMax) * 40) : (40 + (count / contributorMax) * 60);
-                return `hsl(50, ${saturation}%, ${lightness}%)`;
-            };
-
-            container.innerHTML = currentOnlineUsers.map(name => {
-                const color = getLocalColor(name);
-                const count = contributorCounts[name] || 0;
-                const isTopEditor = (count === currentOnlineMax && count >= 5);
-                const className = isTopEditor ? 'top-editor' : '';
-                return `<span class="${className}" style="color:${color};" title="已編輯 ${count} 次">${name}</span>`;
-            }).join('<span style="color:#333;"> · </span>');
-        }
-
-        function triggerNext(m, c) {
-            db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => {
-                const d = s.val(); if (!d) return; let cur = d.lastInput.toString().toUpperCase();
-                if (cur === "ON") { saveBoss(m, c, "DE1"); db.ref(`rooms/${currentRoom}/bosses/${m}_${c}/isCalling`).set(false); }
-                else if (cur.startsWith("R")) {
-                    const n = parseFloat(cur.substring(1)) || 0;
-                    let nx = Math.floor(n) + 1;
-                    if (nx >= 5) saveBoss(m, c, "ON"); else saveBoss(m, c, "R" + nx);
+        // 若清除的是 🔴優先(1)，延遲檢查是否有 🟠次要 → 自動升為 🔴
+        if (oldCP === 1) {
+            setTimeout(() => {
+                const slots = getCallSlots();
+                if (slots.p2id) {
+                    db.ref(`rooms/${currentRoom}/bosses/${slots.p2id}/callPriority`).set(1);
                 }
-                else saveBoss(m, c, "ON");
-            }); unlockAudio();
+            }, 300);
         }
+    }
 
-        function isNewerVersion(current, latest) {
-            if (!latest) return false;
-            const v1 = current.split('.').map(Number);
-            const v2 = latest.split('.').map(Number);
-            for (let i = 0; i < Math.max(v1.length, v2.length); i++) {
-                const n1 = v1[i] || 0; const n2 = v2[i] || 0;
-                if (n2 > n1) return true; if (n2 < n1) return false;
-            }
-            return false;
+    db.ref(`rooms/${currentRoom}/bosses/${id}`).update(updatePayload);
+    setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 3000);
+    if (doFocus) doEdit(map, ch, uv);
+    document.getElementById('inputHint').classList.remove('warning');
+
+    const logRef = db.ref(`rooms/${currentRoom}/logs`);
+    logRef.push({ name: myName, boss: `${map}-${ch}`, oldVal: oldStatus, newVal: dv, t: Date.now() });
+    logRef.once('value', snapshot => {
+        const total = snapshot.numChildren();
+        if (total > 100) {
+            let count = 0;
+            snapshot.forEach(child => { if (count < total - 100) child.ref.remove(); count++; });
         }
+    });
+}
 
-        function startSession(id) {
-            currentRoom = id.toUpperCase();
-            db.ref('app_version').on('value', (snapshot) => {
-                const latestVersion = snapshot.val();
-                if (isNewerVersion(currentVersion, latestVersion)) {
-                    alert(`系統有重要更新 (v${latestVersion})，網頁將自動重新整理。`);
-                    location.reload(true);
-                }
-            });
-            let inputName = document.getElementById('userNameInput').value.trim();
-            if (!inputName) {
-                let savedID = localStorage.getItem('tos_fixed_id');
-                if (!savedID) { savedID = "#" + Math.floor(1000 + Math.random() * 9000); localStorage.setItem('tos_fixed_id', savedID); }
-                myName = savedID;
-            } else { myName = inputName; }
-            db.ref(`rooms/${currentRoom}/users`).once('value', snapshot => {
-                const users = snapshot.val() ? Object.values(snapshot.val()) : [];
-                if (users.some(u => u.name === myName)) { myName += "(" + Math.floor(Math.random() * 99).toString().padStart(2, '0') + ")"; }
-                document.getElementById('loginView').style.display = 'none';
-                document.getElementById('mainView').style.display = 'block';
-                document.getElementById('displayID').innerText = currentRoom;
-                updateVolBg(document.getElementById('volRange'));
-                document.getElementById('bossInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') addBoss(); });
-                db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
+/* ════════ 紀錄 ════════ */
+let logDisplayModes = [0, 3, 5, 10], currentLogModeIndex = 1, lastLogData = null;
 
-                db.ref(`rooms/${currentRoom}/users`).on('value', s => {
-                    const u = Object.values(s.val() || {});
-                    document.getElementById('onlineCount').innerText = u.length;
-                    currentOnlineUsers = u.map(x => x.name);
-                    updateOnlineUsersDisplay();
-                    renderList(); // 人員離線/加入時觸發重繪以更新編輯王按鈕
-                });
+function cycleLogMode() {
+    currentLogModeIndex = (currentLogModeIndex + 1) % logDisplayModes.length;
+    const mode = logDisplayModes[currentLogModeIndex];
+    const panel = document.getElementById('logPanel');
+    const btnText = document.getElementById('logBtnText');
+    const btn = document.getElementById('logBtn');
+    if (mode === 0) { panel.style.display = 'none'; btnText.innerText = 'OFF'; btn.style.opacity = '0.3'; }
+    else            { panel.style.display = 'block'; btnText.innerText = mode;  btn.style.opacity = '1';   renderLogs(lastLogData); }
+}
 
-                db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
-                    const incomingData = s.val() || {};
-                    Object.keys(incomingData).forEach(k => {
-                        const b = incomingData[k]; const v = b.lastInput.toString().toUpperCase();
-                        if (v !== lastProcessedInput[k] && b.isFlash) {
-                            if (v === "ON") { if(isOnSfxEnabled) playDing(880); speak(`${b.map}分流${b.ch}重生`); }
-                            else if (v.startsWith("R")) {
-                                const n = parseFloat(v.substring(1)) || 0;
-                                if (n >= 4.0) { if(isR4SfxEnabled) playDing(440); speak(`${b.map}分流${b.ch}階段${n}`); }
-                            }
+function viewFullLogs() {
+    if (!lastLogData) { alert("尚無編輯紀錄"); return; }
+    const logs = Object.values(lastLogData).sort((a, b) => b.t - a.t);
+    const body = document.getElementById('logModalBody');
+    body.innerHTML = '';
+    const counts = {};
+    logs.forEach(l => { counts[l.name] = (counts[l.name] || 0) + 1; });
+    const maxEdit = Math.max(...Object.values(counts), 1);
+    const getColor = name => {
+        if (name.startsWith('#')) return '#888';
+        const c = counts[name] || 0;
+        return `hsl(50,${40 + (c/maxEdit)*60}%,${50 + (c/maxEdit)*35}%)`;
+    };
+    logs.forEach((l, i) => {
+        const time = new Date(l.t).toLocaleTimeString('zh-TW', { hour12: false });
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        entry.innerHTML = `<span style="color:#444;">${i+1}. [${time}]</span> <span style="color:${getColor(l.name)};font-weight:bold;">${l.name}</span> <span style="color:#aaa;">將</span> <span style="color:#fff;">${l.boss}</span> <span style="color:#f66;">${l.oldVal}</span> <span style="color:#aaa;">改為</span> <span style="color:#0f0;">${l.newVal}</span>`;
+        body.appendChild(entry);
+    });
+    document.getElementById('logModal').classList.add('show');
+}
+
+function closeLogModal() { document.getElementById('logModal').classList.remove('show'); }
+document.getElementById('logModal').addEventListener('click', function(e) { if (e.target === this) closeLogModal(); });
+
+function initLogs() {
+    db.ref(`rooms/${currentRoom}/logs`).limitToLast(100).on('value', s => {
+        lastLogData = s.val();
+        renderLogs(lastLogData);
+        updateOnlineUsersDisplay();
+        renderList();
+    });
+}
+
+function renderLogs(data) {
+    const container = document.getElementById('logList');
+    const mode = logDisplayModes[currentLogModeIndex];
+    if (!container || mode === 0) return;
+    let logs = data ? Object.values(data) : [];
+    logs.sort((a, b) => b.t - a.t);
+    contributorCounts = {};
+    logs.forEach(l => { contributorCounts[l.name] = (contributorCounts[l.name] || 0) + 1; });
+    contributorMax = Math.max(...Object.values(contributorCounts), 1);
+    const getColor = name => {
+        const c = contributorCounts[name] || 0, isG = name.startsWith('#');
+        if (!c) return '#777';
+        return `hsl(50,${(isG?30:40)+(c/contributorMax)*(isG?40:60)}%,${(isG?40:55)+(c/contributorMax)*(isG?30:35)}%)`;
+    };
+    container.innerHTML = '';
+    logs.slice(0, mode).forEach(l => {
+        const time = new Date(l.t).toLocaleTimeString('zh-TW', { hour12: false });
+        container.innerHTML += `<div style="border-bottom:1px solid #1a1a1a;padding:4px 0;"><span style="color:#444;">[${time}]</span> <span style="color:${getColor(l.name)};font-weight:bold;">${l.name}</span> <span style="color:#aaa;">將</span> <span style="color:#fff;">${l.boss}</span> <span style="color:#f66;">${l.oldVal}</span> <span style="color:#aaa;">改為</span> <span style="color:#0f0;">${l.newVal}</span></div>`;
+    });
+}
+
+function updateOnlineUsersDisplay() {
+    const container = document.getElementById('onlineUsers');
+    if (!container || !currentOnlineUsers.length) return;
+    const onlineCounts = currentOnlineUsers.map(n => contributorCounts[n] || 0);
+    const onlineMax = Math.max(...onlineCounts, 0);
+    const getColor = name => {
+        const c = contributorCounts[name] || 0, isG = name.startsWith('#');
+        if (!c) return '#555';
+        return `hsl(50,${(isG?30:40)+(c/contributorMax)*(isG?40:60)}%,${(isG?40:55)+(c/contributorMax)*(isG?30:35)}%)`;
+    };
+    container.innerHTML = currentOnlineUsers.map(name => {
+        const color = getColor(name);
+        const count = contributorCounts[name] || 0;
+        const isTop = (count === onlineMax && count >= 5);
+        return `<span class="${isTop ? 'top-editor' : ''}" style="color:${color};" title="已編輯 ${count} 次">${name}</span>`;
+    }).join('<span style="color:#333;"> · </span>');
+}
+
+/* ════════ triggerNext ════════ */
+function triggerNext(m, c) {
+    db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => {
+        const d = s.val(); if (!d) return;
+        let cur = d.lastInput.toString().toUpperCase();
+        if (cur === "ON") {
+            saveBoss(m, c, "DE1");
+            // saveBoss 已自動清除 callPriority，此處保留一次 explicit 清除確保安全
+            db.ref(`rooms/${currentRoom}/bosses/${m}_${c}/callPriority`).set(0);
+        } else if (cur.startsWith("R")) {
+            const n = parseFloat(cur.substring(1)) || 0;
+            const nx = Math.floor(n) + 1;
+            if (nx >= 5) saveBoss(m, c, "ON"); else saveBoss(m, c, "R" + nx);
+        } else {
+            saveBoss(m, c, "ON");
+        }
+    });
+    unlockAudio();
+}
+
+/* ════════ 版本檢查 ════════ */
+function isNewerVersion(current, latest) {
+    if (!latest) return false;
+    const v1 = current.split('.').map(Number), v2 = latest.split('.').map(Number);
+    for (let i = 0; i < Math.max(v1.length, v2.length); i++) {
+        const n1 = v1[i] || 0, n2 = v2[i] || 0;
+        if (n2 > n1) return true; if (n2 < n1) return false;
+    }
+    return false;
+}
+
+/* ════════ 登入 / 進房 ════════ */
+function startSession(id) {
+    currentRoom = id.toUpperCase();
+    db.ref('app_version').on('value', snapshot => {
+        const latest = snapshot.val();
+        if (isNewerVersion(currentVersion, latest)) {
+            alert(`系統有重要更新 (v${latest})，網頁將自動重新整理。`);
+            location.reload(true);
+        }
+    });
+
+    let inputName = document.getElementById('userNameInput').value.trim();
+    if (!inputName) {
+        let savedID = localStorage.getItem('tos_fixed_id');
+        if (!savedID) { savedID = "#" + Math.floor(1000 + Math.random() * 9000); localStorage.setItem('tos_fixed_id', savedID); }
+        myName = savedID;
+    } else { myName = inputName; }
+
+    db.ref(`rooms/${currentRoom}/users`).once('value', snapshot => {
+        const users = snapshot.val() ? Object.values(snapshot.val()) : [];
+        if (users.some(u => u.name === myName))
+            myName += "(" + Math.floor(Math.random() * 99).toString().padStart(2, '0') + ")";
+
+        document.getElementById('loginView').style.display = 'none';
+        document.getElementById('mainView').style.display  = 'block';
+        document.getElementById('displayID').innerText = currentRoom;
+        updateVolBg(document.getElementById('volRange'));
+        document.getElementById('bossInput').addEventListener('keypress', e => { if (e.key === 'Enter') addBoss(); });
+
+        db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
+
+        db.ref(`rooms/${currentRoom}/users`).on('value', s => {
+            const u = Object.values(s.val() || {});
+            document.getElementById('onlineCount').innerText = u.length;
+            currentOnlineUsers = u.map(x => x.name);
+            updateOnlineUsersDisplay();
+            renderList();
+        });
+
+        db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
+            const incoming = s.val() || {};
+            Object.keys(incoming).forEach(k => {
+                const b = incoming[k], v = b.lastInput.toString().toUpperCase();
+                if (v !== lastProcessedInput[k] && b.isFlash) {
+                    // 置頂提醒模式：只有置頂卡片才觸發語音/音效
+                    const isPinned = !!localPinned[`${currentRoom}_${k}`];
+                    const shouldAlert = !pinAlertMode || isPinned;
+                    if (shouldAlert) {
+                        if (v === "ON") { if (isOnSfxEnabled) playDing(880); speak(`${b.map}分流${b.ch}重生`); }
+                        else if (v.startsWith("R")) {
+                            const n = parseFloat(v.substring(1)) || 0;
+                            if (n >= 4.0) { if (isR4SfxEnabled) playDing(440); speak(`${b.map}分流${b.ch}階段${n}`); }
                         }
-                        lastProcessedInput[k] = v;
-                    });
-                    window.currentData = incomingData; renderList();
-                });
-                initChat(); initLogs();
+                    }
+                }
+                lastProcessedInput[k] = v;
             });
-        }
+            window.currentData = incoming;
+            renderList();
+        });
 
-        function togglePin(id) { const k = `${currentRoom}_${id}`; if (localPinned[k]) delete localPinned[k]; else localPinned[k] = true; localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned)); renderList(); }
-        
-        function toggleCallHelp(id) {
-            if (!canIUseCall()) { alert("只有管理員或當前「在線」的編輯王可以發起號召！\n(需編輯次數第一且滿 5 次)"); return; }
-            const b = window.currentData[id];
-            if (!b) return;
-            db.ref(`rooms/${currentRoom}/bosses/${id}/isCalling`).set(!b.isCalling);
-        }
+        initChat();
+        initLogs();
+        initNotice();
+    });
+}
 
-        function doEdit(m, c, l) { const i = document.getElementById('bossInput'); i.value = `${m} ${c} ${l}`; i.focus(); i.setSelectionRange(m.length + c.length + 2, i.value.length); }
-        function addBoss() { const i = document.getElementById('bossInput'); const p = i.value.trim().split(/\s+/); if (p.length < 3) return; saveBoss(p[0], p[1], p.slice(2).join('')); i.value = ''; }
-        function clearAllBosses() { if (!hasAuth()) return; if (confirm("確定一鍵清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
-        function copyRoomID() { navigator.clipboard.writeText(currentRoom); alert('房號已複製'); }
-        function joinRoom() { const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
-        function createRoom() { const i = Math.random().toString(36).substring(2, 8).toUpperCase(); startSession(i); }
-        function setSort(t) { currentSort = t; document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id === `sort${t.charAt(0).toUpperCase() + t.slice(1)}Btn`)); renderList(); }
-        function initChat() {
-            document.getElementById('chatInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMsg(); });
-            db.ref(`rooms/${currentRoom}/chat`).limitToLast(50).on('value', s => {
-                const container = document.getElementById('chatMsgs'); if(!container) return;
-                container.innerHTML = '';
-                const list = Object.values(s.val() || {}).sort((a,b) => a.t - b.t);
-                list.forEach(m => { container.innerHTML += `<div class="msg-row"><span class="msg-name ${m.name===myName?'self':''}">${m.name}</span><span class="msg-bubble">${m.text}</span></div>`; });
-                if (chatMode === 'hidden' && list.length > 0 && list[list.length-1].t > lastReadMsgTime && list[list.length-1].name !== myName) { document.getElementById('chatDot').classList.add('show'); }
-                scrollChat();
-            });
+/* ════════ 管理者留言板 ════════ */
+function initNotice() {
+    // 顯示編輯按鈕（僅管理員）
+    if (hasAuth()) {
+        const btn = document.getElementById('noticeEditBtn');
+        if (btn) btn.style.display = 'inline-block';
+    }
+    // 監聽公告變動
+    db.ref(`rooms/${currentRoom}/notice`).on('value', s => {
+        const text = s.val() || '';
+        const el = document.getElementById('noticeText');
+        if (el) {
+            el.textContent = text || '（尚無公告）';
+            el.style.color = text ? '#ccc' : '#555';
         }
-    </script>
+        // 同步到編輯框
+        const input = document.getElementById('noticeInput');
+        if (input && document.getElementById('noticeEditArea').style.display === 'none') {
+            input.value = text;
+        }
+    });
+}
+
+function toggleNoticeEdit() {
+    const area = document.getElementById('noticeEditArea');
+    const isOpen = area.style.display !== 'none';
+    if (!isOpen) {
+        // 開啟時同步當前公告內容到 textarea
+        const current = document.getElementById('noticeText').textContent;
+        const input = document.getElementById('noticeInput');
+        input.value = (current === '（尚無公告）') ? '' : current;
+        area.style.display = 'block';
+        input.focus();
+    } else {
+        area.style.display = 'none';
+    }
+}
+
+function saveNotice() {
+    if (!hasAuth()) { alert("只有管理員可以編輯公告。"); return; }
+    const text = document.getElementById('noticeInput').value.trim();
+    db.ref(`rooms/${currentRoom}/notice`).set(text);
+    document.getElementById('noticeEditArea').style.display = 'none';
+}
+
+/* ════════ 其他功能 ════════ */
+function togglePin(id) {
+    const k = `${currentRoom}_${id}`;
+    if (localPinned[k]) delete localPinned[k]; else localPinned[k] = true;
+    localStorage.setItem('tos_pinned_bosses', JSON.stringify(localPinned));
+    renderList();
+}
+
+function handleDelClick(id) {
+    const b = window.currentData[id]; if (!b) return;
+    const st = getBossStatus(b, id), auth = hasAuth();
+    if ((st.weight === 6 || st.weight === 5) && !auth) { alert("「ON」與「階段 4」的卡片非常重要，僅限管理員操作。"); return; }
+    if (st.isGrey) { if (auth) db.ref(`rooms/${currentRoom}/bosses/${id}`).remove(); else alert("只有管理權限可以完全刪除卡片。"); }
+    else { saveBoss(b.map, b.ch, "XX1"); }
+}
+
+function doEdit(m, c, l) {
+    const i = document.getElementById('bossInput');
+    i.value = `${m} ${c} ${l}`; i.focus();
+    i.setSelectionRange(m.length + c.length + 2, i.value.length);
+}
+function addBoss() {
+    const i = document.getElementById('bossInput');
+    const p = i.value.trim().split(/\s+/);
+    if (p.length < 3) return;
+    saveBoss(p[0], p[1], p.slice(2).join(''));
+    i.value = '';
+}
+function clearAllBosses() { if (!hasAuth()) return; if (confirm("確定一鍵清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
+function copyRoomID()     { navigator.clipboard.writeText(currentRoom); alert('房號已複製'); }
+function joinRoom()       { const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
+function createRoom()     { const i = Math.random().toString(36).substring(2, 8).toUpperCase(); startSession(i); }
+function setSort(t) {
+    currentSort = t;
+    document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id === `sort${t.charAt(0).toUpperCase()+t.slice(1)}Btn`));
+    renderList();
+}
+
+function initChat() {
+    document.getElementById('chatInput').addEventListener('keypress', e => { if (e.key === 'Enter') sendMsg(); });
+    db.ref(`rooms/${currentRoom}/chat`).limitToLast(50).on('value', s => {
+        const container = document.getElementById('chatMsgs'); if (!container) return;
+        container.innerHTML = '';
+        const list = Object.values(s.val() || {}).sort((a, b) => a.t - b.t);
+        list.forEach(m => {
+            container.innerHTML += `<div class="msg-row"><span class="msg-name ${m.name === myName ? 'self' : ''}">${m.name}</span><span class="msg-bubble">${m.text}</span></div>`;
+        });
+        if (chatMode === 'hidden' && list.length > 0 &&
+            list[list.length-1].t > lastReadMsgTime &&
+            list[list.length-1].name !== myName) {
+            document.getElementById('chatDot').classList.add('show');
+        }
+        scrollChat();
+    });
+}
+</script>
 </body>
 </html>
