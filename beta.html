@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.4.6</title>
+    <title>TOS M FB TIME v1.4.7</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -41,17 +41,42 @@
         .grid-section { margin-bottom: 30px; }
         .section-label { color: #555; font-size: 11px; border-left: 2px solid #333; padding-left: 8px; text-transform: uppercase; margin-bottom: 10px; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
-        .card { background: #111; padding: 15px; border-radius: 8px; position: relative; border: 1px solid #222; }
-        .card-title-row { display: flex; align-items: center; gap: 5px; margin-bottom: 0; }
-        .card h3 { margin: 0; color: #aaa; font-size: 16px; font-weight: bold; cursor: pointer; border-bottom: 1px dashed #444; line-height: 1.2; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .pin-btn { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid #444; background: #1a1a1a; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; font-size: 12px; color: #666; transition: 0.2s; flex-shrink: 0; }
-        .pin-btn.pinned { border-color: #ffca28; background: #2a2200; color: #ffca28; box-shadow: 0 0 5px rgba(255,202,40,0.3); }
-        .del { position: absolute; top: 8px; right: 8px; color: #444; background: none; border: none; font-size: 16px; cursor: pointer; padding: 5px; line-height: 1; }
-        .timer { font-size: 18px; font-weight: bold; margin-top: 8px; font-family: monospace; display: flex; align-items: center; flex-wrap: wrap; gap: 3px; }
-        .timer-sub { font-size: 14px; margin-left: 4px; opacity: 0.8; }
+        /* ═══ 卡片：flex column，底部 actions 固定最下方 ═══ */
+        .card {
+            background: #111; padding: 12px 12px 10px; border-radius: 8px;
+            position: relative; border: 1px solid #222;
+            display: flex; flex-direction: column; min-height: 130px;
+        }
+        .card-title-row { display: flex; align-items: center; gap: 0; margin-bottom: 0; }
+        /* 地圖-分流：不再塞按鈕，文字可以完整顯示 */
+        .card h3 {
+            margin: 0; color: #aaa; font-size: 15px; font-weight: bold;
+            cursor: pointer; border-bottom: 1px dashed #333; line-height: 1.3;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .del { position: absolute; top: 6px; right: 6px; color: #333; background: none; border: none; font-size: 15px; cursor: pointer; padding: 4px; line-height: 1; }
+        /* 計時器區：baseline 對齊讓「階段X」大字與「(mm:ss)」小字基線齊 */
+        .timer-container { flex: 1; display: flex; flex-direction: column; justify-content: flex-start; margin-top: 6px; }
+        .timer {
+            font-size: 18px; font-weight: bold; font-family: monospace;
+            display: flex; align-items: baseline; gap: 3px; flex-wrap: wrap;
+        }
+        .timer-sub { font-size: 13px; opacity: 0.8; }
         .flash-anim { animation: flash 0.5s step-end 10; }
         @keyframes flash { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
-        .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-block; margin-top: 8px; border: 2px solid; }
+        /* NEXT/KILL 按鈕 */
+        .btn-next { background: #000; font-size: 12px; font-weight: bold; padding: 4px 12px; border-radius: 6px; cursor: pointer; display: inline-block; margin-top: 6px; border: 2px solid; align-self: flex-start; }
+        /* 底部 actions 列：★ 📢 M 固定在最下方 */
+        .card-actions {
+            display: flex; align-items: center; gap: 6px;
+            margin-top: auto; padding-top: 8px;
+            border-top: 1px solid #1a1a1a;
+        }
+        .card-actions .updater-txt {
+            margin-left: auto; font-size: 10px; color: #333; white-space: nowrap;
+        }
+        .pin-btn { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid #444; background: #1a1a1a; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; font-size: 11px; color: #666; transition: 0.2s; flex-shrink: 0; }
+        .pin-btn.pinned { border-color: #ffca28; background: #2a2200; color: #ffca28; box-shadow: 0 0 5px rgba(255,202,40,0.3); }
         #chatPanel { margin-bottom: 15px; background: #0a0a0a; border: 1px solid #1a1a1a; border-radius: 10px; overflow: hidden; transition: all 0.3s ease; }
         #chatPanel.chat-hidden { display: none; }
         .chat-msgs { overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
@@ -70,11 +95,15 @@
 
         /* ═══ 號召按鈕 ═══ */
         .call-btn {
-            width: 22px; height: 22px; border-radius: 50%;
-            border: 1.5px solid #444; background: #1a1a1a;
+            width: 20px; height: 20px; border-radius: 50%;
+            border: 1.5px solid #555; background: #1a1a1a;
             display: flex; align-items: center; justify-content: center;
-            cursor: pointer; padding: 0; font-size: 13px; color: #555;
+            cursor: pointer; padding: 0; font-size: 12px; color: #777;
             transition: 0.2s; flex-shrink: 0;
+        }
+        /* 無號召時：紅色待機樣式（預示下一個是優先） */
+        .call-btn.idle {
+            border-color: #882200; background: #1a0800; color: #882200;
         }
         .call-btn.priority-1 {
             border-color: #ff3300; background: #300800;
@@ -85,15 +114,15 @@
             color: #ff8800; box-shadow: 0 0 7px rgba(255,136,0,0.6);
         }
         /* 非管理員只能看的號召圖示（span） */
-        .call-indicator { font-size: 14px; flex-shrink: 0; line-height: 1; }
+        .call-indicator { font-size: 13px; flex-shrink: 0; line-height: 1; }
 
         /* ═══ MAX 按鈕 ═══ */
         .max-btn {
-            width: 22px; height: 22px; border-radius: 50%;
+            width: 20px; height: 20px; border-radius: 50%;
             border: 1.5px solid #444; background: #1a1a1a;
             display: flex; align-items: center; justify-content: center;
             cursor: pointer; padding: 0;
-            font-size: 11px; font-weight: 900; font-family: sans-serif;
+            font-size: 10px; font-weight: 900; font-family: sans-serif;
             color: #555; transition: 0.2s; flex-shrink: 0;
         }
         .max-btn.maxed {
@@ -148,7 +177,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.4.6</div>
+        <div class="ver-info">v1.4.7</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10" oninput="this.value=this.value.replace('#','')">
             <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
@@ -170,17 +199,17 @@
                     <input type="range" id="volRange" class="vol-range" min="0" max="1" step="0.01" value="0.5" oninput="updateVolBg(this)">
                     <button id="onSfxBtn" title="ON 重生音效" class="audio-btn" onclick="toggleOnSfx()">📢</button>
                     <button id="r4SfxBtn" title="階段4音效" class="audio-btn" onclick="toggleR4Sfx()">🛡️</button>
-                    <button id="warnBtn" class="audio-btn active" onclick="toggleWarn()">⚠️</button>
+                    <button id="warnBtn" class="audio-btn" onclick="toggleWarn()">⚠️</button>
                     <button id="colorModeBtn" class="audio-btn active" onclick="toggleColorMode()">🎨</button>
                     <span class="chat-wrap" style="position:relative;">
                         <button id="chatBtn" class="audio-btn active" onclick="toggleChat()">💬</button>
                         <span id="chatDot" class="chat-dot"></span>
-                        <button id="logBtn" title="切換紀錄顯示" class="audio-btn active" onclick="cycleLogMode()">📜 <span id="logBtnText" style="font-size:10px;">5</span></button>
+                        <button id="logBtn" title="切換紀錄顯示" class="audio-btn active" onclick="cycleLogMode()">📜 <span id="logBtnText" style="font-size:10px;">3</span></button>
                     </span>
                 </div>
             </div>
             <div class="room-info">
-                <span class="version-tag">v1.4.6</span>
+                <span class="version-tag">v1.4.7</span>
                 <button class="btn-danger" id="clearAllBtn" onclick="clearAllBosses()" style="display:none;">一鍵清除</button>
                 <button style="background:none;color:#444;" onclick="location.reload()">退出</button>
             </div>
@@ -246,13 +275,13 @@ const db = firebase.database();
 /* ════════ 全域狀態 ════════ */
 let currentRoom = '', timers = {}, currentSort = 'time';
 let isVoiceEnabled = false, isOnSfxEnabled = false, isR4SfxEnabled = false;
-let myName = 'No Name', showWarningIcon = true, colorMode = 1;
+let myName = 'No Name', showWarningIcon = false, colorMode = 1;
 let audioCtx = null, chatMode = 'full', lastReadMsgTime = 0;
 window.currentData = {};
 let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
 let lastProcessedInput = {};
 const protectedRooms = { 'GABIJA':'faker','000000':'tosm','ZEMYNA':'earth0407','SAULE':'apple','ASRINE':'lostu' };
-const currentVersion = "1.4.6";
+const currentVersion = "1.4.7";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 
 /* ════════ 權限 ════════ */
@@ -298,10 +327,23 @@ function toggleCallHelp(id) {
     const ref = db.ref(`rooms/${currentRoom}/bosses/${id}/callPriority`);
 
     if (cur > 0) {
-        // 已有號召 → 取消
+        // 取消號召
         ref.set(0);
+        // 若取消的是 🔴優先(1)，檢查是否有 🟠次要(2) → 自動升為 🔴(1)
+        if (cur === 1) {
+            const { p2id } = getCallSlots();
+            // p2id 是當前的次要，但 cur id 還沒更新，需在 set 完成後檢查
+            // 使用 once 確保在 set(0) 後才讀取最新狀態
+            db.ref(`rooms/${currentRoom}/bosses/${id}/callPriority`).set(0).then(() => {
+                const slots = getCallSlots();
+                if (slots.p2id) {
+                    db.ref(`rooms/${currentRoom}/bosses/${slots.p2id}/callPriority`).set(1);
+                }
+            });
+        }
         return;
     }
+
     const { p1id, p2id } = getCallSlots();
     if (!p1id)       { ref.set(1); }
     else if (!p2id)  { ref.set(2); }
@@ -461,17 +503,17 @@ function renderList() {
             const card = document.createElement('div');
             card.className = cardClass;
 
-            // ── 號召按鈕區 ──
-            // 有操作權限：顯示可點擊的按鈕
-            // 無操作權限但有號召中：顯示純圖示（span）
-            // 無操作權限且無號召：不顯示
+            // ── 號召按鈕 ──
             let callHtml = '';
             if (myCallAuth) {
-                const callClass = cp === 1 ? 'priority-1' : cp === 2 ? 'priority-2' : '';
-                const callIcon  = cp === 1 ? '🔴' : cp === 2 ? '🟠' : '📢';
+                // 有操作權限：顯示可點按鈕
+                // 無號召 → 暗紅色待機（idle），表示下一個會是優先
+                const callClass = cp === 1 ? 'priority-1' : cp === 2 ? 'priority-2' : 'idle';
+                const callIcon  = cp === 1 ? '🔴' : cp === 2 ? '🟠' : '🔴';
                 const callTitle = cp > 0 ? '取消號召' : '發起號召';
                 callHtml = `<button class="call-btn ${callClass}" onclick="toggleCallHelp('${id}')" title="${callTitle}">${callIcon}</button>`;
             } else if (cp > 0) {
+                // 無操作權限但有號召中 → 純顯示
                 callHtml = `<span class="call-indicator" title="${cp===1?'優先號召':'次要號召'}">${cp===1?'🔴':'🟠'}</span>`;
             }
 
@@ -480,21 +522,26 @@ function renderList() {
             const maxTitle = b.isMax ? '取消滿員' : '標記滿員';
             const maxHtml  = `<button class="max-btn ${maxClass}" onclick="toggleMax('${id}')" title="${maxTitle}">M</button>`;
 
+            // ── NEXT/KILL 按鈕 ──
+            const nextHtml = (b.targetTime === 0 && st.weight !== 7)
+                ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color};border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')">${b.displayValue==='ON'?'KILL':'NEXT'}</button>`
+                : '';
+
             card.innerHTML = `
                 <button class="del" onclick="handleDelClick('${id}')">×</button>
                 <div class="card-title-row">
-                    <button class="pin-btn ${st.pinned ? 'pinned' : ''}" onclick="togglePin('${id}')">★</button>
-                    ${callHtml}
-                    ${maxHtml}
                     <h3 onclick="doEdit('${b.map}','${b.ch}','${b.lastInput}')">${b.map} - ${b.ch}</h3>
                 </div>
                 <div class="timer-container">
                     <div class="timer ${b.isFlash ? 'flash-anim' : ''}" id="t_${id}" style="color:${st.isGrey ? '#555' : st.color}">...</div>
-                    ${(b.targetTime === 0 && st.weight !== 7)
-                        ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color};border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')">${b.displayValue==='ON'?'KILL':'NEXT'}</button>`
-                        : ''}
+                    ${nextHtml}
                 </div>
-                ${b.updater ? `<div style="font-size:10px;color:#444;text-align:right;margin-top:5px;">Last: ${b.updater}</div>` : ''}
+                <div class="card-actions">
+                    <button class="pin-btn ${st.pinned ? 'pinned' : ''}" onclick="togglePin('${id}')">★</button>
+                    ${callHtml}
+                    ${maxHtml}
+                    ${b.updater ? `<span class="updater-txt">${b.updater}</span>` : ''}
+                </div>
             `;
             grid.appendChild(card);
             startTimer(id, b, st.isGrey, st.color);
@@ -533,7 +580,7 @@ function renderList() {
     }
 }
 
-/* ════════ 計時器（含 MAX badge） ════════ */
+/* ════════ 計時器（含 MAX badge、結束現實時間） ════════ */
 function startTimer(id, b, isGrey, statusColor) {
     const up = () => {
         const el = document.getElementById(`t_${id}`);
@@ -543,7 +590,12 @@ function startTimer(id, b, isGrey, statusColor) {
 
         if (b.targetTime > 0) {
             const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
-            el.innerHTML = `${Math.floor(a/3600)}:${Math.floor((a%3600)/60).toString().padStart(2,'0')}:${(a%60).toString().padStart(2,'0')}${maxBadge}`;
+            // 現實結束時間（HH:MM）
+            const endDate = new Date(b.targetTime);
+            const endHH = endDate.getHours().toString().padStart(2, '0');
+            const endMM = endDate.getMinutes().toString().padStart(2, '0');
+            const endTimeStr = `<span style="font-size:11px;opacity:0.5;margin-left:5px;font-weight:normal;">${endHH}:${endMM}</span>`;
+            el.innerHTML = `${Math.floor(a/3600)}:${Math.floor((a%3600)/60).toString().padStart(2,'0')}:${(a%60).toString().padStart(2,'0')}${endTimeStr}${maxBadge}`;
             if (!isGrey) el.style.color = d <= 0 ? '#ff3300' : '#00FF00';
         } else {
             const diff = Math.max(0, now - b.startTime);
@@ -599,8 +651,19 @@ function saveBoss(map, ch, val, doFocus = false) {
 
     // 進入計時 或 擊殺 → 自動清除號召優先度 & MAX 標記
     if (tt > 0 || uv.startsWith("DE")) {
+        const oldCP = oldData ? (oldData.callPriority || 0) : 0;
         updatePayload.callPriority = 0;
         updatePayload.isMax = false;
+
+        // 若清除的是 🔴優先(1)，延遲檢查是否有 🟠次要 → 自動升為 🔴
+        if (oldCP === 1) {
+            setTimeout(() => {
+                const slots = getCallSlots();
+                if (slots.p2id) {
+                    db.ref(`rooms/${currentRoom}/bosses/${slots.p2id}/callPriority`).set(1);
+                }
+            }, 300);
+        }
     }
 
     db.ref(`rooms/${currentRoom}/bosses/${id}`).update(updatePayload);
@@ -620,7 +683,7 @@ function saveBoss(map, ch, val, doFocus = false) {
 }
 
 /* ════════ 紀錄 ════════ */
-let logDisplayModes = [0, 3, 5, 10], currentLogModeIndex = 2, lastLogData = null;
+let logDisplayModes = [0, 3, 5, 10], currentLogModeIndex = 1, lastLogData = null;
 
 function cycleLogMode() {
     currentLogModeIndex = (currentLogModeIndex + 1) % logDisplayModes.length;
