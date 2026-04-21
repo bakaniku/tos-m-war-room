@@ -125,21 +125,18 @@
         /* ═══ 亮色模式全面覆蓋 ═══ */
         body.light { color: #333; }
         body.light input[type=text] { background: #fff; border-color: #ddd; color: #333; }
-        /* 1. 房間代碼顏色 + 複製圖示同色 */
         body.light .room-id { color: #3d7440 !important; }
         body.light #onlineCount { color: #3d7440 !important; }
         body.light .copy-icon { filter: none; }
         body.light .copy-icon path, body.light .copy-icon rect { stroke: #3d7440 !important; }
-        /* 2. 功能按鈕列背景 */
         body.light .audio-controls { background: #d6cbb6; border-color: #c4b89e; }
         body.light .audio-btn { color: #5a4a2a; }
-        /* 3. 一鍵清除 */
         body.light .btn-danger { background: #d6cbb6; color: #8a3a00; border: 1px solid #c4a882; }
-        /* 4. 送出按鈕 */
+        
+        /* 1. 送出按鈕修正 */
         body.light .chat-input-row button { background: #d6efd3; color: #437a41; border: 1px solid #437a41; font-weight: bold; }
-        /* 5. 紀錄中地圖-分流顏色 */
+        
         body.light .log-boss-name { color: #8c8c8c !important; }
-        /* 公告字體顏色 */
         body.light .notice-text { color: #585858 !important; }
         body.light .user-list-bar { color: #999; border-bottom-color: #ddd; }
         body.light .version-tag { color: #bbb; }
@@ -154,16 +151,18 @@
         body.light .elapsed-row { color: #999; opacity: 1; }
         body.light .log-new-val { color: #437a41 !important; }
         body.light .top-editor { color: #cc3300 !important; }
-        /* 7. 閒置/超時卡片：所有文字 #bcbcbc */
+
+        /* 2. 閒置/超時卡片：文字顏色修正為 #bcbcbc */
         body.light .card.idle-card { background: #e8e5e0 !important; border-color: #ccc !important; }
         body.light .card.idle-card h3 { color: #bcbcbc !important; border-bottom-color: #ddd !important; }
         body.light .card.idle-card .stage-label { color: #bcbcbc !important; }
         body.light .card.idle-card .elapsed-row { color: #bcbcbc !important; }
+        body.light .card.idle-card .elapsed-row span { color: #bcbcbc !important; opacity: 1 !important; } /* 針對倒數計時內的 span */
         body.light .card.idle-card .del { color: #d0d0d0 !important; }
         body.light .card.idle-card .btn-next { color: #bcbcbc !important; border-color: #bcbcbc !important; background: transparent !important; }
         body.light .card.idle-card .card-actions { border-top-color: #ddd !important; }
         body.light .card.idle-card .updater-txt { color: #bcbcbc !important; }
-        /* 8. 號召卡片閃爍時背景保持白色 */
+        
         body.light .card.calling-1 { animation: cpulse1-light 1.5s infinite !important; }
         body.light .card.calling-2 { animation: cpulse2-light 1.5s infinite !important; }
         @keyframes cpulse1-light {
@@ -199,9 +198,7 @@
         .card-title-row { display: flex; align-items: center; gap: 5px; margin-bottom: 0; padding-right: 18px; }
         .card h3 { margin: 0; color: var(--text-title); font-size: 15px; font-weight: bold; cursor: pointer; border-bottom: 1px dashed var(--border-dashed); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .del { position: absolute; top: 6px; right: 6px; color: var(--text-del); background: none; border: none; font-size: 15px; cursor: pointer; padding: 4px; line-height: 1; }
-        /* 計時器區 */
         .timer-container { flex: 1; display: flex; flex-direction: column; justify-content: flex-start; margin-top: 6px; gap: 2px; }
-        /* 第一行：階段文字 + NEXT/KILL 按鈕同行 */
         .stage-row { display: flex; align-items: baseline; gap: 6px; flex-wrap: nowrap; }
         .stage-label {
             font-size: 18px; font-weight: bold; font-family: sans-serif;
@@ -209,15 +206,11 @@
         }
         .stage-label.flash-anim { animation: flash 0.5s step-end 10; }
         @keyframes flash { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
-        /* 第二行：(經過時間) 或倒數計時，數字用等寬 */
         .elapsed-row {
             font-size: 13px; font-family: monospace; opacity: 0.75;
             display: flex; align-items: baseline; gap: 4px; min-height: 16px;
         }
-        /* 倒數計時時 stage-label 改回 monospace（數字對齊） */
         .stage-label.countdown { font-family: monospace; }
-        /* NEXT/KILL 按鈕：內嵌在 stage-row，緊貼階段文字 */
-        /* 底部 actions 列 */
         .card-actions {
             display: flex; align-items: center; gap: 6px;
             margin-top: 8px; padding-top: 6px;
@@ -244,12 +237,9 @@
         .chat-input-row { display: flex; border-top: 1px solid var(--chat-border); align-items: stretch; }
         .chat-input-row input { flex: 1; background: var(--chat-bg); border: none; color: var(--text-title); padding: 8px 12px; font-size: 12px; outline: none; }
         .chat-input-row button { background: #0f0; color: #000; border: none; padding: 0 15px; font-weight: bold; cursor: pointer; font-size: 12px; }
-        body.light .chat-input-row button { background: #1a7a1a; }
         .chat-dot { position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; background: #f00; border-radius: 50%; display: none; }
         .chat-dot.show { display: block; }
         .version-tag { font-size: 10px; color: #333; margin-right: 10px; }
-
-        /* ═══ 號召按鈕 ═══ */
         .call-btn {
             width: 20px; height: 20px; border-radius: 50%;
             border: 1.5px solid var(--call-idle-border); background: var(--call-idle-bg);
@@ -263,8 +253,6 @@
         body.light .call-btn.priority-1 { background: #ffe8e0; box-shadow: none; }
         body.light .call-btn.priority-2 { background: #fff3e0; box-shadow: none; }
         .call-indicator { font-size: 13px; flex-shrink: 0; line-height: 1; }
-
-        /* ═══ MAX 按鈕 ═══ */
         .max-btn {
             width: 20px; height: 20px; border-radius: 50%;
             border: 1.5px solid var(--max-btn-border); background: var(--max-btn-bg);
@@ -275,8 +263,6 @@
         }
         .max-btn.maxed { border-color: #00aaff; background: #00243a; color: #00aaff; box-shadow: 0 0 7px rgba(0,170,255,0.6); }
         body.light .max-btn.maxed { background: #ddf0ff; color: #0066aa; border-color: #0088cc; box-shadow: none; }
-
-        /* ═══ MAX バッジ（タイトル行） ═══ */
         .max-badge {
             display: inline-block; font-size: 10px; font-weight: 900;
             color: var(--max-badge-color); background: var(--max-badge-bg);
@@ -288,8 +274,6 @@
             0%,100%{ opacity:1; box-shadow:0 0 4px rgba(0,170,255,0.4); }
             50%{ opacity:0.75; box-shadow:0 0 10px rgba(0,170,255,0.9); }
         }
-
-        /* ═══ 號召卡片邊框 ═══ */
         .card.calling-1 { border: 2px solid #ff3300 !important; animation: cpulse1 1.5s infinite; }
         .card.calling-2 { border: 2px solid #ff8800 !important; animation: cpulse2 1.5s infinite; }
         @keyframes cpulse1 {
@@ -302,7 +286,6 @@
             50% { box-shadow:0 0 20px #ff8800; background:#1e0e00; }
             100%{ box-shadow:0 0 5px #ff8800; }
         }
-
         .top-editor { display:inline-block; padding:0 4px; border-radius:4px; animation:editor-glow 2s infinite; font-weight:bold!important; }
         @keyframes editor-glow {
             0%  { box-shadow:0 0 2px #c85a22; text-shadow:0 0 2px #c85a22; }
@@ -315,7 +298,6 @@
             50% { box-shadow:0 0 8px #d95c2a; text-shadow:0 0 4px #d95c2a; background:rgba(217,92,42,0.08); }
             100%{ box-shadow:0 0 2px #b04e1e; text-shadow:0 0 2px #b04e1e; }
         }
-
         #logModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:9999; justify-content:center; align-items:center; }
         #logModal.show { display:flex; }
         .log-modal-box { background:#111; border:1px solid #333; border-radius:12px; width:90%; max-width:560px; max-height:80vh; display:flex; flex-direction:column; overflow:hidden; }
@@ -424,7 +406,6 @@
 </div>
 
 <script>
-/* ════════ Firebase ════════ */
 const firebaseConfig = {
     apiKey: "AIzaSyAff__U1cLBr92gYmtbWpm80zO4rHvObUI",
     authDomain: "tos-m-fb.firebaseapp.com",
@@ -434,7 +415,6 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-/* ════════ 全域狀態 ════════ */
 let currentRoom = '', timers = {}, currentSort = 'time';
 let isVoiceEnabled = false, isOnSfxEnabled = false, isR4SfxEnabled = false;
 let myName = 'No Name', showWarningIcon = false, colorMode = 1, pinAlertMode = false, isLightMode = false;
@@ -445,10 +425,8 @@ let lastProcessedInput = {};
 const protectedRooms = { 'GABIJA':'faker','000000':'tosm','ZEMYNA':'earth0407','SAULE':'apple','ASRINE':'lostu' };
 const currentVersion = "1.5.1";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
-// 擊殺區收縮狀態（每次進房預設收縮）
 let killedSectionCollapsed = true;
 
-/* ════════ 權限 ════════ */
 function hasAuth() {
     const pass = protectedRooms[currentRoom];
     if (!pass) return true;
@@ -463,13 +441,6 @@ function canIUseCall() {
     return (myCount === onlineMax && myCount >= 5);
 }
 
-/* ════════ 號召槽位工具 ════════
-   callPriority: 0(無) / 1(🔴優先) / 2(🟠次要)
-   全房間同時上限 2 個。
-   - 自己已有號召 → 點擊取消（設 0）
-   - 空槽位 → 取最小空槽 (1 → 2)
-   - 兩槽都被他人佔用 → 提示已滿
-*/
 function getCallSlots() {
     const data = window.currentData || {};
     let p1id = null, p2id = null;
@@ -491,13 +462,8 @@ function toggleCallHelp(id) {
     const ref = db.ref(`rooms/${currentRoom}/bosses/${id}/callPriority`);
 
     if (cur > 0) {
-        // 取消號召
         ref.set(0);
-        // 若取消的是 🔴優先(1)，檢查是否有 🟠次要(2) → 自動升為 🔴(1)
         if (cur === 1) {
-            const { p2id } = getCallSlots();
-            // p2id 是當前的次要，但 cur id 還沒更新，需在 set 完成後檢查
-            // 使用 once 確保在 set(0) 後才讀取最新狀態
             db.ref(`rooms/${currentRoom}/bosses/${id}/callPriority`).set(0).then(() => {
                 const slots = getCallSlots();
                 if (slots.p2id) {
@@ -514,17 +480,12 @@ function toggleCallHelp(id) {
     else             { alert("號召名額已滿（最多同時 2 個）！\n請先取消現有號召再新增。"); }
 }
 
-/* ════════ MAX（所有人可操作） ════════
-   isMax: true / false
-   進入計時（targetTime > 0）或擊殺（DE...）時自動清除。
-*/
 function toggleMax(id) {
     const b = window.currentData[id];
     if (!b) return;
     db.ref(`rooms/${currentRoom}/bosses/${id}/isMax`).set(!b.isMax);
 }
 
-/* ════════ 重複檢查 ════════ */
 function checkDuplicate() {
     const input = document.getElementById('bossInput');
     const hint  = document.getElementById('inputHint');
@@ -561,13 +522,11 @@ function toggleTheme() {
     document.body.classList.toggle('light', isLightMode);
     const btn = document.getElementById('themeBtn');
     if (btn) btn.textContent = isLightMode ? '🌙 暗色' : '☀️ 亮色';
-    // 複製圖示顏色跟隨房間代碼
     const copyIcon = document.querySelector('.copy-icon');
     if (copyIcon) copyIcon.setAttribute('stroke', isLightMode ? '#3d7440' : '#0f0');
     renderList();
 }
 
-/* ════════ 音效 ════════ */
 function unlockAudio() {
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -615,7 +574,6 @@ function sendMsg() {
     i.value = '';
 }
 
-/* ════════ Boss 狀態 ════════ */
 function getBossStatus(b, bossId) {
     const now = Date.now(), twoHours = 7200000;
     const isGrey = b.lastInput.toString().toUpperCase().startsWith("XX") ||
@@ -650,7 +608,6 @@ function sortItems(items) {
     });
 }
 
-/* ════════ 渲染列表 ════════ */
 function renderList() {
     const area = document.getElementById('renderArea');
     if (!area) return;
@@ -663,7 +620,6 @@ function renderList() {
     const clearBtn = document.getElementById('clearAllBtn');
     if (clearBtn) clearBtn.style.display = auth ? 'block' : 'none';
 
-    // collapsible: 傳 true 表示此 section 可收縮（擊殺區專用）
     const drawBox = (items, label, collapsible = false) => {
         if (!items.length) return;
         const sec = document.createElement('div');
@@ -690,7 +646,6 @@ function renderList() {
             const st = getBossStatus(b, id);
             const cp = b.callPriority || 0;
 
-            // 卡片外框
             let cardClass = 'card';
             if (cp === 1) cardClass += ' calling-1';
             else if (cp === 2) cardClass += ' calling-2';
@@ -698,35 +653,28 @@ function renderList() {
             const card = document.createElement('div');
             card.className = cardClass;
 
-            // ── 號召按鈕 ──
             let callHtml = '';
             if (myCallAuth) {
-                // 有操作權限：顯示可點按鈕
-                // 無號召 → 暗紅色待機（idle），表示下一個會是優先
                 const callClass = cp === 1 ? 'priority-1' : cp === 2 ? 'priority-2' : 'idle';
                 const callIcon  = cp === 1 ? '🔴' : cp === 2 ? '🟠' : '⬤';
                 const callTitle = cp > 0 ? '取消號召' : '發起號召';
                 callHtml = `<button class="call-btn ${callClass}" onclick="toggleCallHelp('${id}')" title="${callTitle}">${callIcon}</button>`;
             } else if (cp > 0) {
-                // 無操作權限但有號召中 → 純顯示
                 callHtml = `<span class="call-indicator" title="${cp===1?'優先號召':'次要號召'}">${cp===1?'🔴':'🟠'}</span>`;
             }
 
-            // ── MAX 按鈕（所有人可點） ──
             const maxClass = b.isMax ? 'maxed' : '';
             const maxTitle = b.isMax ? '取消滿員' : '標記滿員';
             const maxHtml  = `<button class="max-btn ${maxClass}" onclick="toggleMax('${id}')" title="${maxTitle}">M</button>`;
 
-            // ── NEXT/KILL 按鈕：閃爍中鎖定，防止重複點擊 ──
             const hasNext = (b.targetTime === 0 && st.weight !== 7);
             const isLocked = !!b.isFlash;
             const nextHtml = hasNext
                 ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color};border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')" ${isLocked ? 'disabled title="處理中，請稍候..."' : ''}>${b.displayValue==='ON'?'KILL':'NEXT'}</button>`
                 : '';
 
-            // 無 NEXT/KILL → 加 compact class，縮小 padding
             if (!hasNext) cardClass += ' compact';
-            if (st.isGrey) cardClass += ' idle-card';
+            if (st.isGrey) card.classList.add('idle-card');
 
             card.innerHTML = `
                 <button class="del" onclick="handleDelClick('${id}')">×</button>
@@ -754,7 +702,7 @@ function renderList() {
     };
 
     const pinnedItems = sortItems(all.filter(i =>  getBossStatus(i[1],i[0]).pinned));
-    const otherItems  =            all.filter(i => !getBossStatus(i[1],i[0]).pinned);
+    const otherItems  =           all.filter(i => !getBossStatus(i[1],i[0]).pinned);
     drawBox(pinnedItems, "置頂追蹤區 ★");
 
     if (currentSort === 'time') {
@@ -775,7 +723,7 @@ function renderList() {
         const stages = [], timersList = [], idleList = [];
         active.forEach(([id, b]) => {
             const st = getBossStatus(b, id);
-            if (st.isGrey)        idleList.push([id, b]);
+            if (st.isGrey)         idleList.push([id, b]);
             else if (b.targetTime > 0) timersList.push([id, b]);
             else                  stages.push([id, b]);
         });
@@ -785,7 +733,6 @@ function renderList() {
     }
 }
 
-/* ════════ 擊殺區展開/收縮 ════════ */
 function toggleKilledSection(labelEl) {
     killedSectionCollapsed = !killedSectionCollapsed;
     labelEl.classList.toggle('collapsed', killedSectionCollapsed);
@@ -799,32 +746,27 @@ function toggleKilledSection(labelEl) {
     }
 }
 
-
-/* ════════ 計時器 ════════ */
 function startTimer(id, b, isGrey, statusColor) {
     const up = () => {
         const stageEl   = document.getElementById(`t_${id}`);
         const elapsedEl = document.getElementById(`e_${id}`);
         if (!stageEl) return;
         const now = Date.now();
-        const maxBadge = ''; // MAX badge 已移至標題列，此處不再顯示
 
         if (b.targetTime > 0) {
-            // 倒數計時：stage-label 顯示倒數，elapsed-row 顯示結束現實時間
             const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
             const hh = Math.floor(a/3600), mm = Math.floor((a%3600)/60), ss = a%60;
-            stageEl.innerHTML = `${hh}:${mm.toString().padStart(2,'0')}:${ss.toString().padStart(2,'0')}${maxBadge}`;
+            stageEl.innerHTML = `${hh}:${mm.toString().padStart(2,'0')}:${ss.toString().padStart(2,'0')}`;
             stageEl.className = 'stage-label countdown';
             if (!isGrey) stageEl.style.color = d <= 0 ? (isLightMode ? '#cc2200' : '#ff3300') : (isLightMode ? '#1a7a1a' : '#00FF00');
             if (elapsedEl) {
                 const endDate = new Date(b.targetTime);
                 const eHH = endDate.getHours().toString().padStart(2,'0');
                 const eMM = endDate.getMinutes().toString().padStart(2,'0');
-                elapsedEl.innerHTML = `<span style="opacity:0.4;">${eHH}:${eMM}</span>`;
+                elapsedEl.innerHTML = `<span style="opacity:${(isLightMode && isGrey) ? '1' : '0.4'};">${eHH}:${eMM}</span>`;
                 elapsedEl.style.color = '';
             }
         } else {
-            // 階段/ON/已擊殺：stage-label 顯示狀態，elapsed-row 顯示經過時間
             const diff = Math.max(0, now - b.startTime);
             const m = Math.floor(diff / 60000);
             const s = Math.floor((diff % 60000) / 1000);
@@ -833,12 +775,12 @@ function startTimer(id, b, isGrey, statusColor) {
             const lv  = b.displayValue === "ON" ? 99 : (mat ? Math.floor(parseFloat(mat[0])) : 0);
             const isW = (lv < 2 && m >= 12) || (lv >= 2 && lv < 3 && m >= 7) ||
                         (lv >= 3 && lv < 4 && m >= 5) || (lv === 4 && m >= 3) || (lv === 99 && m >= 3);
-            stageEl.innerHTML = `${isK ? "已擊殺" : b.displayValue}${maxBadge}`;
+            stageEl.innerHTML = `${isK ? "已擊殺" : b.displayValue}`;
             stageEl.className = `stage-label${b.isFlash ? ' flash-anim' : ''}`;
             if (!isGrey) stageEl.style.color = statusColor;
             if (elapsedEl) {
                 elapsedEl.innerHTML = `(${m}:${s.toString().padStart(2,'0')})${(showWarningIcon && isW && !isGrey && !isK) ? ' ⚠️' : ''}`;
-                elapsedEl.style.color = isGrey ? '#444' : '#666';
+                elapsedEl.style.color = isGrey ? '#bcbcbc' : '#666';
             }
         }
     };
@@ -846,7 +788,6 @@ function startTimer(id, b, isGrey, statusColor) {
     timers[id] = setInterval(up, 1000);
 }
 
-/* ════════ saveBoss ════════ */
 function saveBoss(map, ch, val, doFocus = false) {
     const pass = protectedRooms[currentRoom];
     if (pass && map.toUpperCase() === "ADMIN" && ch === pass) {
@@ -881,13 +822,11 @@ function saveBoss(map, ch, val, doFocus = false) {
         startTime: Date.now(), isFlash: flash, updater: myName
     };
 
-    // 進入計時 或 擊殺 → 自動清除號召優先度 & MAX 標記
     if (tt > 0 || uv.startsWith("DE")) {
         const oldCP = oldData ? (oldData.callPriority || 0) : 0;
         updatePayload.callPriority = 0;
         updatePayload.isMax = false;
 
-        // 若清除的是 🔴優先(1)，延遲檢查是否有 🟠次要 → 自動升為 🔴
         if (oldCP === 1) {
             setTimeout(() => {
                 const slots = getCallSlots();
@@ -905,16 +844,8 @@ function saveBoss(map, ch, val, doFocus = false) {
 
     const logRef = db.ref(`rooms/${currentRoom}/logs`);
     logRef.push({ name: myName, boss: `${map}-${ch}`, oldVal: oldStatus, newVal: dv, t: Date.now() });
-    logRef.once('value', snapshot => {
-        const total = snapshot.numChildren();
-        if (total > 100) {
-            let count = 0;
-            snapshot.forEach(child => { if (count < total - 100) child.ref.remove(); count++; });
-        }
-    });
 }
 
-/* ════════ 紀錄 ════════ */
 let logDisplayModes = [0, 3, 5, 10], currentLogModeIndex = 1, lastLogData = null;
 
 function cycleLogMode() {
@@ -1001,14 +932,12 @@ function updateOnlineUsersDisplay() {
     }).join('<span style="color:#333;"> · </span>');
 }
 
-/* ════════ triggerNext ════════ */
 function triggerNext(m, c) {
     db.ref(`rooms/${currentRoom}/bosses/${m}_${c}`).once('value', s => {
         const d = s.val(); if (!d) return;
         let cur = d.lastInput.toString().toUpperCase();
         if (cur === "ON") {
             saveBoss(m, c, "DE1");
-            // saveBoss 已自動清除 callPriority，此處保留一次 explicit 清除確保安全
             db.ref(`rooms/${currentRoom}/bosses/${m}_${c}/callPriority`).set(0);
         } else if (cur.startsWith("R")) {
             const n = parseFloat(cur.substring(1)) || 0;
@@ -1021,7 +950,6 @@ function triggerNext(m, c) {
     unlockAudio();
 }
 
-/* ════════ 版本檢查 ════════ */
 function isNewerVersion(current, latest) {
     if (!latest) return false;
     const v1 = current.split('.').map(Number), v2 = latest.split('.').map(Number);
@@ -1032,7 +960,6 @@ function isNewerVersion(current, latest) {
     return false;
 }
 
-/* ════════ 登入 / 進房 ════════ */
 function startSession(id) {
     currentRoom = id.toUpperCase();
     db.ref('app_version').on('value', snapshot => {
@@ -1076,7 +1003,6 @@ function startSession(id) {
             Object.keys(incoming).forEach(k => {
                 const b = incoming[k], v = b.lastInput.toString().toUpperCase();
                 if (v !== lastProcessedInput[k] && b.isFlash) {
-                    // 置頂提醒模式：只有置頂卡片才觸發語音/音效
                     const isPinned = !!localPinned[`${currentRoom}_${k}`];
                     const shouldAlert = !pinAlertMode || isPinned;
                     if (shouldAlert) {
@@ -1099,14 +1025,11 @@ function startSession(id) {
     });
 }
 
-/* ════════ 管理者留言板 ════════ */
 function initNotice() {
-    // 顯示編輯按鈕（僅管理員）
     if (hasAuth()) {
         const btn = document.getElementById('noticeEditBtn');
         if (btn) btn.style.display = 'inline-block';
     }
-    // 監聽公告變動
     db.ref(`rooms/${currentRoom}/notice`).on('value', s => {
         const text = s.val() || '';
         const el = document.getElementById('noticeText');
@@ -1114,7 +1037,6 @@ function initNotice() {
             el.textContent = text || '（尚無公告）';
             el.style.color = text ? '#ccc' : '#555';
         }
-        // 同步到編輯框
         const input = document.getElementById('noticeInput');
         if (input && document.getElementById('noticeEditArea').style.display === 'none') {
             input.value = text;
@@ -1126,7 +1048,6 @@ function toggleNoticeEdit() {
     const area = document.getElementById('noticeEditArea');
     const isOpen = area.style.display !== 'none';
     if (!isOpen) {
-        // 開啟時同步當前公告內容到 textarea
         const current = document.getElementById('noticeText').textContent;
         const input = document.getElementById('noticeInput');
         input.value = (current === '（尚無公告）') ? '' : current;
@@ -1144,7 +1065,6 @@ function saveNotice() {
     document.getElementById('noticeEditArea').style.display = 'none';
 }
 
-/* ════════ 其他功能 ════════ */
 function togglePin(id) {
     const k = `${currentRoom}_${id}`;
     if (localPinned[k]) delete localPinned[k]; else localPinned[k] = true;
@@ -1174,8 +1094,8 @@ function addBoss() {
 }
 function clearAllBosses() { if (!hasAuth()) return; if (confirm("確定一鍵清除？")) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
 function copyRoomID()     { navigator.clipboard.writeText(currentRoom); alert('房號已複製'); }
-function joinRoom()       { const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
-function createRoom()     { const i = Math.random().toString(36).substring(2, 8).toUpperCase(); startSession(i); }
+function joinRoom()        { const i = document.getElementById('roomInput').value.trim().toUpperCase(); if (i) startSession(i); }
+function createRoom()      { const i = Math.random().toString(36).substring(2, 8).toUpperCase(); startSession(i); }
 function setSort(t) {
     currentSort = t;
     document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id === `sort${t.charAt(0).toUpperCase()+t.slice(1)}Btn`));
