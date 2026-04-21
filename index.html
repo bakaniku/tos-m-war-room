@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.5.1</title>
+    <title>TOS M FB TIME v1.5.2</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -207,7 +207,7 @@
         .stage-label.flash-anim { animation: flash 0.5s step-end 10; }
         @keyframes flash { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
         .elapsed-row {
-            font-size: 13px; font-family: monospace; opacity: 0.7;
+            font-size: 13px; font-family: monospace; opacity: 0.75;
             display: flex; align-items: baseline; gap: 4px; min-height: 16px;
         }
         .stage-label.countdown { font-family: monospace; }
@@ -311,7 +311,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.5.1</div>
+        <div class="ver-info">v1.5.2</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10" oninput="this.value=this.value.replace('#','')">
             <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
@@ -344,7 +344,7 @@
                 </div>
             </div>
             <div class="room-info">
-                <span class="version-tag">v1.5.1</span>
+                <span class="version-tag">v1.5.2</span>
                     <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
                 <button class="btn-danger" id="clearAllBtn" onclick="clearAllBosses()" style="display:none;">一鍵清除</button>
                 <button style="background:none;color:#444;" onclick="location.reload()">退出</button>
@@ -423,7 +423,7 @@ window.currentData = {};
 let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
 let lastProcessedInput = {};
 const protectedRooms = { 'GABIJA':'faker','000000':'tosm','ZEMYNA':'earth0407','SAULE':'apple','ASRINE':'lostu' };
-const currentVersion = "1.5.1";
+const currentVersion = "1.5.2";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
 
@@ -763,7 +763,7 @@ function startTimer(id, b, isGrey, statusColor) {
                 const endDate = new Date(b.targetTime);
                 const eHH = endDate.getHours().toString().padStart(2,'0');
                 const eMM = endDate.getMinutes().toString().padStart(2,'0');
-                elapsedEl.innerHTML = `<span style="opacity:${(isLightMode && isGrey) ? '1' : '0.7'};">${eHH}:${eMM}</span>`;
+                elapsedEl.innerHTML = `<span style="opacity:${(isLightMode && isGrey) ? '1' : '0.4'};">${eHH}:${eMM}</span>`;
                 elapsedEl.style.color = '';
             }
         } else {
@@ -780,7 +780,7 @@ function startTimer(id, b, isGrey, statusColor) {
             if (!isGrey) stageEl.style.color = statusColor;
             if (elapsedEl) {
                 elapsedEl.innerHTML = `(${m}:${s.toString().padStart(2,'0')})${(showWarningIcon && isW && !isGrey && !isK) ? ' ⚠️' : ''}`;
-                elapsedEl.style.color = isGrey ? '#bcbcbc' : '#666';
+                elapsedEl.style.color = isGrey ? '#bcbcbc' : '#888';
             }
         }
     };
