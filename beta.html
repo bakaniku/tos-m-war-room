@@ -125,18 +125,22 @@
         /* ═══ 亮色模式全面覆蓋 ═══ */
         body.light { color: #333; }
         body.light input[type=text] { background: #fff; border-color: #ddd; color: #333; }
-        /* 1. 房間代碼顏色 */
+        /* 1. 房間代碼顏色 + 複製圖示同色 */
         body.light .room-id { color: #3d7440 !important; }
         body.light #onlineCount { color: #3d7440 !important; }
+        body.light .copy-icon { filter: none; }
+        body.light .copy-icon path, body.light .copy-icon rect { stroke: #3d7440 !important; }
         /* 2. 功能按鈕列背景 */
         body.light .audio-controls { background: #d6cbb6; border-color: #c4b89e; }
         body.light .audio-btn { color: #5a4a2a; }
         /* 3. 一鍵清除 */
         body.light .btn-danger { background: #d6cbb6; color: #8a3a00; border: 1px solid #c4a882; }
-        /* 4. 送出按鈕：同排序按鈕色彩 */
-        body.light .chat-input-row button { background: #d6cbb6; color: #5a4a2a; border: none; }
-        /* 5. 紀錄中地圖-分流顏色 → 由 JS renderLogs 動態輸出，這裡加全局覆蓋 */
+        /* 4. 送出按鈕：同 active 排序按鈕（綠底綠字風格） */
+        body.light .chat-input-row button { background: #d0f0d0; color: #1a7a1a; border: 1px solid #1a7a1a; font-weight: bold; }
+        /* 5. 紀錄中地圖-分流顏色 */
         body.light .log-boss-name { color: #8c8c8c !important; }
+        /* 公告字體顏色 */
+        body.light .notice-text { color: #585858 !important; }
         body.light .user-list-bar { color: #999; border-bottom-color: #ddd; }
         body.light .version-tag { color: #bbb; }
         body.light #logPanel { background: #f5f5f2 !important; border-color: #ddd !important; }
@@ -148,24 +152,18 @@
         body.light #noticeEditArea { background: #f5f5f2 !important; border-color: #ddd !important; }
         body.light #noticeInput { background: #fff !important; border-color: #ddd !important; color: #333 !important; }
         body.light .elapsed-row { color: #999; opacity: 1; }
-        body.light .top-editor { color: #1a5a00 !important; }
-        /* 7. 閒置/超時卡片：整體灰暗化 */
+        body.light .log-new-val { color: #437a41 !important; }
+        body.light .top-editor { color: #cc3300 !important; }
+        /* 7. 閒置/超時卡片：字體統一 #c8c8c8 */
         body.light .card.idle-card { background: #e8e5e0 !important; border-color: #ccc !important; }
-        body.light .card.idle-card h3 { color: #aaa !important; }
-        body.light .card.idle-card .stage-label { opacity: 0.45; }
-        body.light .card.idle-card .elapsed-row { color: #bbb !important; }
-        body.light .card.idle-card .del { color: #ccc; }
-        /* 8. 號召卡片閃爍時背景保持白色（不變黑） */
-        body.light @keyframes cpulse1 {
-            0%   { box-shadow: 0 0 5px #ff3300; background: #fff; }
-            50%  { box-shadow: 0 0 20px #ff3300; background: #fff5f3; }
-            100% { box-shadow: 0 0 5px #ff3300; background: #fff; }
-        }
-        body.light @keyframes cpulse2 {
-            0%   { box-shadow: 0 0 5px #ff8800; background: #fff; }
-            50%  { box-shadow: 0 0 20px #ff8800; background: #fff8f0; }
-            100% { box-shadow: 0 0 5px #ff8800; background: #fff; }
-        }
+        body.light .card.idle-card h3 { color: #c8c8c8 !important; border-bottom-color: #ddd !important; }
+        body.light .card.idle-card .stage-label { color: #c8c8c8 !important; }
+        body.light .card.idle-card .elapsed-row { color: #c8c8c8 !important; }
+        body.light .card.idle-card .del { color: #d0d0d0 !important; }
+        body.light .card.idle-card .btn-next { color: #c8c8c8 !important; border-color: #c8c8c8 !important; }
+        body.light .card.idle-card .card-actions { border-top-color: #ddd !important; }
+        body.light .card.idle-card .updater-txt { color: #c8c8c8 !important; }
+        /* 8. 號召卡片閃爍時背景保持白色 */
         body.light .card.calling-1 { animation: cpulse1-light 1.5s infinite !important; }
         body.light .card.calling-2 { animation: cpulse2-light 1.5s infinite !important; }
         @keyframes cpulse1-light {
@@ -307,9 +305,15 @@
 
         .top-editor { display:inline-block; padding:0 4px; border-radius:4px; animation:editor-glow 2s infinite; font-weight:bold!important; }
         @keyframes editor-glow {
-            0%  { box-shadow:0 0 2px #fff; text-shadow:0 0 2px #fff; }
-            50% { box-shadow:0 0 10px #ffca28; text-shadow:0 0 5px #ffca28; background:rgba(255,202,40,0.1); }
-            100%{ box-shadow:0 0 2px #fff; text-shadow:0 0 2px #fff; }
+            0%  { box-shadow:0 0 2px #ff6622; text-shadow:0 0 2px #ff6622; }
+            50% { box-shadow:0 0 10px #ff4400; text-shadow:0 0 6px #ff4400; background:rgba(255,68,0,0.12); }
+            100%{ box-shadow:0 0 2px #ff6622; text-shadow:0 0 2px #ff6622; }
+        }
+        body.light .top-editor { animation: editor-glow-light 2s infinite; }
+        @keyframes editor-glow-light {
+            0%  { box-shadow:0 0 2px #cc3300; text-shadow:0 0 2px #cc3300; }
+            50% { box-shadow:0 0 8px #ff4400; text-shadow:0 0 4px #ff4400; background:rgba(255,68,0,0.08); }
+            100%{ box-shadow:0 0 2px #cc3300; text-shadow:0 0 2px #cc3300; }
         }
 
         #logModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:9999; justify-content:center; align-items:center; }
@@ -557,6 +561,9 @@ function toggleTheme() {
     document.body.classList.toggle('light', isLightMode);
     const btn = document.getElementById('themeBtn');
     if (btn) btn.textContent = isLightMode ? '🌙 暗色' : '☀️ 亮色';
+    // 複製圖示顏色跟隨房間代碼
+    const copyIcon = document.querySelector('.copy-icon');
+    if (copyIcon) copyIcon.setAttribute('stroke', isLightMode ? '#3d7440' : '#0f0');
     renderList();
 }
 
@@ -937,7 +944,7 @@ function viewFullLogs() {
         const time = new Date(l.t).toLocaleTimeString('zh-TW', { hour12: false });
         const entry = document.createElement('div');
         entry.className = 'log-entry';
-        entry.innerHTML = `<span style="color:#444;">${i+1}. [${time}]</span> <span style="color:${getColor(l.name)};font-weight:bold;">${l.name}</span> <span style="color:#aaa;">將</span> <span class="log-boss-name" style="color:#fff;">${l.boss}</span> <span style="color:#f66;">${l.oldVal}</span> <span style="color:#aaa;">改為</span> <span style="color:#0f0;">${l.newVal}</span>`;
+        entry.innerHTML = `<span style="color:#444;">${i+1}. [${time}]</span> <span style="color:${getColor(l.name)};font-weight:bold;">${l.name}</span> <span style="color:#aaa;">將</span> <span class="log-boss-name" style="color:#fff;">${l.boss}</span> <span style="color:#f66;">${l.oldVal}</span> <span style="color:#aaa;">改為</span> <span class="log-new-val" style="color:#0f0;">${l.newVal}</span>`;
         body.appendChild(entry);
     });
     document.getElementById('logModal').classList.add('show');
@@ -972,7 +979,7 @@ function renderLogs(data) {
     container.innerHTML = '';
     logs.slice(0, mode).forEach(l => {
         const time = new Date(l.t).toLocaleTimeString('zh-TW', { hour12: false });
-        container.innerHTML += `<div style="border-bottom:1px solid #1a1a1a;padding:4px 0;"><span style="color:#444;">[${time}]</span> <span style="color:${getColor(l.name)};font-weight:bold;">${l.name}</span> <span style="color:#aaa;">將</span> <span class="log-boss-name" style="color:#fff;">${l.boss}</span> <span style="color:#f66;">${l.oldVal}</span> <span style="color:#aaa;">改為</span> <span style="color:#0f0;">${l.newVal}</span></div>`;
+        container.innerHTML += `<div style="border-bottom:1px solid #1a1a1a;padding:4px 0;"><span style="color:#444;">[${time}]</span> <span style="color:${getColor(l.name)};font-weight:bold;">${l.name}</span> <span style="color:#aaa;">將</span> <span class="log-boss-name" style="color:#fff;">${l.boss}</span> <span style="color:#f66;">${l.oldVal}</span> <span style="color:#aaa;">改為</span> <span class="log-new-val" style="color:#0f0;">${l.newVal}</span></div>`;
     });
 }
 
