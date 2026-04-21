@@ -135,8 +135,8 @@
         body.light .audio-btn { color: #5a4a2a; }
         /* 3. 一鍵清除 */
         body.light .btn-danger { background: #d6cbb6; color: #8a3a00; border: 1px solid #c4a882; }
-        /* 4. 送出按鈕：同 active 排序按鈕（綠底綠字風格） */
-        body.light .chat-input-row button { background: #d0f0d0; color: #1a7a1a; border: 1px solid #1a7a1a; font-weight: bold; }
+        /* 4. 送出按鈕 */
+        body.light .chat-input-row button { background: #d6efd3; color: #437a41; border: 1px solid #437a41; font-weight: bold; }
         /* 5. 紀錄中地圖-分流顏色 */
         body.light .log-boss-name { color: #8c8c8c !important; }
         /* 公告字體顏色 */
@@ -154,15 +154,15 @@
         body.light .elapsed-row { color: #999; opacity: 1; }
         body.light .log-new-val { color: #437a41 !important; }
         body.light .top-editor { color: #cc3300 !important; }
-        /* 7. 閒置/超時卡片：字體統一 #c8c8c8 */
+        /* 7. 閒置/超時卡片：所有文字 #bcbcbc */
         body.light .card.idle-card { background: #e8e5e0 !important; border-color: #ccc !important; }
-        body.light .card.idle-card h3 { color: #c8c8c8 !important; border-bottom-color: #ddd !important; }
-        body.light .card.idle-card .stage-label { color: #c8c8c8 !important; }
-        body.light .card.idle-card .elapsed-row { color: #c8c8c8 !important; }
+        body.light .card.idle-card h3 { color: #bcbcbc !important; border-bottom-color: #ddd !important; }
+        body.light .card.idle-card .stage-label { color: #bcbcbc !important; }
+        body.light .card.idle-card .elapsed-row { color: #bcbcbc !important; }
         body.light .card.idle-card .del { color: #d0d0d0 !important; }
-        body.light .card.idle-card .btn-next { color: #c8c8c8 !important; border-color: #c8c8c8 !important; }
+        body.light .card.idle-card .btn-next { color: #bcbcbc !important; border-color: #bcbcbc !important; background: transparent !important; }
         body.light .card.idle-card .card-actions { border-top-color: #ddd !important; }
-        body.light .card.idle-card .updater-txt { color: #c8c8c8 !important; }
+        body.light .card.idle-card .updater-txt { color: #bcbcbc !important; }
         /* 8. 號召卡片閃爍時背景保持白色 */
         body.light .card.calling-1 { animation: cpulse1-light 1.5s infinite !important; }
         body.light .card.calling-2 { animation: cpulse2-light 1.5s infinite !important; }
@@ -305,15 +305,15 @@
 
         .top-editor { display:inline-block; padding:0 4px; border-radius:4px; animation:editor-glow 2s infinite; font-weight:bold!important; }
         @keyframes editor-glow {
-            0%  { box-shadow:0 0 2px #ff6622; text-shadow:0 0 2px #ff6622; }
-            50% { box-shadow:0 0 10px #ff4400; text-shadow:0 0 6px #ff4400; background:rgba(255,68,0,0.12); }
-            100%{ box-shadow:0 0 2px #ff6622; text-shadow:0 0 2px #ff6622; }
+            0%  { box-shadow:0 0 2px #c85a22; text-shadow:0 0 2px #c85a22; }
+            50% { box-shadow:0 0 10px #d95c2a; text-shadow:0 0 6px #d95c2a; background:rgba(217,92,42,0.12); }
+            100%{ box-shadow:0 0 2px #c85a22; text-shadow:0 0 2px #c85a22; }
         }
         body.light .top-editor { animation: editor-glow-light 2s infinite; }
         @keyframes editor-glow-light {
-            0%  { box-shadow:0 0 2px #cc3300; text-shadow:0 0 2px #cc3300; }
-            50% { box-shadow:0 0 8px #ff4400; text-shadow:0 0 4px #ff4400; background:rgba(255,68,0,0.08); }
-            100%{ box-shadow:0 0 2px #cc3300; text-shadow:0 0 2px #cc3300; }
+            0%  { box-shadow:0 0 2px #b04e1e; text-shadow:0 0 2px #b04e1e; }
+            50% { box-shadow:0 0 8px #d95c2a; text-shadow:0 0 4px #d95c2a; background:rgba(217,92,42,0.08); }
+            100%{ box-shadow:0 0 2px #b04e1e; text-shadow:0 0 2px #b04e1e; }
         }
 
         #logModal { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:9999; justify-content:center; align-items:center; }
