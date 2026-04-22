@@ -151,6 +151,17 @@
         .member-badge:hover { color: #bbb; }
         body.light .member-badge { color: #999; }
         body.light .member-badge:hover { color: #555; }
+        /* 人數輸入按鈕（actions 列，M 右邊） */
+        .member-count-btn {
+            font-size: 11px; color: #666; cursor: pointer;
+            padding: 0 3px; border-radius: 3px;
+            border: 1px dashed #444; line-height: 18px;
+            min-width: 16px; text-align: center; transition: 0.15s;
+            flex-shrink: 0;
+        }
+        .member-count-btn:hover { color: #aaa; border-color: #777; }
+        body.light .member-count-btn { color: #999; border-color: #bbb; }
+        body.light .member-count-btn:hover { color: #555; border-color: #888; }
         /* 人數 inline 輸入框：小巧不搶版面 */
         .member-input {
             width: 38px; font-size: 12px; padding: 0 3px;
@@ -686,16 +697,19 @@ function renderList() {
 
             if (!hasNext) cardClass += ' compact';
 
-            // 標題：人數或 MAX badge（皆可點擊編輯人數）
+            // 標題列：MAX badge 或人數純顯示（不可點擊）
             const memberCount = b.memberCount || 0;
-            const memberHtml = b.isMax
-                ? `<span class="max-badge" id="mc_${id}" onclick="editMemberCount(event,'${id}')" style="cursor:pointer;animation:max-pulse 2s infinite;" title="點擊編輯人數">MAX</span>`
-                : `<span class="member-badge" id="mc_${id}" onclick="editMemberCount(event,'${id}')">${memberCount > 0 ? memberCount : '+'}</span>`;
+            const memberDisplayHtml = b.isMax
+                ? `<span class="max-badge" style="animation:max-pulse 2s infinite;">MAX</span>`
+                : (memberCount > 0 ? `<span class="member-badge" style="cursor:default;border-bottom:none;">${memberCount}</span>` : '');
+
+            // actions 列人數輸入按鈕（M 右邊）
+            const memberInputHtml = `<span class="member-count-btn" id="mc_${id}" onclick="editMemberCount(event,'${id}')" title="點擊輸入人數">${memberCount > 0 ? memberCount : '+'}</span>`;
 
             card.innerHTML = `
                 <button class="del" onclick="handleDelClick('${id}')">×</button>
                 <div class="card-title-row" id="title_${id}">
-                    <h3 id="h3_${id}" onclick="enterInlineEdit('${id}')">${b.map} - ${b.ch}</h3>${memberHtml}
+                    <h3 id="h3_${id}" onclick="enterInlineEdit('${id}')">${b.map} - ${b.ch}</h3>${memberDisplayHtml}
                 </div>
                 <div class="timer-container">
                     <div class="stage-row" id="sr_${id}">
@@ -708,6 +722,7 @@ function renderList() {
                     <button class="pin-btn ${st.pinned?'pinned':''}" onclick="togglePin('${id}')">★</button>
                     ${callHtml}
                     ${maxHtml}
+                    ${memberInputHtml}
                     ${b.updater?`<span class="updater-txt">${b.updater}</span>`:''}
                 </div>
             `;
@@ -758,6 +773,8 @@ function toggleKilledSection(labelEl) {
 
 /* ════════ 計時器 ════════ */
 function startTimer(id, b, isGrey, statusColor) {
+    if (!window._timerAlerted) window._timerAlerted = {};
+
     const up = () => {
         const stageEl   = document.getElementById(`t_${id}`);
         const elapsedEl = document.getElementById(`e_${id}`);
@@ -765,11 +782,13 @@ function startTimer(id, b, isGrey, statusColor) {
         const now = Date.now();
 
         if (b.targetTime > 0) {
+            // ── 倒數計時 ──
             const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
             const hh = Math.floor(a/3600), mm = Math.floor((a%3600)/60), ss = a%60;
             stageEl.innerHTML = `${hh}:${mm.toString().padStart(2,'0')}:${ss.toString().padStart(2,'0')}`;
             stageEl.className = 'stage-label countdown';
             if (!isGrey) stageEl.style.color = d <= 0 ? (isLightMode ? '#cc2200' : '#ff3300') : (isLightMode ? '#1a7a1a' : '#00FF00');
+
             if (elapsedEl) {
                 const endDate = new Date(b.targetTime);
                 const eHH = endDate.getHours().toString().padStart(2,'0');
@@ -777,7 +796,21 @@ function startTimer(id, b, isGrey, statusColor) {
                 elapsedEl.innerHTML = `<span style="opacity:0.5;">${eHH}:${eMM}</span>`;
                 elapsedEl.style.color = '';
             }
+
+            // 計時結束語音：d 剛變負（0~3秒內）觸發一次
+            if (!isGrey && d <= 0 && d > -4) {
+                if (!window._timerAlerted[id]) {
+                    window._timerAlerted[id] = true;
+                    const isPinned = !!localPinned[`${currentRoom}_${id}`];
+                    const shouldAlert = !pinAlertMode || isPinned;
+                    if (shouldAlert) speak(`${b.map}分流${b.ch}計時結束`);
+                }
+            } else if (d > 0) {
+                delete window._timerAlerted[id]; // 重置，下次計時可再觸發
+            }
+
         } else {
+            // ── 階段 / ON / 已擊殺 ──
             const diff = Math.max(0, now - b.startTime);
             const m = Math.floor(diff / 60000), s = Math.floor((diff % 60000) / 1000);
             const isK = b.lastInput.toString().toUpperCase().startsWith("DE");
