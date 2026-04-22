@@ -132,23 +132,24 @@
         .card.compact .card-actions { margin-top: 5px; padding-top: 5px; }
 
         /* ── 標題列：虛線只在文字下，不延伸到空白處 ── */
-        .card-title-row { display: flex; align-items: baseline; gap: 5px; padding-right: 18px; margin-bottom: 4px; }
+        .card-title-row { display: flex; align-items: baseline; gap: 8px; padding-right: 18px; margin-bottom: 4px; }
         .card h3 {
             margin: 0; color: var(--text-title); font-size: 15px; font-weight: bold;
             cursor: pointer; line-height: 1.3; white-space: nowrap;
             display: inline-block; width: fit-content;
-            border-bottom: 1px dashed var(--border-dashed); /* 虛線僅在文字寬度內 */
+            border-bottom: 1px dashed var(--border-dashed);
             padding-bottom: 1px;
         }
-        /* 人數標籤：可點擊快速編輯 */
+        /* 人數標籤：虛線與 h3 對齊 */
         .member-badge {
             font-size: 12px; color: #888; font-weight: normal;
-            flex-shrink: 0; cursor: pointer; padding: 0 3px;
-            border-radius: 3px; transition: 0.15s;
-            border-bottom: 1px dashed #555;
+            flex-shrink: 0; cursor: pointer; padding: 0 2px;
+            border-radius: 0; transition: 0.15s;
+            border-bottom: 1px dashed var(--border-dashed);
+            padding-bottom: 1px; line-height: 1.3;
         }
-        .member-badge:hover { color: #bbb; border-bottom-color: #888; }
-        body.light .member-badge { color: #999; border-bottom-color: #bbb; }
+        .member-badge:hover { color: #bbb; }
+        body.light .member-badge { color: #999; }
         body.light .member-badge:hover { color: #555; }
         /* 人數 inline 輸入框：小巧不搶版面 */
         .member-input {
@@ -685,11 +686,10 @@ function renderList() {
 
             if (!hasNext) cardClass += ' compact';
 
-            // 標題：MAX badge 或人數（可點擊編輯）
-            // isMax 由 M 按鈕控制，不在此顯示，避免重複
+            // 標題：人數或 MAX badge（皆可點擊編輯人數）
             const memberCount = b.memberCount || 0;
             const memberHtml = b.isMax
-                ? '' // MAX 已由 M 按鈕顯示
+                ? `<span class="max-badge" id="mc_${id}" onclick="editMemberCount(event,'${id}')" style="cursor:pointer;animation:max-pulse 2s infinite;" title="點擊編輯人數">MAX</span>`
                 : `<span class="member-badge" id="mc_${id}" onclick="editMemberCount(event,'${id}')">${memberCount > 0 ? memberCount : '+'}</span>`;
 
             card.innerHTML = `
