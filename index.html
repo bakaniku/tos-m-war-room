@@ -158,9 +158,9 @@
             background: none; border: none; color: inherit; line-height: 1;
         }
         .member-count-btn:hover { opacity: 1; }
-        /* 右上角人數顯示（× 左邊） */
+        /* 右上角人數顯示（與 × 同高） */
         .member-top-display {
-            position: absolute; top: 5px; right: 26px;
+            position: absolute; top: 7px; right: 28px;
             font-size: 10px; color: #666; font-family: monospace;
             line-height: 1; pointer-events: none; white-space: nowrap;
         }
@@ -702,10 +702,10 @@ function renderList() {
 
             if (!hasNext) cardClass += ' compact';
 
-            // 右上角人數顯示（× 左邊）
+            // 右上角人數顯示（MAX 時不顯示，只顯示標題列 MAX badge）
             const memberCount = b.memberCount || 0;
-            const memberTopHtml = (memberCount > 0 || b.isMax)
-                ? `<span class="member-top-display">${b.isMax ? '👤MAX' : `👤${memberCount}`}</span>`
+            const memberTopHtml = (!b.isMax && memberCount > 0)
+                ? `<span class="member-top-display">👤${memberCount}</span>`
                 : '';
 
             // 標題列：MAX badge（僅 isMax 時顯示）
