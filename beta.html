@@ -151,6 +151,20 @@
         .member-badge:hover { color: #bbb; }
         body.light .member-badge { color: #999; }
         body.light .member-badge:hover { color: #555; }
+        /* 人數輸入按鈕（actions 列，人形圖示） */
+        .member-count-btn {
+            font-size: 13px; cursor: pointer; padding: 0 2px;
+            opacity: 0.5; transition: opacity 0.15s; flex-shrink: 0;
+            background: none; border: none; color: inherit; line-height: 1;
+        }
+        .member-count-btn:hover { opacity: 1; }
+        /* 右上角人數顯示（與 × 同高） */
+        .member-top-display {
+            position: absolute; top: 7px; right: 28px;
+            font-size: 10px; color: #666; font-family: monospace;
+            line-height: 1; pointer-events: none; white-space: nowrap;
+        }
+        body.light .member-top-display { color: #aaa; }
         /* 人數 inline 輸入框：小巧不搶版面 */
         .member-input {
             width: 38px; font-size: 12px; padding: 0 3px;
@@ -193,6 +207,8 @@
         .msg-name.self { color: #0af; }
         body.light .msg-name { color: #1a7a1a; }
         body.light .msg-name.self { color: #0066aa; }
+        .msg-time { font-size: 10px; color: #444; white-space: nowrap; flex-shrink: 0; margin-left: auto; align-self: center; }
+        body.light .msg-time { color: #bbb; }
         .msg-bubble { font-size: 13px; color: #ccc; background: var(--chat-msg-bg); border-radius: 6px; padding: 5px 9px; max-width: 80%; word-break: break-all; }
         body.light .msg-bubble { color: #333; }
         .chat-input-row { display: flex; border-top: 1px solid var(--chat-border); align-items: stretch; }
@@ -686,16 +702,25 @@ function renderList() {
 
             if (!hasNext) cardClass += ' compact';
 
-            // 標題：人數或 MAX badge（皆可點擊編輯人數）
+            // 右上角人數顯示（MAX 時不顯示，只顯示標題列 MAX badge）
             const memberCount = b.memberCount || 0;
-            const memberHtml = b.isMax
-                ? `<span class="max-badge" id="mc_${id}" onclick="editMemberCount(event,'${id}')" style="cursor:pointer;animation:max-pulse 2s infinite;" title="點擊編輯人數">MAX</span>`
-                : `<span class="member-badge" id="mc_${id}" onclick="editMemberCount(event,'${id}')">${memberCount > 0 ? memberCount : '+'}</span>`;
+            const memberTopHtml = (!b.isMax && memberCount > 0)
+                ? `<span class="member-top-display">👤${memberCount}</span>`
+                : '';
+
+            // 標題列：MAX badge（僅 isMax 時顯示）
+            const memberDisplayHtml = b.isMax
+                ? `<span class="max-badge" style="animation:max-pulse 2s infinite;">MAX</span>`
+                : '';
+
+            // actions 列人數輸入（人形圖示按鈕）
+            const memberInputHtml = `<button class="member-count-btn" id="mc_${id}" onclick="editMemberCount(event,'${id}')" title="點擊輸入人數">👤</button>`;
 
             card.innerHTML = `
+                ${memberTopHtml}
                 <button class="del" onclick="handleDelClick('${id}')">×</button>
                 <div class="card-title-row" id="title_${id}">
-                    <h3 id="h3_${id}" onclick="enterInlineEdit('${id}')">${b.map} - ${b.ch}</h3>${memberHtml}
+                    <h3 id="h3_${id}" onclick="enterInlineEdit('${id}')">${b.map} - ${b.ch}</h3>${memberDisplayHtml}
                 </div>
                 <div class="timer-container">
                     <div class="stage-row" id="sr_${id}">
@@ -708,6 +733,7 @@ function renderList() {
                     <button class="pin-btn ${st.pinned?'pinned':''}" onclick="togglePin('${id}')">★</button>
                     ${callHtml}
                     ${maxHtml}
+                    ${memberInputHtml}
                     ${b.updater?`<span class="updater-txt">${b.updater}</span>`:''}
                 </div>
             `;
@@ -758,6 +784,8 @@ function toggleKilledSection(labelEl) {
 
 /* ════════ 計時器 ════════ */
 function startTimer(id, b, isGrey, statusColor) {
+    if (!window._timerAlerted) window._timerAlerted = {};
+
     const up = () => {
         const stageEl   = document.getElementById(`t_${id}`);
         const elapsedEl = document.getElementById(`e_${id}`);
@@ -765,11 +793,13 @@ function startTimer(id, b, isGrey, statusColor) {
         const now = Date.now();
 
         if (b.targetTime > 0) {
+            // ── 倒數計時 ──
             const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
             const hh = Math.floor(a/3600), mm = Math.floor((a%3600)/60), ss = a%60;
             stageEl.innerHTML = `${hh}:${mm.toString().padStart(2,'0')}:${ss.toString().padStart(2,'0')}`;
             stageEl.className = 'stage-label countdown';
             if (!isGrey) stageEl.style.color = d <= 0 ? (isLightMode ? '#cc2200' : '#ff3300') : (isLightMode ? '#1a7a1a' : '#00FF00');
+
             if (elapsedEl) {
                 const endDate = new Date(b.targetTime);
                 const eHH = endDate.getHours().toString().padStart(2,'0');
@@ -777,7 +807,21 @@ function startTimer(id, b, isGrey, statusColor) {
                 elapsedEl.innerHTML = `<span style="opacity:0.5;">${eHH}:${eMM}</span>`;
                 elapsedEl.style.color = '';
             }
+
+            // 計時結束語音：d 剛變負（0~3秒內）觸發一次
+            if (!isGrey && d <= 0 && d > -4) {
+                if (!window._timerAlerted[id]) {
+                    window._timerAlerted[id] = true;
+                    const isPinned = !!localPinned[`${currentRoom}_${id}`];
+                    const shouldAlert = !pinAlertMode || isPinned;
+                    if (shouldAlert) speak(`${b.map}分流${b.ch}計時結束`);
+                }
+            } else if (d > 0) {
+                delete window._timerAlerted[id]; // 重置，下次計時可再觸發
+            }
+
         } else {
+            // ── 階段 / ON / 已擊殺 ──
             const diff = Math.max(0, now - b.startTime);
             const m = Math.floor(diff / 60000), s = Math.floor((diff % 60000) / 1000);
             const isK = b.lastInput.toString().toUpperCase().startsWith("DE");
@@ -1053,11 +1097,881 @@ function initChat() {
         const container = document.getElementById('chatMsgs'); if(!container) return;
         container.innerHTML = '';
         const list = Object.values(s.val()||{}).sort((a,b) => a.t-b.t);
-        list.forEach(m => { container.innerHTML += `<div class="msg-row"><span class="msg-name ${m.name===myName?'self':''}">${m.name}</span><span class="msg-bubble">${m.text}</span></div>`; });
+        list.forEach(m => {
+            const time = m.t ? new Date(m.t).toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '';
+            container.innerHTML += `<div class="msg-row"><span class="msg-name ${m.name===myName?'self':''}">${m.name}</span><span class="msg-bubble">${m.text}</span><span class="msg-time">${time}</span></div>`;
+        });
         if (chatMode==='hidden'&&list.length>0&&list[list.length-1].t>lastReadMsgTime&&list[list.length-1].name!==myName) document.getElementById('chatDot').classList.add('show');
         scrollChat();
     });
 }
 </script>
+<!-- ═══════════════════════════════════════════════════════════════════════
+     📷 TOS M FB TIME - 螢幕偵測模組 v0.2 Beta
+     
+     【使用方式】
+     把這整段（從 <script> 到 </script>）貼到 index.html 中
+     原本 </script> 標籤的後面、</body> 之前。
+     
+     也就是：
+       ... 你的原本程式碼 ...
+       </script>                    ← 你原本的結尾
+       
+       [貼在這裡]                   ← 這整段
+       
+       </body>
+       </html>
+     
+     【功能】
+     - 自動在工具列新增 📷 按鈕
+     - 框選螢幕區域 → OCR 辨識 → 自動填入 saveBoss
+     - 置信度評分 + 社群共享字典
+     - 所有資料透過你現有的 Firebase db 物件
+     
+     【停用】
+     如果要移除，刪除這整段即可，完全不影響原本功能。
+═══════════════════════════════════════════════════════════════════════ -->
+<script>
+(function() {
+  'use strict';
+
+  // ═══ 自動載入 Tesseract.js ═══
+  function loadTesseract(callback) {
+    if (typeof Tesseract !== 'undefined') { callback(); return; }
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    script.onload = () => callback();
+    script.onerror = () => console.error('[偵測器] Tesseract 載入失敗');
+    document.head.appendChild(script);
+  }
+
+  // ═══ 內建種子字典（社群會持續補充）═══
+  const BUILTIN_MAP_DICTIONARY = {
+    // 範例：之後由社群共同擴充
+    // "緹玫勒斯寺院": "113",
+  };
+
+  // ═══ 等待主程式就緒 ═══
+  function waitForApp(cb) {
+    if (typeof saveBoss === 'function' 
+        && typeof currentRoom !== 'undefined' 
+        && currentRoom 
+        && typeof db !== 'undefined') {
+      cb();
+    } else {
+      setTimeout(() => waitForApp(cb), 500);
+    }
+  }
+
+  // ═══ 狀態 ═══
+  const state = {
+    stream: null,
+    autoTimer: null,
+    currentMode: 'status',
+    regions: { status: null, map: null, ch: null },
+    lastStatus: null,
+    stableCount: 0,
+    lastSubmitted: { id: null, val: null, time: 0 },
+    mapDictionary: { ...BUILTIN_MAP_DICTIONARY },
+    lastOcrRaw: { map: '', ch: '' }
+  };
+
+  // ═══ Levenshtein 距離（模糊比對）═══
+  function levenshtein(a, b) {
+    if (!a.length) return b.length;
+    if (!b.length) return a.length;
+    const m = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1));
+    for (let i = 0; i <= a.length; i++) m[i][0] = i;
+    for (let j = 0; j <= b.length; j++) m[0][j] = j;
+    for (let i = 1; i <= a.length; i++) {
+      for (let j = 1; j <= b.length; j++) {
+        m[i][j] = a[i-1] === b[j-1] ? m[i-1][j-1] :
+          1 + Math.min(m[i-1][j-1], m[i][j-1], m[i-1][j]);
+      }
+    }
+    return m[a.length][b.length];
+  }
+  function similarity(a, b) {
+    if (!a || !b) return 0;
+    return 1 - levenshtein(a, b) / Math.max(a.length, b.length);
+  }
+
+  // ═══ 圖像前處理 ═══
+  function otsuThreshold(histogram, total) {
+    let sum = 0;
+    for (let i = 0; i < 256; i++) sum += i * histogram[i];
+    let sumB = 0, wB = 0, wF = 0, maxVar = 0, threshold = 0;
+    for (let t = 0; t < 256; t++) {
+      wB += histogram[t];
+      if (wB === 0) continue;
+      wF = total - wB;
+      if (wF === 0) break;
+      sumB += t * histogram[t];
+      const mB = sumB / wB, mF = (sum - sumB) / wF;
+      const varBetween = wB * wF * (mB - mF) * (mB - mF);
+      if (varBetween > maxVar) { maxVar = varBetween; threshold = t; }
+    }
+    return threshold;
+  }
+  function upscale(sourceCanvas, scale) {
+    const out = document.createElement('canvas');
+    out.width = sourceCanvas.width * scale;
+    out.height = sourceCanvas.height * scale;
+    const ctx = out.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(sourceCanvas, 0, 0, out.width, out.height);
+    return out;
+  }
+  function toGrayscale(canvas) {
+    const ctx = canvas.getContext('2d');
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const gray = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
+      d[i] = d[i+1] = d[i+2] = gray;
+    }
+    ctx.putImageData(imgData, 0, 0);
+    return canvas;
+  }
+  function stretchContrast(canvas) {
+    const ctx = canvas.getContext('2d');
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const d = imgData.data;
+    const histogram = new Array(256).fill(0);
+    for (let i = 0; i < d.length; i += 4) histogram[d[i]]++;
+    const total = d.length / 4;
+    let lo = 0, hi = 255, cumulative = 0;
+    for (let i = 0; i < 256; i++) {
+      cumulative += histogram[i];
+      if (cumulative >= total * 0.05) { lo = i; break; }
+    }
+    cumulative = 0;
+    for (let i = 255; i >= 0; i--) {
+      cumulative += histogram[i];
+      if (cumulative >= total * 0.05) { hi = i; break; }
+    }
+    const range = hi - lo;
+    if (range <= 0) return canvas;
+    for (let i = 0; i < d.length; i += 4) {
+      const v = Math.max(0, Math.min(255, ((d[i] - lo) / range) * 255));
+      d[i] = d[i+1] = d[i+2] = v;
+    }
+    ctx.putImageData(imgData, 0, 0);
+    return canvas;
+  }
+  function binarizeOtsu(canvas, invert = false) {
+    const ctx = canvas.getContext('2d');
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const d = imgData.data;
+    const histogram = new Array(256).fill(0);
+    for (let i = 0; i < d.length; i += 4) histogram[d[i]]++;
+    const threshold = otsuThreshold(histogram, d.length / 4);
+    for (let i = 0; i < d.length; i += 4) {
+      const v = d[i] > threshold ? 255 : 0;
+      d[i] = d[i+1] = d[i+2] = invert ? (255 - v) : v;
+    }
+    ctx.putImageData(imgData, 0, 0);
+    return canvas;
+  }
+  function medianFilter(canvas) {
+    const ctx = canvas.getContext('2d');
+    const src = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const dst = ctx.createImageData(src.width, src.height);
+    const w = src.width, h = src.height;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = (y * w + x) * 4;
+        if (x === 0 || x === w-1 || y === 0 || y === h-1) {
+          dst.data[idx] = dst.data[idx+1] = dst.data[idx+2] = src.data[idx];
+          dst.data[idx+3] = 255;
+          continue;
+        }
+        const neighbors = [];
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++)
+            neighbors.push(src.data[((y+dy) * w + (x+dx)) * 4]);
+        neighbors.sort((a, b) => a - b);
+        const med = neighbors[4];
+        dst.data[idx] = dst.data[idx+1] = dst.data[idx+2] = med;
+        dst.data[idx+3] = 255;
+      }
+    }
+    ctx.putImageData(dst, 0, 0);
+    return canvas;
+  }
+  function preprocessForOCR(sourceCanvas, options = {}) {
+    const scale = options.scale || 4;
+    const invert = options.invert || false;
+    let c = upscale(sourceCanvas, scale);
+    toGrayscale(c);
+    if (options.useMedian !== false) medianFilter(c);
+    if (options.useStretch !== false) stretchContrast(c);
+    binarizeOtsu(c, invert);
+    return c;
+  }
+
+  // ═══ 狀態偵測（ON/OFF + 置信度）═══
+  function analyzeStatus(region) {
+    const canvas = document.getElementById('dCanStatus');
+    canvas.width = region.w;
+    canvas.height = region.h;
+    const ctx = canvas.getContext('2d');
+    const video = document.getElementById('dVideo');
+    ctx.drawImage(video, region.x, region.y, region.w, region.h, 0, 0, region.w, region.h);
+    const data = ctx.getImageData(0, 0, region.w, region.h).data;
+
+    let redCount = 0, totalBright = 0, n = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i+1], b = data[i+2];
+      const maxC = Math.max(r, g, b), minC = Math.min(r, g, b);
+      totalBright += (r + g + b) / 3;
+      n++;
+      if (maxC > 60 && maxC - minC > 40 && r === maxC && r > g * 1.3 && r > b * 1.3) {
+        redCount++;
+      }
+    }
+    const redRatio = redCount / n;
+    const avgBright = totalBright / n;
+    let status, confidence;
+    if (redRatio > 0.15 && avgBright > 60) {
+      status = 'ON';
+      confidence = Math.min(1, redRatio * 4);
+    } else if (redRatio < 0.05) {
+      status = 'OFF';
+      confidence = 1 - redRatio * 10;
+    } else {
+      status = 'OFF';
+      confidence = 0.5;
+    }
+    return { status, confidence };
+  }
+
+  // ═══ 多管線 OCR（取置信度最高）═══
+  async function ocrMultiPass(region, targetCanvas, lang, whitelist) {
+    const source = document.createElement('canvas');
+    source.width = region.w;
+    source.height = region.h;
+    const sctx = source.getContext('2d');
+    const video = document.getElementById('dVideo');
+    sctx.drawImage(video, region.x, region.y, region.w, region.h, 0, 0, region.w, region.h);
+
+    targetCanvas.width = region.w;
+    targetCanvas.height = region.h;
+    targetCanvas.getContext('2d').drawImage(source, 0, 0);
+
+    const passes = [
+      { opts: { scale: 4, invert: false } },
+      { opts: { scale: 4, invert: true } },
+      { opts: { scale: 5, invert: false, useMedian: true } }
+    ];
+    const results = [];
+    for (const pass of passes) {
+      try {
+        const canvas = preprocessForOCR(source, pass.opts);
+        const ocrOpts = { logger: () => {}, tessedit_pageseg_mode: '7' };
+        if (whitelist) ocrOpts.tessedit_char_whitelist = whitelist;
+        const { data } = await Tesseract.recognize(canvas, lang, ocrOpts);
+        results.push({
+          text: data.text.trim().replace(/\s+/g, ''),
+          confidence: data.confidence / 100
+        });
+      } catch (e) {
+        results.push({ text: '', confidence: 0 });
+      }
+    }
+    results.sort((a, b) => b.confidence - a.confidence);
+    return results[0];
+  }
+
+  // ═══ 地圖名匹配 ═══
+  function matchMapName(ocrText) {
+    if (!ocrText) return { matched: null, confidence: 0, raw: ocrText };
+    const numMatch = ocrText.match(/^\d{2,3}$/);
+    if (numMatch) return { matched: numMatch[0], confidence: 1.0, raw: ocrText };
+    if (state.mapDictionary[ocrText]) {
+      return { matched: state.mapDictionary[ocrText], confidence: 1.0, raw: ocrText };
+    }
+    let bestMatch = null, bestSim = 0;
+    for (const [dictKey, mapCode] of Object.entries(state.mapDictionary)) {
+      const sim = similarity(ocrText, dictKey);
+      if (sim > bestSim) { bestSim = sim; bestMatch = mapCode; }
+    }
+    if (bestSim >= 0.6) return { matched: bestMatch, confidence: bestSim, raw: ocrText };
+    // 從正在計時中的資料輔助判斷
+    if (typeof window.currentData === 'object') {
+      const activeMapCodes = new Set();
+      Object.values(window.currentData).forEach(b => { if (b.map) activeMapCodes.add(b.map); });
+      for (const code of activeMapCodes) {
+        if (ocrText.includes(code)) return { matched: code, confidence: 0.8, raw: ocrText };
+      }
+    }
+    return { matched: null, confidence: 0, raw: ocrText };
+  }
+
+  // ═══ Firebase 學習（使用你現有的 db 物件）═══
+  function initLearning() {
+    db.ref('shared/mapDictionary').on('value', snap => {
+      const shared = snap.val() || {};
+      state.mapDictionary = { ...BUILTIN_MAP_DICTIONARY, ...shared };
+      updateDictInfo();
+    });
+  }
+  function contributeMapAlias(ocrRaw, correctMapCode) {
+    if (!ocrRaw || !correctMapCode || ocrRaw === correctMapCode) return;
+    if (ocrRaw.length < 2 || ocrRaw.length > 20) return;
+    if (/^\d+$/.test(ocrRaw)) return;
+    db.ref(`shared/mapDictionary/${ocrRaw}`).set(correctMapCode);
+    log(`🎓 已貢獻：「${ocrRaw}」= ${correctMapCode}`, '#ff0');
+  }
+
+  // ═══ UI 注入 ═══
+  function injectUI() {
+    const audioControls = document.querySelector('.audio-controls');
+    if (!audioControls) { setTimeout(injectUI, 500); return; }
+    if (document.getElementById('detectBtn')) return;
+
+    const btn = document.createElement('button');
+    btn.id = 'detectBtn';
+    btn.className = 'audio-btn';
+    btn.title = '螢幕偵測 v0.2 Beta';
+    btn.innerHTML = '📷';
+    btn.onclick = togglePanel;
+    audioControls.appendChild(btn);
+
+    const style = document.createElement('style');
+    style.textContent = `
+      #detectorPanel {
+        position: fixed; top: 0; right: 0; width: 440px; height: 100vh;
+        background: var(--bg-card, #111); border-left: 2px solid var(--border, #333);
+        z-index: 9998; overflow-y: auto; padding: 16px; box-sizing: border-box;
+        transform: translateX(100%); transition: transform 0.3s ease;
+        font-size: 13px; color: var(--text-title, #aaa);
+      }
+      #detectorPanel.open { transform: translateX(0); }
+      #detectorPanel h3 { color: #0f0; margin: 0 0 10px; font-size: 15px; }
+      body.light #detectorPanel h3 { color: #1a7a1a; }
+      #detectorPanel .close-x {
+        position: absolute; top: 8px; right: 12px; background: none;
+        border: none; color: #888; font-size: 22px; cursor: pointer;
+      }
+      #detectorPanel .sec { background: var(--bg-card-compact, #0e0e0e);
+        padding: 10px; border-radius: 6px; margin-bottom: 10px;
+        border: 1px solid var(--border, #222); }
+      #detectorPanel .dbtn {
+        background: #0f0; color: #000; border: none; padding: 6px 12px;
+        border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px;
+        margin: 2px;
+      }
+      #detectorPanel .dbtn.gray { background: #444; color: #ccc; }
+      #detectorPanel .dbtn.red { background: #622; color: #f66; }
+      #detectorPanel .dbtn:disabled { opacity: 0.4; cursor: not-allowed; }
+      #detectorPanel .mode-btn {
+        background: #333; color: #aaa; border: 1px solid #555;
+        padding: 3px 8px; border-radius: 3px; cursor: pointer; font-size: 11px; margin: 2px;
+      }
+      #detectorPanel .mode-btn.active { background: #050; color: #0f0; border-color: #0f0; }
+      body.light #detectorPanel .mode-btn.active { background: #d0f0d0; color: #1a7a1a; border-color: #1a7a1a; }
+      #detectorPanel .preview-wrap {
+        position: relative; display: inline-block; border: 2px solid #333; max-width: 100%;
+      }
+      #detectorPanel video { display: block; max-width: 100%; height: auto; }
+      #detectorPanel .region {
+        position: absolute; border: 2px solid; background: rgba(255,255,255,0.08);
+        pointer-events: none; font-size: 10px; padding: 1px 3px; color: #fff; font-weight: bold;
+      }
+      #detectorPanel .region.status { border-color: #f33; }
+      #detectorPanel .region.map { border-color: #3f3; }
+      #detectorPanel .region.ch { border-color: #ff3; }
+      #detectorPanel .result-grid {
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px;
+      }
+      #detectorPanel .result-card {
+        background: #1a1a1a; padding: 6px; border-radius: 4px; text-align: center;
+      }
+      body.light #detectorPanel .result-card { background: #e8e5e0; }
+      #detectorPanel .result-card .v {
+        font-size: 15px; font-weight: bold; min-height: 22px; margin: 3px 0;
+      }
+      #detectorPanel .result-card canvas {
+        border: 1px solid #333; max-width: 100%; background: #000;
+      }
+      #detectorPanel .conf-bar {
+        height: 3px; background: #333; border-radius: 2px; margin: 2px 0; overflow: hidden;
+      }
+      #detectorPanel .conf-fill { height: 100%; transition: width 0.3s, background 0.3s; }
+      #detectorPanel input[type=number], #detectorPanel input[type=text] {
+        background: #222; color: #fff; border: 1px solid #555;
+        padding: 3px 5px; border-radius: 3px; font-size: 12px;
+      }
+      body.light #detectorPanel input[type=number], body.light #detectorPanel input[type=text] {
+        background: #fff; color: #333; border-color: #ccc;
+      }
+      #detectorPanel .confirm-banner {
+        background: #ff9d00; color: #000; padding: 12px; border-radius: 6px;
+        font-weight: bold; margin: 10px 0;
+      }
+      #detectorPanel .confirm-banner.low-conf { background: #ff3333; color: #fff; }
+      #detectorPanel .small { font-size: 10px; color: #888; }
+      body.light #detectorPanel { background: #fff; color: #333; border-left-color: #ddd; }
+      body.light #detectorPanel .sec { background: #f5f5f2; border-color: #ddd; }
+      body.light #detectorPanel .result-card .v { color: #333; }
+      body.light #detectorPanel .dbtn { background: #1a7a1a; color: #fff; }
+      #detectorPanel .log-line { font-family: monospace; font-size: 10px; color: #888; }
+      #detectorPanel .correction-row {
+        display: flex; gap: 6px; margin-top: 6px; align-items: center;
+      }
+      #detectorPanel .correction-row input { flex: 1; }
+    `;
+    document.head.appendChild(style);
+
+    const panel = document.createElement('div');
+    panel.id = 'detectorPanel';
+    panel.innerHTML = `
+      <button class="close-x" onclick="window.__detector.close()">×</button>
+      <h3>📷 螢幕偵測器 <span class="small">v0.2 Beta</span></h3>
+
+      <div class="sec">
+        <button class="dbtn" id="dStart">▶️ 開始擷取</button>
+        <button class="dbtn red" id="dStop" disabled>⏹ 停止</button>
+        <span id="dStatus" style="margin-left:6px;font-size:11px">未啟動</span>
+      </div>
+
+      <div class="sec">
+        <div style="margin-bottom:6px"><b>① 框選三個區域</b></div>
+        <button class="mode-btn active" data-mode="status">🔴 ON/OFF 圖示</button>
+        <button class="mode-btn" data-mode="map">🟢 地圖名稱</button>
+        <button class="mode-btn" data-mode="ch">🟡 分流</button>
+        <button class="mode-btn" data-mode="none">✋ 停</button>
+        <div class="small" style="margin-top:4px">選好類型後在畫面拖曳框選，設定會自動儲存。</div>
+        <div class="preview-wrap" id="dPreview" style="margin-top:8px">
+          <video id="dVideo" autoplay muted></video>
+          <div id="dDrawBox" style="display:none"></div>
+          <div class="region status" id="dBoxStatus" style="display:none">ON</div>
+          <div class="region map" id="dBoxMap" style="display:none">MAP</div>
+          <div class="region ch" id="dBoxCh" style="display:none">CH</div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div style="margin-bottom:6px"><b>② 偵測設定</b></div>
+        <label>間隔 <input type="number" id="dInterval" value="1500" style="width:55px">ms</label>
+        <label>最低置信度 <input type="number" id="dMinConf" value="0.7" step="0.05" min="0" max="1" style="width:50px"></label>
+        <br><label style="font-size:11px"><input type="checkbox" id="dAutoSubmit"> 自動送出（置信度達標時）</label>
+        <br><label style="font-size:11px"><input type="checkbox" id="dOnlyChange" checked> 只在 ON↔OFF 變化時提示</label>
+        <br><label style="font-size:11px"><input type="checkbox" id="dContribute" checked> 🎓 貢獻糾正到社群字典</label>
+      </div>
+
+      <div class="sec">
+        <button class="dbtn" id="dTest" disabled>🧪 測試讀取</button>
+        <button class="dbtn" id="dAuto" disabled>🔄 開始監控</button>
+        <button class="dbtn red" id="dStopAuto" disabled>⏸ 停止</button>
+        <div class="result-grid">
+          <div class="result-card">
+            <div class="small">狀態</div>
+            <div class="v" id="dValStatus">—</div>
+            <div class="conf-bar"><div class="conf-fill" id="dConfStatus"></div></div>
+            <canvas id="dCanStatus"></canvas>
+          </div>
+          <div class="result-card">
+            <div class="small">地圖</div>
+            <div class="v" id="dValMap" style="font-size:12px">—</div>
+            <div class="conf-bar"><div class="conf-fill" id="dConfMap"></div></div>
+            <canvas id="dCanMap"></canvas>
+          </div>
+          <div class="result-card">
+            <div class="small">分流</div>
+            <div class="v" id="dValCh">—</div>
+            <div class="conf-bar"><div class="conf-fill" id="dConfCh"></div></div>
+            <canvas id="dCanCh"></canvas>
+          </div>
+        </div>
+        <div id="dConfirmArea"></div>
+      </div>
+
+      <div class="sec">
+        <div style="margin-bottom:6px"><b>🎓 字典狀態</b></div>
+        <div style="font-size:11px" id="dDictInfo">載入中...</div>
+        <div class="correction-row">
+          <input type="text" id="dCorrectRaw" placeholder="OCR 讀到的字">
+          <span>→</span>
+          <input type="text" id="dCorrectCode" placeholder="正確代號" style="width:60px">
+          <button class="dbtn" onclick="window.__detector.submitCorrection()">送出</button>
+        </div>
+        <div class="small">手動新增別名：OCR 誤讀的字 → 正確代號</div>
+      </div>
+
+      <div class="sec">
+        <div style="margin-bottom:6px"><b>偵測紀錄</b></div>
+        <div id="dLog" style="max-height:120px;overflow-y:auto;font-size:10px;line-height:1.4"></div>
+      </div>
+    `;
+    document.body.appendChild(panel);
+    bindEvents();
+    initLearning();
+  }
+
+  function log(msg, color = '#888') {
+    const t = new Date().toLocaleTimeString('zh-TW', { hour12: false });
+    const el = document.getElementById('dLog');
+    if (!el) return;
+    el.innerHTML = `<div class="log-line" style="color:${color}">[${t}] ${msg}</div>` + el.innerHTML;
+    const lines = el.querySelectorAll('.log-line');
+    if (lines.length > 30) lines[lines.length - 1].remove();
+  }
+
+  function updateDictInfo() {
+    const el = document.getElementById('dDictInfo');
+    if (!el) return;
+    const count = Object.keys(state.mapDictionary).length;
+    el.innerHTML = `📚 目前字典共 <b style="color:#0f0">${count}</b> 筆對照`;
+  }
+
+  function bindEvents() {
+    const video = document.getElementById('dVideo');
+    const preview = document.getElementById('dPreview');
+    const drawBox = document.getElementById('dDrawBox');
+
+    document.getElementById('dStart').onclick = startCapture;
+    document.getElementById('dStop').onclick = stopCapture;
+    document.getElementById('dTest').onclick = () => detectOnce(false);
+    document.getElementById('dAuto').onclick = startAuto;
+    document.getElementById('dStopAuto').onclick = stopAuto;
+
+    document.querySelectorAll('#detectorPanel .mode-btn').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('#detectorPanel .mode-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.currentMode = btn.dataset.mode;
+      };
+    });
+
+    let dragging = false, sx = 0, sy = 0;
+    preview.addEventListener('mousedown', e => {
+      if (!state.stream || state.currentMode === 'none') return;
+      dragging = true;
+      const r = preview.getBoundingClientRect();
+      sx = e.clientX - r.left; sy = e.clientY - r.top;
+      drawBox.style.cssText = `left:${sx}px;top:${sy}px;width:0;height:0;display:block;position:absolute;border:2px dashed #fff;background:rgba(255,255,255,0.2)`;
+    });
+    preview.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      const r = preview.getBoundingClientRect();
+      const x = e.clientX - r.left, y = e.clientY - r.top;
+      drawBox.style.left = Math.min(x, sx) + 'px';
+      drawBox.style.top = Math.min(y, sy) + 'px';
+      drawBox.style.width = Math.abs(x - sx) + 'px';
+      drawBox.style.height = Math.abs(y - sy) + 'px';
+    });
+    preview.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      drawBox.style.display = 'none';
+      const scaleX = video.videoWidth / video.clientWidth;
+      const scaleY = video.videoHeight / video.clientHeight;
+      const region = {
+        x: Math.round(parseInt(drawBox.style.left) * scaleX),
+        y: Math.round(parseInt(drawBox.style.top) * scaleY),
+        w: Math.round(parseInt(drawBox.style.width) * scaleX),
+        h: Math.round(parseInt(drawBox.style.height) * scaleY)
+      };
+      if (region.w < 5 || region.h < 5) return;
+      state.regions[state.currentMode] = region;
+      drawRegionBox(state.currentMode, region);
+      localStorage.setItem('tosm_detector_regions_v2', JSON.stringify(state.regions));
+      log(`✅ ${state.currentMode} 區域設定 (${region.w}×${region.h})`, '#0f0');
+    });
+  }
+
+  function drawRegionBox(key, region) {
+    const video = document.getElementById('dVideo');
+    const boxId = 'dBox' + key.charAt(0).toUpperCase() + key.slice(1);
+    const box = document.getElementById(boxId);
+    if (!video.videoWidth) return;
+    const scaleX = video.clientWidth / video.videoWidth;
+    const scaleY = video.clientHeight / video.videoHeight;
+    box.style.left = (region.x * scaleX) + 'px';
+    box.style.top = (region.y * scaleY) + 'px';
+    box.style.width = (region.w * scaleX) + 'px';
+    box.style.height = (region.h * scaleY) + 'px';
+    box.style.display = 'block';
+  }
+
+  function loadRegions() {
+    const s = localStorage.getItem('tosm_detector_regions_v2');
+    if (!s) return;
+    try { Object.assign(state.regions, JSON.parse(s)); } catch(e) { return; }
+    for (const k of ['status', 'map', 'ch']) {
+      if (state.regions[k]) drawRegionBox(k, state.regions[k]);
+    }
+    log('已載入上次的區域設定', '#3f3');
+  }
+
+  async function startCapture() {
+    try {
+      state.stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: 15 }, audio: false
+      });
+      const video = document.getElementById('dVideo');
+      video.srcObject = state.stream;
+      await video.play();
+      state.stream.getVideoTracks()[0].onended = stopCapture;
+      document.getElementById('dStatus').textContent = '✅ 擷取中';
+      document.getElementById('dStart').disabled = true;
+      document.getElementById('dStop').disabled = false;
+      document.getElementById('dTest').disabled = false;
+      document.getElementById('dAuto').disabled = false;
+      video.addEventListener('loadedmetadata', () => setTimeout(loadRegions, 100), { once: true });
+      log('🎬 螢幕擷取已啟動', '#0f0');
+    } catch (e) {
+      log('❌ 啟動失敗: ' + e.message, '#f33');
+    }
+  }
+
+  function stopCapture() {
+    if (state.stream) state.stream.getTracks().forEach(t => t.stop());
+    state.stream = null;
+    stopAuto();
+    document.getElementById('dStatus').textContent = '已停止';
+    document.getElementById('dStart').disabled = false;
+    document.getElementById('dStop').disabled = true;
+    document.getElementById('dTest').disabled = true;
+    document.getElementById('dAuto').disabled = true;
+  }
+
+  function updateConfBar(id, conf) {
+    const bar = document.getElementById(id);
+    if (!bar) return;
+    bar.style.width = (conf * 100) + '%';
+    bar.style.background = conf > 0.8 ? '#0f0' : conf > 0.5 ? '#fa0' : '#f33';
+  }
+
+  async function detectOnce(silent = false) {
+    let status = null, statusConf = 0;
+    let mapResult = null, mapConf = 0, mapRaw = '';
+    let chResult = null, chConf = 0, chRaw = '';
+
+    if (state.regions.status) {
+      const r = analyzeStatus(state.regions.status);
+      status = r.status;
+      statusConf = r.confidence;
+      const el = document.getElementById('dValStatus');
+      el.textContent = status;
+      el.style.color = status === 'ON' ? '#f33' : '#888';
+      updateConfBar('dConfStatus', statusConf);
+    }
+
+    if (state.regions.map) {
+      try {
+        const ocr = await ocrMultiPass(state.regions.map, document.getElementById('dCanMap'), 'chi_tra');
+        mapRaw = ocr.text;
+        state.lastOcrRaw.map = mapRaw;
+        const match = matchMapName(mapRaw);
+        mapResult = match.matched;
+        mapConf = match.confidence * ocr.confidence;
+        const el = document.getElementById('dValMap');
+        el.innerHTML = mapResult
+          ? `<span style="color:#0f0">${mapResult}</span><br><span class="small">原:${mapRaw||'?'}</span>`
+          : `<span style="color:#f33">?</span><br><span class="small">${mapRaw||'無'}</span>`;
+        updateConfBar('dConfMap', mapConf);
+      } catch (e) { if (!silent) log('地圖 OCR 失敗: ' + e.message, '#f33'); }
+    }
+
+    if (state.regions.ch) {
+      try {
+        const ocr = await ocrMultiPass(state.regions.ch, document.getElementById('dCanCh'), 'eng', 'CH.0123456789 ');
+        chRaw = ocr.text;
+        state.lastOcrRaw.ch = chRaw;
+        const m = chRaw.match(/(\d+)/);
+        chResult = m ? m[1] : null;
+        chConf = chResult ? ocr.confidence : 0;
+        const el = document.getElementById('dValCh');
+        el.textContent = chResult || '?';
+        el.style.color = chResult ? '#0f0' : '#f33';
+        updateConfBar('dConfCh', chConf);
+      } catch (e) { if (!silent) log('CH OCR 失敗', '#f33'); }
+    }
+
+    return { status, statusConf, mapResult, mapConf, mapRaw, chResult, chConf, chRaw };
+  }
+
+  async function monitorTick() {
+    const result = await detectOnce(true);
+    if (!result.status) return;
+    if (result.status === state.lastStatus) {
+      state.stableCount++;
+    } else {
+      if (state.stableCount >= 2 && state.lastStatus !== null) {
+        handleStateChange(state.lastStatus, result.status, result);
+      }
+      state.lastStatus = result.status;
+      state.stableCount = 0;
+    }
+  }
+
+  function handleStateChange(from, to, result) {
+    const label = (from === 'ON' && to === 'OFF') ? '💀 王已死亡'
+                : (from === 'OFF' && to === 'ON') ? '⚔️ 王已重生' : '⚡ 狀態變化';
+    const val = (from === 'ON' && to === 'OFF') ? 'DE1'
+              : (from === 'OFF' && to === 'ON') ? 'ON' : null;
+    if (!val) return;
+
+    const minConf = parseFloat(document.getElementById('dMinConf').value) || 0.7;
+    const autoSubmit = document.getElementById('dAutoSubmit').checked;
+    const overallConf = Math.min(result.statusConf, result.mapConf || 0, result.chConf || 0);
+
+    log(`${label} | ${result.mapResult||'?'} ${result.chResult||'?'} (信心 ${(overallConf*100)|0}%)`,
+        to === 'ON' ? '#f90' : '#3af');
+
+    if (!result.mapResult || !result.chResult) {
+      showCorrectionPrompt(result, val, label);
+      return;
+    }
+    if (autoSubmit && overallConf >= minConf) {
+      doSubmit(result.mapResult, result.chResult, val);
+      return;
+    }
+    showConfirmPrompt(result, val, label, overallConf, minConf);
+  }
+
+  function showConfirmPrompt(result, val, label, conf, minConf) {
+    const isLow = conf < minConf;
+    const area = document.getElementById('dConfirmArea');
+    area.innerHTML = `
+      <div class="confirm-banner ${isLow ? 'low-conf' : ''}">
+        ${label} ${isLow ? '⚠️ 低置信度' : ''}<br>
+        <span style="font-size:13px">送出：<b>${result.mapResult} ${result.chResult} ${val}</b></span><br>
+        <span class="small">置信度 ${(conf*100)|0}%</span><br>
+        <button class="dbtn" onclick="window.__detector.confirm('${result.mapResult}','${result.chResult}','${val}')">✓ 確認</button>
+        <button class="dbtn gray" onclick="window.__detector.showEdit('${result.mapResult}','${result.chResult}','${val}','${result.mapRaw}')">✏️ 修改</button>
+        <button class="dbtn red" onclick="window.__detector.cancel()">✗ 取消</button>
+      </div>
+    `;
+    beep(val === 'ON' ? 880 : 440);
+  }
+
+  function showCorrectionPrompt(result, val, label) {
+    const area = document.getElementById('dConfirmArea');
+    area.innerHTML = `
+      <div class="confirm-banner low-conf">
+        ${label} ⚠️ 無法辨識<br>
+        <span class="small">OCR 讀到：地圖=「${result.mapRaw||'(空)'}」 CH=「${result.chRaw||'(空)'}」</span>
+        <div class="correction-row" style="margin-top:8px">
+          <input type="text" id="dFixMap" placeholder="地圖代號" value="${result.mapResult||''}" style="width:60px">
+          <input type="text" id="dFixCh" placeholder="CH" value="${result.chResult||''}" style="width:40px">
+          <button class="dbtn" onclick="window.__detector.confirmManual('${val}','${result.mapRaw}')">送出</button>
+          <button class="dbtn red" onclick="window.__detector.cancel()">取消</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function doSubmit(map, ch, val) {
+    try {
+      if (typeof saveBoss !== 'function') { log('❌ saveBoss 不存在', '#f33'); return; }
+      saveBoss(map, ch, val);
+      state.lastSubmitted = { id: `${map}_${ch}`, val, time: Date.now() };
+      log(`📤 已送出：${map} ${ch} ${val}`, '#0f0');
+      document.getElementById('dConfirmArea').innerHTML = '';
+    } catch (e) { log('❌ 送出失敗：' + e.message, '#f33'); }
+  }
+
+  function beep(freq) {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = freq;
+      osc.connect(gain); gain.connect(ctx.destination);
+      gain.gain.value = 0.15;
+      osc.start();
+      setTimeout(() => { osc.stop(); ctx.close(); }, 150);
+    } catch (e) {}
+  }
+
+  function startAuto() {
+    const ms = +document.getElementById('dInterval').value || 1500;
+    state.lastStatus = null;
+    state.stableCount = 0;
+    clearInterval(state.autoTimer);
+    state.autoTimer = setInterval(monitorTick, ms);
+    document.getElementById('dAuto').disabled = true;
+    document.getElementById('dStopAuto').disabled = false;
+    log(`▶️ 監控啟動（每 ${ms}ms）`, '#0f0');
+  }
+
+  function stopAuto() {
+    clearInterval(state.autoTimer);
+    state.autoTimer = null;
+    document.getElementById('dAuto').disabled = false;
+    document.getElementById('dStopAuto').disabled = true;
+  }
+
+  function togglePanel() {
+    document.getElementById('detectorPanel').classList.toggle('open');
+  }
+
+  // ═══ 對外介面 ═══
+  window.__detector = {
+    close: () => document.getElementById('detectorPanel').classList.remove('open'),
+    confirm: (map, ch, val) => doSubmit(map, ch, val),
+    cancel: () => { document.getElementById('dConfirmArea').innerHTML = ''; },
+    showEdit: (map, ch, val, mapRaw) => {
+      const area = document.getElementById('dConfirmArea');
+      area.innerHTML = `
+        <div class="confirm-banner">
+          修改並送出：
+          <div class="correction-row">
+            <input type="text" id="dEditMap" value="${map}" style="width:60px">
+            <input type="text" id="dEditCh" value="${ch}" style="width:40px">
+            <select id="dEditVal" style="padding:3px">
+              <option ${val==='ON'?'selected':''}>ON</option>
+              <option ${val==='DE1'?'selected':''}>DE1</option>
+            </select>
+            <button class="dbtn" onclick="window.__detector.confirmEdit('${mapRaw}')">✓</button>
+          </div>
+        </div>`;
+    },
+    confirmEdit: (mapRaw) => {
+      const map = document.getElementById('dEditMap').value.trim();
+      const ch = document.getElementById('dEditCh').value.trim();
+      const val = document.getElementById('dEditVal').value;
+      if (!map || !ch) return;
+      doSubmit(map, ch, val);
+      if (document.getElementById('dContribute').checked) {
+        contributeMapAlias(mapRaw, map);
+      }
+    },
+    confirmManual: (val, mapRaw) => {
+      const map = document.getElementById('dFixMap').value.trim();
+      const ch = document.getElementById('dFixCh').value.trim();
+      if (!map || !ch) return;
+      doSubmit(map, ch, val);
+      if (document.getElementById('dContribute').checked && mapRaw) {
+        contributeMapAlias(mapRaw, map);
+      }
+    },
+    submitCorrection: () => {
+      const raw = document.getElementById('dCorrectRaw').value.trim();
+      const code = document.getElementById('dCorrectCode').value.trim();
+      if (!raw || !code) return;
+      contributeMapAlias(raw, code);
+      document.getElementById('dCorrectRaw').value = '';
+      document.getElementById('dCorrectCode').value = '';
+    }
+  };
+
+  // ═══ 啟動流程：先載入 Tesseract → 等主程式就緒 → 注入 UI ═══
+  loadTesseract(() => {
+    waitForApp(() => {
+      injectUI();
+      console.log('[偵測器] v0.2 Beta 已就緒');
+    });
+  });
+
+})();
+</script>
+<!-- ═══ 螢幕偵測模組結束 ═══ -->
+    
 </body>
 </html>
