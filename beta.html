@@ -1108,10 +1108,12 @@ function initChat() {
 </script>
     
 <!-- ═══════════════════════════════════════════════════════════════════════
-     📷 TOS M FB TIME - 螢幕偵測模組 v0.5.1 Beta
+     📷 TOS M FB TIME - 螢幕偵測模組 v0.5.2 Beta
 
-     【v0.5.1 修正】
-     🐛 徽章框真正能拖到右邊（重寫座標系統）
+     【v0.5.2 新增】
+     🎯 訓練模式：只存模板不送 Firebase（累積模板庫用）
+     🔍 模板瀏覽：逐張檢視 + 單張刪除
+     🐛 徽章框真正能拖到右邊（座標系統重寫）
      🐛 徽章小圖預覽與橘框視覺範圍對齊
      ✨ 模板庫顯示在精簡懸浮視窗（可收合）
      📚 分流模板：自動從你確認過的 CH 學習
@@ -1196,6 +1198,19 @@ function initChat() {
       if (label) delete this.data[category][label];
       else this.data[category] = {};
       this.save();
+    },
+
+    // v0.5.2: 刪除某標籤的某一張模板
+    deleteAt(category, label, index) {
+      if (!this.data[category] || !this.data[category][label]) return false;
+      if (index < 0 || index >= this.data[category][label].length) return false;
+      this.data[category][label].splice(index, 1);
+      // 如果該標籤已無模板，刪除空陣列（讓下拉選單不顯示）
+      if (this.data[category][label].length === 0) {
+        delete this.data[category][label];
+      }
+      this.save();
+      return true;
     },
 
     async dataURLToPixels(dataURL) {
@@ -1356,7 +1371,8 @@ function initChat() {
     panelPos: { x: null, y: null },
     lastBadgeCanvas: null,
     lastChCanvas: null,
-    muted: false  // v0.5 新增：靜音狀態
+    muted: false,  // v0.5 新增：靜音狀態
+    trainingMode: false  // v0.5.2 新增：訓練模式（只存模板不送 Firebase）
   };
 
   function getBadgeRect(statusRegion) {
@@ -1886,7 +1902,7 @@ function initChat() {
     const btn = document.createElement('button');
     btn.id = 'detectBtn';
     btn.className = 'audio-btn';
-    btn.title = '螢幕偵測 v0.5.1';
+    btn.title = '螢幕偵測 v0.5.2';
     btn.innerHTML = '📷';
     btn.onclick = togglePanel;
     audioControls.appendChild(btn);
@@ -1927,6 +1943,19 @@ function initChat() {
       }
       #detectorPanel .panel-ctrl-btn:hover { color: #ddd; border-color: #666; }
       #detectorPanel .panel-ctrl-btn.muted { color: #f33; border-color: #622; }
+      /* v0.5.2: 訓練模式啟用時 */
+      #detectorPanel .panel-ctrl-btn.training {
+        color: #fa0; border-color: #fa0;
+        background: rgba(255, 170, 0, 0.15);
+        box-shadow: 0 0 5px rgba(255, 170, 0, 0.4);
+      }
+      body.light #detectorPanel .panel-ctrl-btn.training {
+        color: #c87c00; border-color: #c87c00;
+        background: rgba(200, 124, 0, 0.15);
+      }
+      /* 訓練模式時面板邊框變橘色 */
+      #detectorPanel.training-mode { border-color: #fa0; box-shadow: 0 0 15px rgba(255, 170, 0, 0.3); }
+      body.light #detectorPanel.training-mode { border-color: #c87c00; }
       body.light #detectorPanel .panel-ctrl-btn { border-color: #ccc; color: #666; }
       #detectorPanel .sec {
         background: var(--bg-card-compact, #0e0e0e);
@@ -2125,7 +2154,39 @@ function initChat() {
         border: 1px solid #555; background: #000;
       }
 
-      /* v0.5.1 新增：精簡模式的模板庫 */
+      /* v0.5.2: 模板瀏覽 */
+      #detectorPanel .tpl-browse-grid {
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+        gap: 4px; margin-top: 8px;
+      }
+      #detectorPanel .tpl-browse-item {
+        position: relative;
+        background: #000; border: 1px solid #444;
+        border-radius: 4px; padding: 2px;
+        text-align: center;
+      }
+      body.light #detectorPanel .tpl-browse-item { background: #f0f0f0; border-color: #ccc; }
+      #detectorPanel .tpl-browse-item img {
+        width: 100%; aspect-ratio: 1; object-fit: contain;
+        image-rendering: pixelated; display: block;
+        background: #000;
+      }
+      #detectorPanel .tpl-browse-item .tpl-del-btn {
+        position: absolute; top: -4px; right: -4px;
+        width: 18px; height: 18px; border-radius: 50%;
+        background: #f33; color: #fff; border: 1px solid #fff;
+        font-size: 10px; font-weight: bold; line-height: 1;
+        cursor: pointer; padding: 0;
+        display: none;
+      }
+      #detectorPanel .tpl-browse-item:hover .tpl-del-btn { display: block; }
+      #detectorPanel .tpl-browse-item .tpl-idx {
+        font-size: 9px; color: #888; margin-top: 2px;
+      }
+      #detectorPanel .tpl-browse-empty {
+        grid-column: 1 / -1; text-align: center;
+        color: #666; font-size: 11px; padding: 10px;
+      }
       #detectorPanel .mini-tpl-header {
         display: flex; align-items: center; gap: 6px;
         cursor: pointer; user-select: none;
@@ -2168,8 +2229,9 @@ function initChat() {
     panel.className = 'compact';
     panel.innerHTML = `
       <div class="panel-header" id="dPanelHeader">
-        <h3>📷 偵測器 <span class="small">v0.5.1</span></h3>
+        <h3>📷 偵測器 <span class="small">v0.5.2</span></h3>
         <div>
+          <button class="panel-ctrl-btn" id="dTrainToggle" title="訓練模式：只存模板不送 Firebase">🎯</button>
           <button class="panel-ctrl-btn" id="dMuteToggle" title="靜音切換">🔔</button>
           <button class="panel-ctrl-btn" id="dToggleMode" title="切換精簡/完整">⚙️</button>
           <button class="panel-ctrl-btn" onclick="window.__detector.close()">✕</button>
@@ -2298,6 +2360,20 @@ function initChat() {
             </div>
 
             <label class="bold-opt"><input type="checkbox" id="dAutoLearn" checked> 🎓 確認送出時自動加入模板</label>
+
+            <!-- v0.5.2: 瀏覽模板 -->
+            <div style="margin-top:8px;padding-top:8px;border-top:1px dashed #444">
+              <div style="margin-bottom:6px"><b>🔍 瀏覽模板</b></div>
+              <div class="correction-row">
+                <select id="dBrowseCategory" style="width:80px">
+                  <option value="phase">階段</option>
+                  <option value="ch">分流</option>
+                </select>
+                <select id="dBrowseLabel"></select>
+                <span class="small" id="dBrowseCount"></span>
+              </div>
+              <div id="dBrowseGrid" class="tpl-browse-grid"></div>
+            </div>
           </div>
 
           <div class="sec important">
@@ -2355,6 +2431,7 @@ function initChat() {
     initLearning();
     loadPanelPos();
     loadMuteState();
+    loadTrainModeState();
     updateTplDisplay();
   }
 
@@ -2417,7 +2494,7 @@ function initChat() {
       }
     }
 
-    // ═══ v0.5.1：精簡模式顯示 ═══
+    // 精簡模式
     const miniP = document.getElementById('dMiniTplPhase');
     if (miniP) {
       miniP.innerHTML = phaseLabels.map(label => {
@@ -2445,7 +2522,7 @@ function initChat() {
       }
     }
 
-    // 總計（完整）
+    // 總計
     const totalEl = document.getElementById('dTplTotal');
     const miniTotalEl = document.getElementById('dMiniTplTotal');
     const phaseTotal = Object.values(stats.phase).reduce((s, n) => s + n, 0);
@@ -2453,6 +2530,56 @@ function initChat() {
     const kb = (stats.totalSize / 1024).toFixed(1);
     if (totalEl) totalEl.textContent = `(階段 ${phaseTotal} + 分流 ${chTotal}，約 ${kb} KB)`;
     if (miniTotalEl) miniTotalEl.textContent = `${phaseTotal}+${chTotal}`;
+
+    // v0.5.2: 更新瀏覽器的標籤選單
+    refreshBrowseLabels();
+  }
+
+  // v0.5.2: 瀏覽模板相關函式
+  function refreshBrowseLabels() {
+    const catSel = document.getElementById('dBrowseCategory');
+    const labelSel = document.getElementById('dBrowseLabel');
+    if (!catSel || !labelSel) return;
+    const cat = catSel.value;
+    const currentLabel = labelSel.value;
+    const labels = Object.keys(TemplateDB.data[cat] || {}).sort((a, b) => {
+      if (cat === 'ch') return (+a) - (+b);
+      const order = ['R1','R2','R3','R4','ON','WAITING'];
+      return order.indexOf(a) - order.indexOf(b);
+    });
+    labelSel.innerHTML = labels.length
+      ? labels.map(l => `<option value="${l}">${cat === 'ch' ? 'CH.'+l : l}</option>`).join('')
+      : '<option value="">(無)</option>';
+    // 保留選擇
+    if (labels.includes(currentLabel)) labelSel.value = currentLabel;
+    renderBrowseGrid();
+  }
+
+  function renderBrowseGrid() {
+    const catSel = document.getElementById('dBrowseCategory');
+    const labelSel = document.getElementById('dBrowseLabel');
+    const grid = document.getElementById('dBrowseGrid');
+    const countEl = document.getElementById('dBrowseCount');
+    if (!catSel || !labelSel || !grid) return;
+
+    const cat = catSel.value;
+    const label = labelSel.value;
+    const templates = (TemplateDB.data[cat] || {})[label] || [];
+
+    if (countEl) countEl.textContent = `共 ${templates.length} 張`;
+
+    if (templates.length === 0) {
+      grid.innerHTML = '<div class="tpl-browse-empty">尚無模板</div>';
+      return;
+    }
+
+    grid.innerHTML = templates.map((dataURL, idx) => `
+      <div class="tpl-browse-item">
+        <img src="${dataURL}" alt="${label} #${idx+1}">
+        <div class="tpl-idx">#${idx+1}</div>
+        <button class="tpl-del-btn" onclick="window.__detector.deleteTpl('${cat}','${label}',${idx})">×</button>
+      </div>
+    `).join('');
   }
 
   function showTplPreview() {
@@ -2569,6 +2696,24 @@ function initChat() {
     const s = localStorage.getItem('tosm_detector_muted');
     state.muted = s === '1';
     updateMuteUI();
+  }
+
+  // v0.5.2: 訓練模式 UI 更新
+  function updateTrainModeUI() {
+    const btn = document.getElementById('dTrainToggle');
+    const panel = document.getElementById('detectorPanel');
+    if (!btn || !panel) return;
+    btn.classList.toggle('training', state.trainingMode);
+    panel.classList.toggle('training-mode', state.trainingMode);
+    btn.title = state.trainingMode
+      ? '訓練模式中（點擊切回一般模式）'
+      : '點擊進入訓練模式（只存模板不送 Firebase）';
+  }
+
+  function loadTrainModeState() {
+    const s = localStorage.getItem('tosm_detector_training_mode');
+    state.trainingMode = s === '1';
+    updateTrainModeUI();
   }
 
   function enableWindowDrag() {
@@ -2712,6 +2857,23 @@ function initChat() {
       updateMuteUI();
       log(state.muted ? '🔕 已靜音' : '🔔 音效開啟', '#0f0');
     };
+
+    // v0.5.2: 訓練模式切換
+    document.getElementById('dTrainToggle').onclick = () => {
+      state.trainingMode = !state.trainingMode;
+      localStorage.setItem('tosm_detector_training_mode', state.trainingMode ? '1' : '0');
+      updateTrainModeUI();
+      log(state.trainingMode
+        ? '🎯 已進入訓練模式（只存模板，不送 Firebase）'
+        : '🔴 已切回一般模式（確認後會送 Firebase）',
+        state.trainingMode ? '#fa0' : '#0f0');
+    };
+
+    // v0.5.2: 瀏覽模板類別/標籤變更
+    const browseCat = document.getElementById('dBrowseCategory');
+    const browseLabel = document.getElementById('dBrowseLabel');
+    if (browseCat) browseCat.onchange = refreshBrowseLabels;
+    if (browseLabel) browseLabel.onchange = renderBrowseGrid;
 
     // v0.5.1: 精簡模板庫收合
     const miniTplHeader = document.getElementById('dMiniTplHeader');
@@ -3009,6 +3171,7 @@ function initChat() {
       showCorrectionPrompt(result, val, label);
       return;
     }
+    // v0.5.2: 訓練模式下「自動送出」= 自動存模板
     if (autoSubmit && overallConf >= minConf) {
       doSubmit(result.mapResult, result.chResult, val);
       return;
@@ -3020,11 +3183,16 @@ function initChat() {
     const isLow = conf < minConf;
     const cls = val === 'ON' ? 'on' : val === 'DE1' ? 'waiting' : '';
     const area = document.getElementById('dConfirmArea');
+    const trainHint = state.trainingMode
+      ? '<div style="background:#fa0;color:#000;padding:4px;border-radius:3px;margin-bottom:4px;font-size:10px">🎯 訓練模式：僅存模板，不送 Firebase</div>'
+      : '';
+    const btnLabel = state.trainingMode ? '💾 存模板' : '✓確認';
     area.innerHTML = `
       <div class="confirm-banner ${cls} ${isLow ? 'low-conf' : ''}">
+        ${trainHint}
         ${label}<br>
         <b>${result.mapResult} ${result.chResult} ${val}</b> (${(conf*100)|0}%)<br>
-        <button class="dbtn" onclick="window.__detector.confirm('${result.mapResult}','${result.chResult}','${val}')">✓確認</button>
+        <button class="dbtn" onclick="window.__detector.confirm('${result.mapResult}','${result.chResult}','${val}')">${btnLabel}</button>
         <button class="dbtn gray" onclick="window.__detector.showEdit('${result.mapResult}','${result.chResult}','${val}','${result.mapRaw}')">✏️</button>
         <button class="dbtn red" onclick="window.__detector.cancel()">✗</button>
       </div>
@@ -3048,13 +3216,40 @@ function initChat() {
 
   function doSubmit(map, ch, val) {
     try {
+      // v0.5.2: 訓練模式 → 只存模板，不送 Firebase
+      if (state.trainingMode) {
+        let phaseLabel = null;
+        if (val === 'ON') phaseLabel = 'ON';
+        else if (val === 'DE1') phaseLabel = 'WAITING';
+        else if (['R1','R2','R3','R4'].includes(val)) phaseLabel = val;
+
+        let added = 0;
+        if (phaseLabel && state.lastBadgeCanvas) {
+          if (TemplateDB.add('phase', phaseLabel, state.lastBadgeCanvas)) added++;
+        }
+        if (ch && state.lastChCanvas) {
+          if (TemplateDB.add('ch', ch, state.lastChCanvas)) added++;
+        }
+
+        if (added > 0) {
+          log(`🎯 [訓練] 已加入 ${added} 個模板：${phaseLabel || '?'} / CH.${ch || '?'}`, '#fa0');
+        } else {
+          log(`🎯 [訓練] 模板已存在，略過`, '#888');
+        }
+        state.lastSubmitted = { map, ch, val, time: Date.now() };
+        document.getElementById('dConfirmArea').innerHTML = '';
+        updateTplDisplay();
+        return;
+      }
+
+      // 一般模式：正常送 Firebase
       if (typeof saveBoss !== 'function') { log('❌ saveBoss 不存在', '#f33'); return; }
       saveBoss(map, ch, val);
       state.lastSubmitted = { map, ch, val, time: Date.now() };
       log(`📤 已送出：${map} ${ch} ${val}`, '#0f0');
       document.getElementById('dConfirmArea').innerHTML = '';
 
-      // v0.5 新增：自動學習
+      // 自動學習
       const autoLearn = document.getElementById('dAutoLearn')?.checked;
       if (autoLearn && state.lastBadgeCanvas) {
         let phaseLabel = null;
@@ -3142,6 +3337,15 @@ function initChat() {
       log('🗑 已清空所有模板', '#f33');
       updateTplDisplay();
     },
+    // v0.5.2: 刪除單張模板
+    deleteTpl: (category, label, index) => {
+      if (!confirm(`確定要刪除 ${category === 'ch' ? 'CH.'+label : label} 的第 ${index+1} 張模板？`)) return;
+      const ok = TemplateDB.deleteAt(category, label, index);
+      if (ok) {
+        log(`🗑 已刪除 ${category === 'ch' ? 'CH.'+label : label} #${index+1}`, '#f80');
+        updateTplDisplay();
+      }
+    },
     showEdit: (map, ch, val, mapRaw) => {
       const area = document.getElementById('dConfirmArea');
       area.innerHTML = `
@@ -3190,13 +3394,13 @@ function initChat() {
   loadTesseract(() => {
     waitForApp(() => {
       injectUI();
-      console.log(DEBUG_PREFIX, 'v0.5.1 Beta 已就緒');
+      console.log(DEBUG_PREFIX, 'v0.5.2 Beta 已就緒');
     });
   });
 
 })();
 </script>
-<!-- ═══ 螢幕偵測模組 v0.5.1 結束 ═══ -->
+<!-- ═══ 螢幕偵測模組 v0.5.2 結束 ═══ -->
     
 </body>
 </html>
