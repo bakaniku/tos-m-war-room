@@ -1107,12 +1107,12 @@ function initChat() {
 }
 </script>
 <!-- ═══════════════════════════════════════════════════════════════════════
-     📷 TOS M FB TIME - 螢幕偵測模組 v0.4.6 Beta
+     📷 TOS M FB TIME - 螢幕偵測模組 v0.4.6.1 Beta
 
-     【v0.4.6 三大改進】
-     🪟 浮動視窗化：可拖曳、可自由擺放
-     🎯 徽章範圍可視化調整：拖曳橘框邊緣精準設定數字位置
-     🐛 Firebase 規則文件更新
+     【v0.4.6.1 修正】
+     🐛 修正徽章拖曳邊界計算（改用 canvas 實際顯示尺寸）
+     🐛 改善 canvas 在面板寬度內的自適應
+     ✨ 拖曳時即時顯示邊界，更容易看出可動範圍
 ═══════════════════════════════════════════════════════════════════════ -->
 <script>
 (function() {
@@ -1178,9 +1178,7 @@ function initChat() {
     autoTimer: null,
     currentMode: 'status',
     regions: { status: null, map: null, ch: null },
-    // 徽章範圍（相對於 status 區域的像素偏移）
-    // 預設為右上角 45%×50%，使用者可拖曳調整
-    badgeRect: null,  // { x, y, w, h }，null 時使用預設
+    badgeRect: null,
     lastPhase: null,
     stableCount: 0,
     lastSubmitted: { map: null, ch: null, val: null, time: 0 },
@@ -1190,11 +1188,9 @@ function initChat() {
     debugMode: false,
     panelMode: 'compact',
     dictLoaded: false,
-    // 浮動視窗位置
-    panelPos: { x: null, y: null }  // null = 預設位置
+    panelPos: { x: null, y: null }
   };
 
-  // 計算徽章範圍：若使用者已設定則用使用者的，否則用預設比例
   function getBadgeRect(statusRegion) {
     if (state.badgeRect) return { ...state.badgeRect };
     return {
@@ -1331,7 +1327,6 @@ function initChat() {
     const w = region.w, h = region.h;
     let redCount = 0, whiteCount = 0, totalBright = 0;
     const n = w * h;
-
     const badge = getBadgeRect(region);
     const badgeX1 = badge.x, badgeY1 = badge.y;
     const badgeX2 = badge.x + badge.w, badgeY2 = badge.y + badge.h;
@@ -1416,7 +1411,6 @@ function initChat() {
     src.getContext('2d').drawImage(video,
       badgeRegion.x, badgeRegion.y, badgeRegion.w, badgeRegion.h,
       0, 0, badgeRegion.w, badgeRegion.h);
-
     const passes = [
       { name: 'b180', preprocess: (s) => extractBrightPixels(upscale(s, 8), 180) },
       { name: 'b210', preprocess: (s) => extractBrightPixels(upscale(s, 8), 210) },
@@ -1565,7 +1559,7 @@ function initChat() {
     const safeKey = ocrRaw.replace(/[.#$[\]/]/g, '_');
     db.ref(`shared/mapDictionary/${safeKey}`).set(correctCode)
       .then(() => log(`🎓 已貢獻：「${ocrRaw}」= ${correctCode}`, '#ff0'))
-      .catch(e => log('❌ 貢獻失敗（Firebase 規則問題）: ' + e.message, '#f33'));
+      .catch(e => log('❌ 貢獻失敗（請檢查 Firebase 規則）: ' + e.message, '#f33'));
   }
 
   function injectUI() {
@@ -1576,14 +1570,13 @@ function initChat() {
     const btn = document.createElement('button');
     btn.id = 'detectBtn';
     btn.className = 'audio-btn';
-    btn.title = '螢幕偵測 v0.4.6';
+    btn.title = '螢幕偵測 v0.4.6.1';
     btn.innerHTML = '📷';
     btn.onclick = togglePanel;
     audioControls.appendChild(btn);
 
     const style = document.createElement('style');
     style.textContent = `
-      /* ═══ 浮動視窗核心樣式 ═══ */
       #detectorPanel {
         position: fixed;
         top: 80px; right: 20px;
@@ -1600,8 +1593,6 @@ function initChat() {
       #detectorPanel.compact { width: 260px; }
       #detectorPanel.full { width: 500px; }
       body.light #detectorPanel { background: #fff; border-color: #ddd; }
-
-      /* 可拖曳的標題列 */
       #detectorPanel .panel-header {
         display: flex; align-items: center; justify-content: space-between;
         padding: 8px 10px;
@@ -1614,12 +1605,7 @@ function initChat() {
       }
       body.light #detectorPanel .panel-header { background: #f5f5f2; border-bottom-color: #ddd; }
       #detectorPanel .panel-header:active { cursor: grabbing; }
-
-      #detectorPanel .panel-body {
-        overflow-y: auto;
-        padding: 10px;
-      }
-
+      #detectorPanel .panel-body { overflow-y: auto; padding: 10px; }
       #detectorPanel h3 { color: #0f0; margin: 0; font-size: 14px; }
       body.light #detectorPanel h3 { color: #1a7a1a; }
       #detectorPanel .panel-ctrl-btn {
@@ -1629,18 +1615,13 @@ function initChat() {
       }
       #detectorPanel .panel-ctrl-btn:hover { color: #ddd; border-color: #666; }
       body.light #detectorPanel .panel-ctrl-btn { border-color: #ccc; color: #666; }
-
       #detectorPanel .sec {
         background: var(--bg-card-compact, #0e0e0e);
         padding: 8px; border-radius: 6px; margin-bottom: 8px;
         border: 1px solid var(--border, #222);
       }
-      #detectorPanel .sec.important {
-        border: 1px solid #0f0; background: rgba(0, 255, 0, 0.05);
-      }
-      body.light #detectorPanel .sec.important {
-        border-color: #1a7a1a; background: rgba(26, 122, 26, 0.05);
-      }
+      #detectorPanel .sec.important { border: 1px solid #0f0; background: rgba(0, 255, 0, 0.05); }
+      body.light #detectorPanel .sec.important { border-color: #1a7a1a; background: rgba(26, 122, 26, 0.05); }
       #detectorPanel .dbtn {
         background: #0f0; color: #000; border: none; padding: 5px 10px;
         border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px;
@@ -1656,7 +1637,6 @@ function initChat() {
       }
       #detectorPanel .mode-btn.active { background: #050; color: #0f0; border-color: #0f0; }
       body.light #detectorPanel .mode-btn.active { background: #d0f0d0; color: #1a7a1a; border-color: #1a7a1a; }
-
       #detectorPanel .preview-scroll {
         position: relative; overflow: auto; max-height: 260px;
         border: 2px solid #333; background: #000;
@@ -1670,8 +1650,6 @@ function initChat() {
       #detectorPanel .region.status { border-color: #f33; }
       #detectorPanel .region.map { border-color: #3f3; }
       #detectorPanel .region.ch { border-color: #ff3; }
-
-      /* ═══ 精簡 3 徽章 ═══ */
       #detectorPanel .compact-results {
         display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px;
       }
@@ -1689,7 +1667,6 @@ function initChat() {
         height: 2px; background: #333; border-radius: 1px; margin-top: 3px; overflow: hidden;
       }
       #detectorPanel .mini-card .conf-fill { height: 100%; transition: width 0.3s, background 0.3s; }
-
       #detectorPanel .result-grid {
         display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px;
       }
@@ -1697,17 +1674,10 @@ function initChat() {
         background: #1a1a1a; padding: 6px; border-radius: 4px; text-align: center;
       }
       body.light #detectorPanel .result-card { background: #e8e5e0; }
-      #detectorPanel .result-card .v {
-        font-size: 15px; font-weight: bold; min-height: 22px; margin: 3px 0;
-      }
-      #detectorPanel .result-card canvas {
-        border: 1px solid #555; max-width: 100%; background: #000;
-      }
-      #detectorPanel .conf-bar {
-        height: 3px; background: #333; border-radius: 2px; margin: 2px 0; overflow: hidden;
-      }
+      #detectorPanel .result-card .v { font-size: 15px; font-weight: bold; min-height: 22px; margin: 3px 0; }
+      #detectorPanel .result-card canvas { border: 1px solid #555; max-width: 100%; background: #000; }
+      #detectorPanel .conf-bar { height: 3px; background: #333; border-radius: 2px; margin: 2px 0; overflow: hidden; }
       #detectorPanel .conf-fill { height: 100%; transition: width 0.3s, background 0.3s; }
-
       #detectorPanel input[type=number], #detectorPanel input[type=text] {
         background: #222; color: #fff; border: 1px solid #555;
         padding: 3px 5px; border-radius: 3px; font-size: 12px;
@@ -1731,7 +1701,6 @@ function initChat() {
       #detectorPanel .confirm-banner.waiting { background: #888; color: #fff; }
       #detectorPanel .confirm-banner.on { background: #f33; color: #fff; }
       #detectorPanel .small { font-size: 10px; color: #888; }
-
       body.light #detectorPanel .sec { background: #f5f5f2; border-color: #ddd; }
       body.light #detectorPanel .result-card .v { color: #333; }
       body.light #detectorPanel .dbtn { background: #1a7a1a; color: #fff; }
@@ -1788,15 +1757,24 @@ function initChat() {
       }
       @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
 
-      /* ═══ 徽章範圍可拖曳調整 ═══ */
+      /* ═══ 徽章範圍可拖曳調整（v0.4.6.1 修正） ═══ */
       #dBadgeEditor {
         position: relative;
         background: #000;
         border: 1px solid #333;
         margin-top: 6px;
         overflow: hidden;
+        /* 重要：讓 canvas 居中，並使用固定容器高度 */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 160px;
       }
-      #dBadgeEditor canvas { display: block; margin: 0 auto; }
+      #dBadgeEditor canvas {
+        display: block;
+        image-rendering: pixelated;
+        /* 移除 max-width，避免被壓縮 */
+      }
       #dBadgeEditBox {
         position: absolute;
         border: 2px solid #f80;
@@ -1806,14 +1784,14 @@ function initChat() {
       }
       #dBadgeEditBox .handle {
         position: absolute;
-        width: 10px; height: 10px;
+        width: 12px; height: 12px;
         background: #f80;
         border: 1px solid #fff;
       }
-      #dBadgeEditBox .handle.tl { top: -6px; left: -6px; cursor: nw-resize; }
-      #dBadgeEditBox .handle.tr { top: -6px; right: -6px; cursor: ne-resize; }
-      #dBadgeEditBox .handle.bl { bottom: -6px; left: -6px; cursor: sw-resize; }
-      #dBadgeEditBox .handle.br { bottom: -6px; right: -6px; cursor: se-resize; }
+      #dBadgeEditBox .handle.tl { top: -7px; left: -7px; cursor: nw-resize; }
+      #dBadgeEditBox .handle.tr { top: -7px; right: -7px; cursor: ne-resize; }
+      #dBadgeEditBox .handle.bl { bottom: -7px; left: -7px; cursor: sw-resize; }
+      #dBadgeEditBox .handle.br { bottom: -7px; right: -7px; cursor: se-resize; }
       #dBadgeEditBox::after {
         content: '徽章';
         position: absolute; top: 2px; left: 4px;
@@ -1828,15 +1806,13 @@ function initChat() {
     panel.className = 'compact';
     panel.innerHTML = `
       <div class="panel-header" id="dPanelHeader">
-        <h3>📷 偵測器 <span class="small">v0.4.6</span></h3>
+        <h3>📷 偵測器 <span class="small">v0.4.6.1</span></h3>
         <div>
           <button class="panel-ctrl-btn" id="dToggleMode" title="切換精簡/完整">⚙️</button>
           <button class="panel-ctrl-btn" onclick="window.__detector.close()">✕</button>
         </div>
       </div>
-
       <div class="panel-body">
-        <!-- ═══ 精簡模式 ═══ -->
         <div class="compact-only">
           <div class="sec">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:11px">
@@ -1844,21 +1820,9 @@ function initChat() {
               <span id="dMonitorStatus" class="monitor-status">閒置</span>
             </div>
             <div class="compact-results">
-              <div class="mini-card">
-                <div class="label">階段</div>
-                <div class="value" id="dMiniStatus">—</div>
-                <div class="conf-bar"><div class="conf-fill" id="dMiniConfStatus"></div></div>
-              </div>
-              <div class="mini-card">
-                <div class="label">地圖</div>
-                <div class="value" id="dMiniMap">—</div>
-                <div class="conf-bar"><div class="conf-fill" id="dMiniConfMap"></div></div>
-              </div>
-              <div class="mini-card">
-                <div class="label">分流</div>
-                <div class="value" id="dMiniCh">—</div>
-                <div class="conf-bar"><div class="conf-fill" id="dMiniConfCh"></div></div>
-              </div>
+              <div class="mini-card"><div class="label">階段</div><div class="value" id="dMiniStatus">—</div><div class="conf-bar"><div class="conf-fill" id="dMiniConfStatus"></div></div></div>
+              <div class="mini-card"><div class="label">地圖</div><div class="value" id="dMiniMap">—</div><div class="conf-bar"><div class="conf-fill" id="dMiniConfMap"></div></div></div>
+              <div class="mini-card"><div class="label">分流</div><div class="value" id="dMiniCh">—</div><div class="conf-bar"><div class="conf-fill" id="dMiniConfCh"></div></div></div>
             </div>
             <div style="margin-top:6px;display:flex;gap:4px;justify-content:center;flex-wrap:wrap">
               <button class="dbtn" id="dMiniStart">▶️ 擷取</button>
@@ -1870,7 +1834,6 @@ function initChat() {
           <div id="dConfirmArea"></div>
         </div>
 
-        <!-- ═══ 完整模式 ═══ -->
         <div class="full-only">
           <div class="sec">
             <button class="dbtn" id="dStart">▶️ 開始擷取</button>
@@ -1884,19 +1847,13 @@ function initChat() {
             <button class="mode-btn" data-mode="map">🟢 地圖名</button>
             <button class="mode-btn" data-mode="ch">🟡 分流</button>
             <button class="mode-btn" data-mode="none">✋ 停</button>
-
-            <div class="tip-box">
-              💡 狀態圖示框選<b>整個圓圈</b>（含右上徽章）<br>
-              下方「徽章微調」可精準調整數字位置
-            </div>
-
+            <div class="tip-box">💡 狀態圖示框選整個圓圈（含右上徽章），下方可微調徽章範圍</div>
             <div class="zoom-row">
               <span class="small">🔍</span>
               <input type="range" id="dZoom" min="0.5" max="4" step="0.1" value="1">
               <span class="zoom-val" id="dZoomVal">1.0x</span>
               <button class="dbtn gray" onclick="window.__detector.resetZoom()" style="padding:2px 6px;font-size:10px">重設</button>
             </div>
-
             <div class="preview-scroll" id="dPreviewScroll" style="margin-top:8px">
               <div class="preview-wrap" id="dPreview">
                 <video id="dVideo" autoplay muted></video>
@@ -1908,12 +1865,11 @@ function initChat() {
             </div>
           </div>
 
-          <!-- ═══ 徽章微調區 ═══ -->
           <div class="sec" id="dBadgeSection" style="display:none">
             <div style="margin-bottom:6px"><b>🎯 徽章範圍微調</b>
               <button class="dbtn gray" onclick="window.__detector.resetBadge()" style="padding:2px 6px;font-size:10px;float:right">重設預設</button>
             </div>
-            <div class="small">拖曳橘框或邊角調整。數字要完整落在橘框內</div>
+            <div class="small">拖曳橘框調整位置，拖曳四角調整大小</div>
             <div id="dBadgeEditor">
               <canvas id="dBadgeEditCanvas"></canvas>
               <div id="dBadgeEditBox">
@@ -1933,11 +1889,9 @@ function initChat() {
               <label>最低置信度 <input type="number" id="dMinConf" value="0.5" step="0.05" min="0" max="1" style="width:50px"></label>
             </div>
             <div class="threshold-row">
-              <label>⏱ 重複冷卻 <input type="number" id="dCooldown" value="30" min="0" style="width:55px">秒
-                <span class="small">（相同狀態這段時間內不重問/送）</span>
-              </label>
+              <label>⏱ 重複冷卻 <input type="number" id="dCooldown" value="30" min="0" style="width:55px">秒</label>
             </div>
-            <label class="bold-opt"><input type="checkbox" id="dAutoSubmit"> 🚀 自動送出（變化時直接送 Firebase）</label>
+            <label class="bold-opt"><input type="checkbox" id="dAutoSubmit"> 🚀 自動送出</label>
             <label class="bold-opt"><input type="checkbox" id="dOnlyChange" checked> 🔔 只在階段變化時提示</label>
             <label class="bold-opt"><input type="checkbox" id="dContribute" checked> 🎓 貢獻糾正到社群字典</label>
             <label class="bold-opt"><input type="checkbox" id="dDebugMode"> 🔧 偵錯模式</label>
@@ -1949,29 +1903,11 @@ function initChat() {
             <button class="dbtn red" id="dStopAuto" disabled>⏸ 停止</button>
             <br>
             <button class="dbtn orange" id="dForceSubmit" disabled>🔥 立即送出</button>
-
             <div class="result-grid">
-              <div class="result-card">
-                <div class="small">階段</div>
-                <div class="v" id="dValStatus">—</div>
-                <div class="conf-bar"><div class="conf-fill" id="dConfStatus"></div></div>
-                <canvas id="dCanStatus"></canvas>
-                <div class="metrics" id="dMetrics"></div>
-              </div>
-              <div class="result-card">
-                <div class="small">地圖</div>
-                <div class="v" id="dValMap" style="font-size:12px">—</div>
-                <div class="conf-bar"><div class="conf-fill" id="dConfMap"></div></div>
-                <canvas id="dCanMap"></canvas>
-              </div>
-              <div class="result-card">
-                <div class="small">分流</div>
-                <div class="v" id="dValCh">—</div>
-                <div class="conf-bar"><div class="conf-fill" id="dConfCh"></div></div>
-                <canvas id="dCanCh"></canvas>
-              </div>
+              <div class="result-card"><div class="small">階段</div><div class="v" id="dValStatus">—</div><div class="conf-bar"><div class="conf-fill" id="dConfStatus"></div></div><canvas id="dCanStatus"></canvas><div class="metrics" id="dMetrics"></div></div>
+              <div class="result-card"><div class="small">地圖</div><div class="v" id="dValMap" style="font-size:12px">—</div><div class="conf-bar"><div class="conf-fill" id="dConfMap"></div></div><canvas id="dCanMap"></canvas></div>
+              <div class="result-card"><div class="small">分流</div><div class="v" id="dValCh">—</div><div class="conf-bar"><div class="conf-fill" id="dConfCh"></div></div><canvas id="dCanCh"></canvas></div>
             </div>
-
             <div id="dDebugBox" class="debug-box" style="display:none">
               <div class="small" style="color:#ff0">🔧 綠=紅環，藍=白字，橘=徽章區</div>
               <canvas id="dDebugCanvas"></canvas>
@@ -2052,7 +1988,7 @@ function initChat() {
     box.style.display = 'block';
   }
 
-  // ═══ 徽章編輯器渲染 ═══
+  // ═══ 徽章編輯器渲染（v0.4.6.1 修正：計算最適 scale） ═══
   function renderBadgeEditor() {
     const section = document.getElementById('dBadgeSection');
     if (!state.regions.status) {
@@ -2065,9 +2001,17 @@ function initChat() {
     const video = document.getElementById('dVideo');
     const region = state.regions.status;
 
-    // 把狀態圖示區域放大顯示到編輯器
-    const scale = Math.min(6, Math.floor(200 / Math.max(region.w, region.h)));
-    const displayScale = Math.max(4, scale);
+    // ═══ 關鍵修正：根據容器可用寬度計算 scale ═══
+    // 編輯器容器寬度（扣除 padding/border）
+    const editor = document.getElementById('dBadgeEditor');
+    const maxContainerWidth = editor.clientWidth - 4 || 440;  // 預設退化值
+    const maxContainerHeight = 280;  // 限制最大高度
+
+    // 計算最大可用縮放：寬度限制 vs 高度限制 取較小
+    const maxScaleByWidth = Math.floor(maxContainerWidth / region.w);
+    const maxScaleByHeight = Math.floor(maxContainerHeight / region.h);
+    const displayScale = Math.max(3, Math.min(maxScaleByWidth, maxScaleByHeight, 10));
+
     canvas.width = region.w * displayScale;
     canvas.height = region.h * displayScale;
     const ctx = canvas.getContext('2d');
@@ -2076,16 +2020,25 @@ function initChat() {
       region.x, region.y, region.w, region.h,
       0, 0, canvas.width, canvas.height);
 
-    // 把徽章框顯示出來
     const badge = getBadgeRect(region);
     const editBox = document.getElementById('dBadgeEditBox');
-    editBox.style.left = (badge.x * displayScale) + 'px';
-    editBox.style.top = (badge.y * displayScale) + 'px';
+
+    // ═══ 重要：editBox 的定位要相對於 canvas 實際位置 ═══
+    // 因為 editor 用 flex 居中 canvas，所以要計算 canvas 在 editor 內的偏移
+    const canvasOffsetX = (editor.clientWidth - canvas.width) / 2;
+    const canvasOffsetY = (editor.clientHeight - canvas.height) / 2;
+
+    editBox.style.left = (canvasOffsetX + badge.x * displayScale) + 'px';
+    editBox.style.top = (canvasOffsetY + badge.y * displayScale) + 'px';
     editBox.style.width = (badge.w * displayScale) + 'px';
     editBox.style.height = (badge.h * displayScale) + 'px';
 
-    // 記錄當前顯示比例以便拖曳計算
+    // 儲存必要的座標資訊給拖曳用
     state._badgeDisplayScale = displayScale;
+    state._badgeCanvasOffsetX = canvasOffsetX;
+    state._badgeCanvasOffsetY = canvasOffsetY;
+    state._badgeMaxX = canvas.width;  // 可動區域最大 X（相對於 canvas 左上）
+    state._badgeMaxY = canvas.height;
 
     updateBadgeInfo();
   }
@@ -2096,7 +2049,7 @@ function initChat() {
     const badge = getBadgeRect(region);
     const el = document.getElementById('dBadgeInfo');
     if (el) {
-      el.textContent = `徽章範圍：(${badge.x}, ${badge.y}) ${badge.w}×${badge.h}px`;
+      el.textContent = `徽章範圍：(${badge.x}, ${badge.y}) ${badge.w}×${badge.h}px / 圖示 ${region.w}×${region.h}px`;
     }
   }
 
@@ -2109,16 +2062,18 @@ function initChat() {
       btn.textContent = mode === 'compact' ? '⚙️' : '🗕';
       btn.title = mode === 'compact' ? '展開完整模式' : '收回精簡模式';
     }
+    // 切換到完整模式時，如果已有 status 區域則重繪徽章編輯器
+    if (mode === 'full' && state.regions.status) {
+      setTimeout(renderBadgeEditor, 100);
+    }
   }
 
-  // ═══ 浮動視窗拖曳 ═══
   function enableWindowDrag() {
     const panel = document.getElementById('detectorPanel');
     const header = document.getElementById('dPanelHeader');
     let dragging = false, startX, startY, panelX, panelY;
 
     header.addEventListener('mousedown', e => {
-      // 點到按鈕不觸發拖曳
       if (e.target.tagName === 'BUTTON') return;
       dragging = true;
       startX = e.clientX; startY = e.clientY;
@@ -2129,22 +2084,18 @@ function initChat() {
       panel.style.top = panelY + 'px';
       e.preventDefault();
     });
-
     window.addEventListener('mousemove', e => {
       if (!dragging) return;
       const newX = panelX + (e.clientX - startX);
       const newY = panelY + (e.clientY - startY);
-      // 限制在視窗範圍
       const maxX = window.innerWidth - panel.offsetWidth;
       const maxY = window.innerHeight - 40;
       panel.style.left = Math.max(0, Math.min(maxX, newX)) + 'px';
       panel.style.top = Math.max(0, Math.min(maxY, newY)) + 'px';
     });
-
     window.addEventListener('mouseup', () => {
       if (dragging) {
         dragging = false;
-        // 儲存位置
         state.panelPos = {
           x: parseInt(panel.style.left),
           y: parseInt(panel.style.top)
@@ -2167,13 +2118,13 @@ function initChat() {
     } catch(e) {}
   }
 
-  // ═══ 徽章框拖曳與邊角調整 ═══
+  // ═══ 徽章框拖曳（v0.4.6.1 徹底修正） ═══
   function enableBadgeDrag() {
     const editor = document.getElementById('dBadgeEditor');
     const box = document.getElementById('dBadgeEditBox');
     if (!editor || !box) return;
 
-    let dragMode = null;  // 'move' | 'tl' | 'tr' | 'bl' | 'br'
+    let dragMode = null;
     let startMouseX, startMouseY;
     let startBoxX, startBoxY, startBoxW, startBoxH;
 
@@ -2183,10 +2134,10 @@ function initChat() {
       dragMode = (e.target.classList.contains('handle')) ? handleClass : 'move';
       startMouseX = e.clientX;
       startMouseY = e.clientY;
-      startBoxX = parseInt(box.style.left);
-      startBoxY = parseInt(box.style.top);
-      startBoxW = parseInt(box.style.width);
-      startBoxH = parseInt(box.style.height);
+      startBoxX = parseInt(box.style.left) || 0;
+      startBoxY = parseInt(box.style.top) || 0;
+      startBoxW = parseInt(box.style.width) || 0;
+      startBoxH = parseInt(box.style.height) || 0;
       e.preventDefault();
       e.stopPropagation();
     });
@@ -2196,26 +2147,34 @@ function initChat() {
       const dx = e.clientX - startMouseX;
       const dy = e.clientY - startMouseY;
       const scale = state._badgeDisplayScale || 4;
-      const region = state.regions.status;
-      const maxX = region.w * scale;
-      const maxY = region.h * scale;
+      const offsetX = state._badgeCanvasOffsetX || 0;
+      const offsetY = state._badgeCanvasOffsetY || 0;
+      const canvasW = state._badgeMaxX || 0;
+      const canvasH = state._badgeMaxY || 0;
+
+      // ═══ 修正：邊界用「canvas 左上到右下」的絕對座標 ═══
+      // editBox 的座標是相對於 editor，所以要加上 canvas offset
+      const minX = offsetX;
+      const minY = offsetY;
+      const maxX = offsetX + canvasW;
+      const maxY = offsetY + canvasH;
 
       let nx = startBoxX, ny = startBoxY, nw = startBoxW, nh = startBoxH;
 
       if (dragMode === 'move') {
-        nx = Math.max(0, Math.min(maxX - startBoxW, startBoxX + dx));
-        ny = Math.max(0, Math.min(maxY - startBoxH, startBoxY + dy));
+        nx = Math.max(minX, Math.min(maxX - startBoxW, startBoxX + dx));
+        ny = Math.max(minY, Math.min(maxY - startBoxH, startBoxY + dy));
       } else if (dragMode === 'tl') {
-        nx = Math.max(0, Math.min(startBoxX + startBoxW - 20, startBoxX + dx));
-        ny = Math.max(0, Math.min(startBoxY + startBoxH - 20, startBoxY + dy));
+        nx = Math.max(minX, Math.min(startBoxX + startBoxW - 20, startBoxX + dx));
+        ny = Math.max(minY, Math.min(startBoxY + startBoxH - 20, startBoxY + dy));
         nw = startBoxW - (nx - startBoxX);
         nh = startBoxH - (ny - startBoxY);
       } else if (dragMode === 'tr') {
-        ny = Math.max(0, Math.min(startBoxY + startBoxH - 20, startBoxY + dy));
+        ny = Math.max(minY, Math.min(startBoxY + startBoxH - 20, startBoxY + dy));
         nw = Math.max(20, Math.min(maxX - startBoxX, startBoxW + dx));
         nh = startBoxH - (ny - startBoxY);
       } else if (dragMode === 'bl') {
-        nx = Math.max(0, Math.min(startBoxX + startBoxW - 20, startBoxX + dx));
+        nx = Math.max(minX, Math.min(startBoxX + startBoxW - 20, startBoxX + dx));
         nw = startBoxW - (nx - startBoxX);
         nh = Math.max(20, Math.min(maxY - startBoxY, startBoxH + dy));
       } else if (dragMode === 'br') {
@@ -2228,10 +2187,10 @@ function initChat() {
       box.style.width = nw + 'px';
       box.style.height = nh + 'px';
 
-      // 即時更新徽章絕對座標
+      // ═══ 修正：換算回相對於 canvas 左上角的座標 ═══
       state.badgeRect = {
-        x: Math.round(nx / scale),
-        y: Math.round(ny / scale),
+        x: Math.round((nx - offsetX) / scale),
+        y: Math.round((ny - offsetY) / scale),
         w: Math.round(nw / scale),
         h: Math.round(nh / scale)
       };
@@ -2241,7 +2200,6 @@ function initChat() {
     window.addEventListener('mouseup', () => {
       if (dragMode) {
         dragMode = null;
-        // 儲存徽章範圍
         if (state.badgeRect) {
           localStorage.setItem('tosm_detector_badge_rect_v46', JSON.stringify(state.badgeRect));
           log(`🎯 徽章範圍已更新`, '#f80');
@@ -2335,7 +2293,6 @@ function initChat() {
       if (region.w < 5 || region.h < 5) return;
       state.regions[state.currentMode] = region;
 
-      // 新框狀態圖示時，重設徽章範圍（避免舊的徽章範圍超出新框）
       if (state.currentMode === 'status') {
         state.badgeRect = null;
         localStorage.removeItem('tosm_detector_badge_rect_v46');
@@ -2343,10 +2300,10 @@ function initChat() {
 
       drawRegionBox(state.currentMode, region);
       localStorage.setItem('tosm_detector_regions_v46', JSON.stringify(state.regions));
-      log(`✅ ${state.currentMode} 區域設定 (${region.w}×${region.h})`, '#0f0');
+      log(`✅ ${state.currentMode} 區域 (${region.w}×${region.h})`, '#0f0');
 
       if (state.currentMode === 'status') {
-        renderBadgeEditor();
+        setTimeout(renderBadgeEditor, 50);
       }
     });
   }
@@ -2362,12 +2319,11 @@ function initChat() {
       }
       log('已載入上次的區域設定', '#3f3');
     }
-    // 載入徽章範圍
     const b = localStorage.getItem('tosm_detector_badge_rect_v46');
     if (b) {
       try { state.badgeRect = JSON.parse(b); } catch(e) {}
     }
-    if (state.regions.status) renderBadgeEditor();
+    if (state.regions.status) setTimeout(renderBadgeEditor, 100);
   }
 
   async function startCapture() {
@@ -2416,7 +2372,6 @@ function initChat() {
     bar.style.width = (conf * 100) + '%';
     bar.style.background = conf > 0.8 ? '#0f0' : conf > 0.5 ? '#fa0' : '#f33';
   }
-
   function phaseBadge(phase) { return phase === 'WAITING' ? '等待' : (phase || '?'); }
   function phaseColor(phase) {
     const m = { 'ON': '#f33', 'R1': '#fa3', 'R2': '#f83', 'R3': '#f63', 'R4': '#f33', 'WAITING': '#777' };
@@ -2557,7 +2512,6 @@ function initChat() {
     `;
     beep(val === 'ON' ? 880 : val === 'DE1' ? 440 : 660);
   }
-
   function showCorrectionPrompt(result, val, label) {
     const area = document.getElementById('dConfirmArea');
     area.innerHTML = `
@@ -2609,7 +2563,6 @@ function initChat() {
     if (ms_el) { ms_el.textContent = '監控中'; ms_el.className = 'monitor-status active'; }
     log(`▶️ 監控啟動`, '#0f0');
   }
-
   function stopAuto() {
     clearInterval(state.autoTimer);
     state.autoTimer = null;
@@ -2638,7 +2591,7 @@ function initChat() {
       state.badgeRect = null;
       localStorage.removeItem('tosm_detector_badge_rect_v46');
       if (state.regions.status) renderBadgeEditor();
-      log('🎯 徽章範圍已重設為預設', '#f80');
+      log('🎯 徽章範圍已重設', '#f80');
     },
     showEdit: (map, ch, val, mapRaw) => {
       const area = document.getElementById('dConfirmArea');
@@ -2688,13 +2641,13 @@ function initChat() {
   loadTesseract(() => {
     waitForApp(() => {
       injectUI();
-      console.log(DEBUG_PREFIX, 'v0.4.6 Beta 已就緒');
+      console.log(DEBUG_PREFIX, 'v0.4.6.1 Beta 已就緒');
     });
   });
 
 })();
 </script>
-<!-- ═══ 螢幕偵測模組 v0.4.6 結束 ═══ -->
+<!-- ═══ 螢幕偵測模組 v0.4.6.1 結束 ═══ -->
     
 </body>
 </html>
