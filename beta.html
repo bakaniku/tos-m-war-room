@@ -1107,13 +1107,17 @@ function initChat() {
 }
 </script>
 <!-- ═══════════════════════════════════════════════════════════════════════
-     📷 TOS M FB TIME - 螢幕偵測模組 v0.4.4 Beta
+     📷 TOS M FB TIME - 螢幕偵測模組 v0.4.5 Beta
 
-     【v0.4.4 關鍵修正】
-     🎯 數字位置修正：右上角徽章（不是中央）
-        - 裁切 x:60%~100%, y:0%~45% 區域
-        - 專門針對角標數字做 OCR
-     🎯 預設框選建議：要把右上角徽章包進來
+     【v0.4.5 重點】
+     ✨ 精簡/完整兩種 UI 模式（方案 E）
+        - 精簡模式：三個結果徽章 + 確認窗，寬約 240px
+        - 完整模式：含預覽、設定、偵錯等
+        - 點 ⚙️ 切換到完整，點 🗕 收回精簡
+     ⏱ 新增「重複偵測冷卻」設定
+        - 相同 map+ch+val 在冷卻時間內不重複觸發
+        - 預設 30 秒，可調整或設為 0 關閉
+     🐛 修正字典「載入中...」卡住的問題
 ═══════════════════════════════════════════════════════════════════════ -->
 <script>
 (function() {
@@ -1181,11 +1185,13 @@ function initChat() {
     regions: { status: null, map: null, ch: null },
     lastPhase: null,
     stableCount: 0,
-    lastSubmitted: { id: null, val: null, time: 0 },
+    lastSubmitted: { map: null, ch: null, val: null, time: 0 },
     mapDictionary: { ...BUILTIN_MAP_DICTIONARY },
     lastResult: null,
     zoom: 1.0,
-    debugMode: false
+    debugMode: false,
+    panelMode: 'compact',  // 'compact' | 'full'
+    dictLoaded: false      // Firebase 字典是否已載入
   };
 
   function levenshtein(a, b) {
@@ -1289,7 +1295,7 @@ function initChat() {
       const minC = Math.min(r, g, b);
       const saturation = maxC - minC;
       const isBrightWhite = maxC > threshold && saturation < 60;
-      const v = isBrightWhite ? 0 : 255;  // 白字變黑、其他變白（OCR 友善）
+      const v = isBrightWhite ? 0 : 255;
       d[i] = d[i+1] = d[i+2] = v;
     }
     ctx.putImageData(img, 0, 0);
@@ -1303,7 +1309,6 @@ function initChat() {
     return c;
   }
 
-  // ═══ 度量（只用於偵錯顯示）═══
   function analyzeStatusMetrics(region) {
     const canvas = document.getElementById('dCanStatus');
     canvas.width = region.w; canvas.height = region.h;
@@ -1316,10 +1321,8 @@ function initChat() {
     const w = region.w, h = region.h;
     let redCount = 0, whiteCount = 0, totalBright = 0;
     const n = w * h;
-
-    // 徽章區域：右上角 x:60%~100%, y:0%~45%
-    const badgeX1 = Math.floor(w * 0.6), badgeY1 = 0;
-    const badgeX2 = w,                    badgeY2 = Math.floor(h * 0.45);
+    const badgeX1 = Math.floor(w * 0.55), badgeY1 = 0;
+    const badgeX2 = w, badgeY2 = Math.floor(h * 0.5);
     let badgeWhiteCount = 0, badgeTotalPx = 0;
 
     const debugCanvas = state.debugMode ? document.getElementById('dDebugCanvas') : null;
@@ -1341,10 +1344,8 @@ function initChat() {
         const maxC = Math.max(r, g, b);
         const minC = Math.min(r, g, b);
         totalBright += bright;
-
         const isRed = r > 80 && (r - Math.max(g, b)) > 25;
         const isBrightWhite = maxC > 200 && (maxC - minC) < 60;
-
         if (isRed) {
           redCount++;
           if (debugData) {
@@ -1365,28 +1366,22 @@ function initChat() {
             }
           }
         }
-
-        // 徽章區域內的白字
         if (x >= badgeX1 && x < badgeX2 && y >= badgeY1 && y < badgeY2) {
           badgeTotalPx++;
           if (isBrightWhite) badgeWhiteCount++;
         }
       }
     }
-
     if (debugData) {
       const dctx = debugCanvas.getContext('2d');
       dctx.putImageData(debugData, 0, 0);
-      // 畫出徽章區域框（橘色）
       dctx.strokeStyle = '#f80';
       dctx.lineWidth = 2;
       dctx.strokeRect(badgeX1 * 4, badgeY1 * 4, (badgeX2 - badgeX1) * 4, (badgeY2 - badgeY1) * 4);
-      // 標示「徽章區」
       dctx.fillStyle = '#f80';
       dctx.font = 'bold 11px sans-serif';
       dctx.fillText('徽章', badgeX1 * 4 + 2, badgeY1 * 4 + 12);
     }
-
     return {
       redRatio: redCount / n,
       whiteRatio: whiteCount / n,
@@ -1395,27 +1390,15 @@ function initChat() {
     };
   }
 
-  // ═══ 核心：徽章 OCR（右上角 1/4 區域）═══
   async function ocrBadge(region) {
-    // 裁切右上角徽章區域
-    const bx1 = Math.floor(region.w * 0.55);   // 從 55% 開始（留一點餘裕）
+    const bx1 = Math.floor(region.w * 0.55);
     const by1 = 0;
     const bx2 = region.w;
-    const by2 = Math.floor(region.h * 0.5);    // 到 50%
+    const by2 = Math.floor(region.h * 0.5);
     const badgeRegion = {
-      x: region.x + bx1,
-      y: region.y + by1,
-      w: bx2 - bx1,
-      h: by2 - by1
+      x: region.x + bx1, y: region.y + by1,
+      w: bx2 - bx1, h: by2 - by1
     };
-
-    if (state.debugMode) {
-      console.log(DEBUG_PREFIX, 'ocrBadge 裁切', {
-        originalRegion: region,
-        badgeRegion
-      });
-    }
-
     const src = document.createElement('canvas');
     src.width = badgeRegion.w; src.height = badgeRegion.h;
     const video = document.getElementById('dVideo');
@@ -1423,7 +1406,6 @@ function initChat() {
       badgeRegion.x, badgeRegion.y, badgeRegion.w, badgeRegion.h,
       0, 0, badgeRegion.w, badgeRegion.h);
 
-    // 四管線投票
     const passes = [
       { name: 'brightExtract180', preprocess: (s) => {
         const big = upscale(s, 8);
@@ -1436,7 +1418,6 @@ function initChat() {
       { name: 'otsuNormal', preprocess: (s) => preprocessForOCR(s, { scale: 8, invert: false }) },
       { name: 'otsuInvert', preprocess: (s) => preprocessForOCR(s, { scale: 8, invert: true }) }
     ];
-
     const results = [];
     for (const p of passes) {
       try {
@@ -1447,20 +1428,12 @@ function initChat() {
           tessedit_char_whitelist: 'ON1234'
         });
         const text = data.text.trim().replace(/\s+/g, '').replace(/[^ON1234]/g, '');
-        results.push({
-          pass: p.name,
-          text, confidence: data.confidence / 100
-        });
+        results.push({ pass: p.name, text, confidence: data.confidence / 100 });
       } catch (e) {
         results.push({ pass: p.name, text: '', confidence: 0 });
       }
     }
-
-    if (state.debugMode) {
-      console.log(DEBUG_PREFIX, 'ocrBadge 多管線結果', results);
-    }
-
-    // 投票：得票數 × 平均置信度
+    if (state.debugMode) console.log(DEBUG_PREFIX, 'ocrBadge 結果', results);
     const votes = {};
     for (const r of results) {
       if (!r.text) continue;
@@ -1468,42 +1441,22 @@ function initChat() {
       votes[r.text].count++;
       votes[r.text].totalConf += r.confidence;
     }
-
     let bestText = '', bestScore = 0;
     for (const [text, info] of Object.entries(votes)) {
-      const avgConf = info.totalConf / info.count;
-      const score = info.count * avgConf;
-      if (score > bestScore) {
-        bestScore = score;
-        bestText = text;
-      }
+      const score = info.count * (info.totalConf / info.count);
+      if (score > bestScore) { bestScore = score; bestText = text; }
     }
-
-    const avgConf = votes[bestText]
-      ? votes[bestText].totalConf / votes[bestText].count
-      : 0;
-
+    const avgConf = votes[bestText] ? votes[bestText].totalConf / votes[bestText].count : 0;
     return { text: bestText, confidence: avgConf, allResults: results, badgeRegion };
   }
 
   async function detectPhase(region) {
     const metrics = analyzeStatusMetrics(region);
     const ocr = await ocrBadge(region);
-
     const minOcrConf = 0.3;
-
-    if (state.debugMode) {
-      console.log(DEBUG_PREFIX, 'detectPhase', {
-        metrics, ocrText: ocr.text, ocrConf: ocr.confidence
-      });
-    }
-
     const text = ocr.text.toUpperCase();
     let phase, confidence;
-
-    // 用徽章區的白字像素作為「數字存在」的補強證據
     const hasWhiteInBadge = metrics.badgeWhiteRatio > 0.03;
-
     if (ocr.confidence >= minOcrConf && text) {
       if (text === 'ON') { phase = 'ON'; confidence = ocr.confidence; }
       else if (text === '1') { phase = 'R1'; confidence = ocr.confidence; }
@@ -1512,18 +1465,9 @@ function initChat() {
       else if (text === '4') { phase = 'R4'; confidence = ocr.confidence; }
       else { phase = 'WAITING'; confidence = 0.5; }
     } else {
-      // OCR 沒讀到
-      if (hasWhiteInBadge) {
-        // 徽章區有白字但 OCR 讀不到 → 可能是 OCR 失敗
-        phase = 'WAITING';
-        confidence = 0.3;
-      } else {
-        // 徽章區沒白字 → 確定是等待中
-        phase = 'WAITING';
-        confidence = 0.9;
-      }
+      phase = 'WAITING';
+      confidence = hasWhiteInBadge ? 0.3 : 0.9;
     }
-
     return { phase, confidence, metrics, ocrText: text, ocrRaw: ocr };
   }
 
@@ -1532,12 +1476,10 @@ function initChat() {
     src.width = region.w; src.height = region.h;
     const video = document.getElementById('dVideo');
     src.getContext('2d').drawImage(video, region.x, region.y, region.w, region.h, 0, 0, region.w, region.h);
-
     if (targetCanvas) {
       targetCanvas.width = region.w; targetCanvas.height = region.h;
       targetCanvas.getContext('2d').drawImage(src, 0, 0);
     }
-
     const passes = [
       { opts: { scale: 4, invert: false } },
       { opts: { scale: 4, invert: true } },
@@ -1585,20 +1527,43 @@ function initChat() {
     return { matched: null, confidence: 0, raw: ocrText };
   }
 
+  // 修正：字典載入有明確的成功/失敗處理
   function initLearning() {
-    db.ref('shared/mapDictionary').on('value', snap => {
-      const shared = snap.val() || {};
-      state.mapDictionary = { ...BUILTIN_MAP_DICTIONARY, ...shared };
-      updateDictInfo();
-    });
+    try {
+      db.ref('shared/mapDictionary').on('value',
+        snap => {
+          const shared = snap.val() || {};
+          state.mapDictionary = { ...BUILTIN_MAP_DICTIONARY, ...shared };
+          state.dictLoaded = true;
+          updateDictInfo();
+        },
+        err => {
+          console.error(DEBUG_PREFIX, '字典載入失敗:', err);
+          state.dictLoaded = true;  // 視為載入完成（但只有內建）
+          updateDictInfo('⚠️ Firebase 字典連線失敗（僅使用內建 91 筆）');
+        }
+      );
+      // 5 秒後還沒載入就顯示內建字典
+      setTimeout(() => {
+        if (!state.dictLoaded) {
+          state.dictLoaded = true;
+          updateDictInfo('⚠️ 字典載入逾時（僅使用內建 91 筆）');
+        }
+      }, 5000);
+    } catch (e) {
+      console.error(DEBUG_PREFIX, 'initLearning 錯誤:', e);
+      state.dictLoaded = true;
+      updateDictInfo('❌ 字典初始化失敗');
+    }
   }
   function contributeMapAlias(ocrRaw, correctCode) {
     if (!ocrRaw || !correctCode || ocrRaw === correctCode) return;
     if (ocrRaw.length < 2 || ocrRaw.length > 20) return;
     if (/^\d+$/.test(ocrRaw)) return;
     const safeKey = ocrRaw.replace(/[.#$[\]/]/g, '_');
-    db.ref(`shared/mapDictionary/${safeKey}`).set(correctCode);
-    log(`🎓 已貢獻：「${ocrRaw}」= ${correctCode}`, '#ff0');
+    db.ref(`shared/mapDictionary/${safeKey}`).set(correctCode)
+      .then(() => log(`🎓 已貢獻：「${ocrRaw}」= ${correctCode}`, '#ff0'))
+      .catch(e => log('❌ 貢獻失敗（請檢查 Firebase 規則）: ' + e.message, '#f33'));
   }
 
   function injectUI() {
@@ -1609,7 +1574,7 @@ function initChat() {
     const btn = document.createElement('button');
     btn.id = 'detectBtn';
     btn.className = 'audio-btn';
-    btn.title = '螢幕偵測 v0.4.4';
+    btn.title = '螢幕偵測 v0.4.5';
     btn.innerHTML = '📷';
     btn.onclick = togglePanel;
     audioControls.appendChild(btn);
@@ -1617,21 +1582,34 @@ function initChat() {
     const style = document.createElement('style');
     style.textContent = `
       #detectorPanel {
-        position: fixed; top: 0; right: 0; width: 480px; height: 100vh;
+        position: fixed; top: 0; right: 0; height: 100vh;
         background: var(--bg-card, #111); border-left: 2px solid var(--border, #333);
-        z-index: 9998; overflow-y: auto; padding: 16px; box-sizing: border-box;
-        transform: translateX(100%); transition: transform 0.3s ease;
+        z-index: 9998; overflow-y: auto; padding: 12px; box-sizing: border-box;
+        transform: translateX(100%); transition: transform 0.3s ease, width 0.25s ease;
         font-size: 13px; color: var(--text-title, #aaa);
       }
       #detectorPanel.open { transform: translateX(0); }
-      #detectorPanel h3 { color: #0f0; margin: 0 0 10px; font-size: 15px; }
+      #detectorPanel.compact { width: 260px; padding: 10px; }
+      #detectorPanel.full { width: 480px; }
+
+      #detectorPanel h3 { color: #0f0; margin: 0 0 8px; font-size: 14px; }
       body.light #detectorPanel h3 { color: #1a7a1a; }
-      #detectorPanel .close-x {
-        position: absolute; top: 8px; right: 12px; background: none;
-        border: none; color: #888; font-size: 22px; cursor: pointer;
+
+      #detectorPanel .panel-header {
+        display: flex; align-items: center; justify-content: space-between;
+        border-bottom: 1px solid #222; padding-bottom: 6px; margin-bottom: 8px;
       }
+      body.light #detectorPanel .panel-header { border-bottom-color: #ddd; }
+      #detectorPanel .panel-ctrl-btn {
+        background: none; border: 1px solid #444; color: #888;
+        padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 11px;
+        margin-left: 4px;
+      }
+      #detectorPanel .panel-ctrl-btn:hover { color: #ddd; border-color: #666; }
+      body.light #detectorPanel .panel-ctrl-btn { border-color: #ccc; color: #666; }
+
       #detectorPanel .sec { background: var(--bg-card-compact, #0e0e0e);
-        padding: 10px; border-radius: 6px; margin-bottom: 10px;
+        padding: 8px; border-radius: 6px; margin-bottom: 8px;
         border: 1px solid var(--border, #222); }
       #detectorPanel .sec.important {
         border: 1px solid #0f0; background: rgba(0, 255, 0, 0.05);
@@ -1640,7 +1618,7 @@ function initChat() {
         border-color: #1a7a1a; background: rgba(26, 122, 26, 0.05);
       }
       #detectorPanel .dbtn {
-        background: #0f0; color: #000; border: none; padding: 6px 12px;
+        background: #0f0; color: #000; border: none; padding: 5px 10px;
         border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px;
         margin: 2px;
       }
@@ -1655,7 +1633,7 @@ function initChat() {
       #detectorPanel .mode-btn.active { background: #050; color: #0f0; border-color: #0f0; }
       body.light #detectorPanel .mode-btn.active { background: #d0f0d0; color: #1a7a1a; border-color: #1a7a1a; }
       #detectorPanel .preview-scroll {
-        position: relative; overflow: auto; max-height: 400px;
+        position: relative; overflow: auto; max-height: 300px;
         border: 2px solid #333; background: #000;
       }
       #detectorPanel .preview-wrap { position: relative; display: inline-block; }
@@ -1667,6 +1645,27 @@ function initChat() {
       #detectorPanel .region.status { border-color: #f33; }
       #detectorPanel .region.map { border-color: #3f3; }
       #detectorPanel .region.ch { border-color: #ff3; }
+
+      /* 精簡模式 3 徽章 */
+      #detectorPanel .compact-results {
+        display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px;
+      }
+      #detectorPanel .mini-card {
+        background: #1a1a1a; padding: 6px 4px; border-radius: 4px; text-align: center;
+      }
+      body.light #detectorPanel .mini-card { background: #e8e5e0; }
+      #detectorPanel .mini-card .label { font-size: 9px; color: #888; }
+      #detectorPanel .mini-card .value {
+        font-size: 14px; font-weight: bold; margin-top: 2px; min-height: 18px;
+        color: #0f0;
+      }
+      body.light #detectorPanel .mini-card .value { color: #1a7a1a; }
+      #detectorPanel .mini-card .conf-bar {
+        height: 2px; background: #333; border-radius: 1px; margin-top: 3px; overflow: hidden;
+      }
+      #detectorPanel .mini-card .conf-fill { height: 100%; transition: width 0.3s, background 0.3s; }
+
+      /* 完整模式 3 卡片 */
       #detectorPanel .result-grid {
         display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px;
       }
@@ -1684,6 +1683,7 @@ function initChat() {
         height: 3px; background: #333; border-radius: 2px; margin: 2px 0; overflow: hidden;
       }
       #detectorPanel .conf-fill { height: 100%; transition: width 0.3s, background 0.3s; }
+
       #detectorPanel input[type=number], #detectorPanel input[type=text] {
         background: #222; color: #fff; border: 1px solid #555;
         padding: 3px 5px; border-radius: 3px; font-size: 12px;
@@ -1700,24 +1700,14 @@ function initChat() {
         background: #0f0; border-radius: 50%; cursor: pointer;
       }
       #detectorPanel .confirm-banner {
-        padding: 12px; border-radius: 6px; font-weight: bold; margin: 10px 0;
-        background: #ff9d00; color: #000;
+        padding: 10px; border-radius: 6px; font-weight: bold; margin: 8px 0;
+        background: #ff9d00; color: #000; font-size: 12px;
       }
       #detectorPanel .confirm-banner.low-conf { background: #ff3333; color: #fff; }
       #detectorPanel .confirm-banner.waiting { background: #888; color: #fff; }
       #detectorPanel .confirm-banner.on { background: #f33; color: #fff; }
       #detectorPanel .small { font-size: 10px; color: #888; }
-      #detectorPanel .phase-badge {
-        display: inline-block; padding: 2px 8px; border-radius: 3px;
-        font-weight: bold; font-size: 12px;
-      }
-      #detectorPanel .phase-on { background: #f33; color: #fff; }
-      #detectorPanel .phase-r1 { background: #fa3; color: #fff; }
-      #detectorPanel .phase-r2 { background: #f83; color: #fff; }
-      #detectorPanel .phase-r3 { background: #f63; color: #fff; }
-      #detectorPanel .phase-r4 { background: #f33; color: #fff; }
-      #detectorPanel .phase-waiting { background: #777; color: #fff; }
-      #detectorPanel .phase-unknown { background: #333; color: #999; }
+
       body.light #detectorPanel { background: #fff; color: #333; border-left-color: #ddd; }
       body.light #detectorPanel .sec { background: #f5f5f2; border-color: #ddd; }
       body.light #detectorPanel .result-card .v { color: #333; }
@@ -1741,7 +1731,7 @@ function initChat() {
         text-align: left;
       }
       #detectorPanel label.bold-opt {
-        display: block; font-size: 13px; color: #0f0; padding: 4px 0;
+        display: block; font-size: 12px; color: #0f0; padding: 3px 0;
         font-weight: bold;
       }
       body.light #detectorPanel label.bold-opt { color: #1a7a1a; }
@@ -1761,117 +1751,179 @@ function initChat() {
       body.light #detectorPanel .tip-box {
         background: #fff8e0; color: #8a5c00; border-color: #c87c00;
       }
+      #detectorPanel .full-only { display: block; }
+      #detectorPanel.compact .full-only { display: none; }
+      #detectorPanel .compact-only { display: none; }
+      #detectorPanel.compact .compact-only { display: block; }
+
+      #detectorPanel .monitor-status {
+        font-size: 10px; padding: 3px 6px; border-radius: 3px;
+        background: #222; color: #888; margin-left: 4px;
+      }
+      #detectorPanel .monitor-status.active {
+        background: #050; color: #0f0;
+        animation: pulse 1.5s infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
+      }
     `;
     document.head.appendChild(style);
 
     const panel = document.createElement('div');
     panel.id = 'detectorPanel';
+    panel.className = 'compact';
     panel.innerHTML = `
-      <button class="close-x" onclick="window.__detector.close()">×</button>
-      <h3>📷 螢幕偵測器 <span class="small">v0.4.4 Beta（右上徽章 OCR）</span></h3>
-
-      <div class="sec">
-        <button class="dbtn" id="dStart">▶️ 開始擷取</button>
-        <button class="dbtn red" id="dStop" disabled>⏹ 停止</button>
-        <span id="dStatus" style="margin-left:6px;font-size:11px">未啟動</span>
-      </div>
-
-      <div class="sec">
-        <div style="margin-bottom:6px"><b>① 框選三個區域</b></div>
-        <button class="mode-btn active" data-mode="status">🔴 狀態圖示</button>
-        <button class="mode-btn" data-mode="map">🟢 地圖名</button>
-        <button class="mode-btn" data-mode="ch">🟡 分流</button>
-        <button class="mode-btn" data-mode="none">✋ 停</button>
-
-        <div class="tip-box">
-          💡 <b>狀態圖示框選重點</b>：<br>
-          • 要把<b>右上角的數字徽章</b>完整包進框框<br>
-          • 數字偵測區在框的右上 45% × 45% 區域<br>
-          • 框選後偵錯圖會顯示橘色框標示徽章位置
-        </div>
-
-        <div class="zoom-row">
-          <span class="small">🔍</span>
-          <input type="range" id="dZoom" min="0.5" max="4" step="0.1" value="1">
-          <span class="zoom-val" id="dZoomVal">1.0x</span>
-          <button class="dbtn gray" onclick="window.__detector.resetZoom()" style="padding:2px 6px;font-size:10px">重設</button>
-        </div>
-
-        <div class="preview-scroll" id="dPreviewScroll" style="margin-top:8px">
-          <div class="preview-wrap" id="dPreview">
-            <video id="dVideo" autoplay muted></video>
-            <div id="dDrawBox" style="display:none"></div>
-            <div class="region status" id="dBoxStatus" style="display:none">圖示</div>
-            <div class="region map" id="dBoxMap" style="display:none">地圖</div>
-            <div class="region ch" id="dBoxCh" style="display:none">CH</div>
-          </div>
+      <div class="panel-header">
+        <h3>📷 偵測器 <span class="small" id="dVersion">v0.4.5</span></h3>
+        <div>
+          <button class="panel-ctrl-btn" id="dToggleMode" title="切換精簡/完整">⚙️</button>
+          <button class="panel-ctrl-btn" onclick="window.__detector.close()">✕</button>
         </div>
       </div>
 
-      <div class="sec important">
-        <div style="margin-bottom:6px"><b>② 偵測設定</b></div>
-        <div class="threshold-row">
-          <label>間隔 <input type="number" id="dInterval" value="1500" style="width:55px">ms</label>
-          <label>最低置信度 <input type="number" id="dMinConf" value="0.5" step="0.05" min="0" max="1" style="width:50px"></label>
-        </div>
-
-        <label class="bold-opt"><input type="checkbox" id="dAutoSubmit"> 🚀 自動送出（變化時直接送 Firebase）</label>
-        <label class="bold-opt"><input type="checkbox" id="dOnlyChange" checked> 🔔 只在階段變化時提示</label>
-        <label class="bold-opt"><input type="checkbox" id="dContribute" checked> 🎓 貢獻糾正到社群字典</label>
-        <label class="bold-opt"><input type="checkbox" id="dDebugMode"> 🔧 偵錯模式（顯示放大預覽 + F12 log）</label>
-      </div>
-
-      <div class="sec">
-        <button class="dbtn" id="dTest" disabled>🧪 測試讀取</button>
-        <button class="dbtn" id="dAuto" disabled>🔄 開始監控</button>
-        <button class="dbtn red" id="dStopAuto" disabled>⏸ 停止</button>
-        <br>
-        <button class="dbtn orange" id="dForceSubmit" disabled title="用當前偵測結果直接送 Firebase">🔥 立即送出（測試用）</button>
-
-        <div class="result-grid">
-          <div class="result-card">
-            <div class="small">階段</div>
-            <div class="v" id="dValStatus">—</div>
-            <div class="conf-bar"><div class="conf-fill" id="dConfStatus"></div></div>
-            <canvas id="dCanStatus"></canvas>
-            <div class="metrics" id="dMetrics"></div>
+      <!-- ═══ 精簡模式內容 ═══ -->
+      <div class="compact-only">
+        <div class="sec">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:11px">
+            <span id="dCompactStatus">未啟動</span>
+            <span id="dMonitorStatus" class="monitor-status">閒置</span>
           </div>
-          <div class="result-card">
-            <div class="small">地圖</div>
-            <div class="v" id="dValMap" style="font-size:12px">—</div>
-            <div class="conf-bar"><div class="conf-fill" id="dConfMap"></div></div>
-            <canvas id="dCanMap"></canvas>
+          <div class="compact-results">
+            <div class="mini-card">
+              <div class="label">階段</div>
+              <div class="value" id="dMiniStatus">—</div>
+              <div class="conf-bar"><div class="conf-fill" id="dMiniConfStatus"></div></div>
+            </div>
+            <div class="mini-card">
+              <div class="label">地圖</div>
+              <div class="value" id="dMiniMap">—</div>
+              <div class="conf-bar"><div class="conf-fill" id="dMiniConfMap"></div></div>
+            </div>
+            <div class="mini-card">
+              <div class="label">分流</div>
+              <div class="value" id="dMiniCh">—</div>
+              <div class="conf-bar"><div class="conf-fill" id="dMiniConfCh"></div></div>
+            </div>
           </div>
-          <div class="result-card">
-            <div class="small">分流</div>
-            <div class="v" id="dValCh">—</div>
-            <div class="conf-bar"><div class="conf-fill" id="dConfCh"></div></div>
-            <canvas id="dCanCh"></canvas>
+          <div style="margin-top:6px;display:flex;gap:4px;justify-content:center;flex-wrap:wrap">
+            <button class="dbtn" id="dMiniStart">▶️ 擷取</button>
+            <button class="dbtn red" id="dMiniStop" disabled>⏹</button>
+            <button class="dbtn" id="dMiniAuto" disabled>🔄 監控</button>
+            <button class="dbtn red" id="dMiniStopAuto" disabled>⏸</button>
           </div>
-        </div>
-
-        <div id="dDebugBox" class="debug-box" style="display:none">
-          <div class="small" style="color:#ff0">🔧 偵錯：綠=紅環，藍=白字像素，<b style="color:#f80">橘=徽章區</b>，黃圈=內圈，青圈=外圈</div>
-          <canvas id="dDebugCanvas"></canvas>
         </div>
 
         <div id="dConfirmArea"></div>
       </div>
 
-      <div class="sec">
-        <div style="margin-bottom:6px"><b>🎓 字典狀態</b></div>
-        <div style="font-size:11px" id="dDictInfo">載入中...</div>
-        <div class="correction-row">
-          <input type="text" id="dCorrectRaw" placeholder="OCR 讀到的字">
-          <span>→</span>
-          <input type="text" id="dCorrectCode" placeholder="正確代號" style="width:60px">
-          <button class="dbtn" onclick="window.__detector.submitCorrection()">送出</button>
+      <!-- ═══ 完整模式內容 ═══ -->
+      <div class="full-only">
+        <div class="sec">
+          <button class="dbtn" id="dStart">▶️ 開始擷取</button>
+          <button class="dbtn red" id="dStop" disabled>⏹ 停止</button>
+          <span id="dStatus" style="margin-left:6px;font-size:11px">未啟動</span>
         </div>
-      </div>
 
-      <div class="sec">
-        <div style="margin-bottom:6px"><b>偵測紀錄</b></div>
-        <div id="dLog" style="max-height:120px;overflow-y:auto;font-size:10px;line-height:1.4"></div>
+        <div class="sec">
+          <div style="margin-bottom:6px"><b>① 框選三個區域</b></div>
+          <button class="mode-btn active" data-mode="status">🔴 狀態圖示</button>
+          <button class="mode-btn" data-mode="map">🟢 地圖名</button>
+          <button class="mode-btn" data-mode="ch">🟡 分流</button>
+          <button class="mode-btn" data-mode="none">✋ 停</button>
+
+          <div class="tip-box">
+            💡 狀態圖示要把<b>右上角徽章</b>包進來<br>
+            程式從右上 45%×45% 區域讀數字
+          </div>
+
+          <div class="zoom-row">
+            <span class="small">🔍</span>
+            <input type="range" id="dZoom" min="0.5" max="4" step="0.1" value="1">
+            <span class="zoom-val" id="dZoomVal">1.0x</span>
+            <button class="dbtn gray" onclick="window.__detector.resetZoom()" style="padding:2px 6px;font-size:10px">重設</button>
+          </div>
+
+          <div class="preview-scroll" id="dPreviewScroll" style="margin-top:8px">
+            <div class="preview-wrap" id="dPreview">
+              <video id="dVideo" autoplay muted></video>
+              <div id="dDrawBox" style="display:none"></div>
+              <div class="region status" id="dBoxStatus" style="display:none">圖示</div>
+              <div class="region map" id="dBoxMap" style="display:none">地圖</div>
+              <div class="region ch" id="dBoxCh" style="display:none">CH</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec important">
+          <div style="margin-bottom:6px"><b>② 偵測設定</b></div>
+          <div class="threshold-row">
+            <label>間隔 <input type="number" id="dInterval" value="1500" style="width:55px">ms</label>
+            <label>最低置信度 <input type="number" id="dMinConf" value="0.5" step="0.05" min="0" max="1" style="width:50px"></label>
+          </div>
+          <div class="threshold-row">
+            <label>⏱ 重複冷卻 <input type="number" id="dCooldown" value="30" min="0" style="width:55px">秒
+              <span class="small">（相同狀態這段時間內不重問/送）</span>
+            </label>
+          </div>
+
+          <label class="bold-opt"><input type="checkbox" id="dAutoSubmit"> 🚀 自動送出（變化時直接送 Firebase）</label>
+          <label class="bold-opt"><input type="checkbox" id="dOnlyChange" checked> 🔔 只在階段變化時提示</label>
+          <label class="bold-opt"><input type="checkbox" id="dContribute" checked> 🎓 貢獻糾正到社群字典</label>
+          <label class="bold-opt"><input type="checkbox" id="dDebugMode"> 🔧 偵錯模式（放大預覽 + F12 log）</label>
+        </div>
+
+        <div class="sec">
+          <button class="dbtn" id="dTest" disabled>🧪 測試讀取</button>
+          <button class="dbtn" id="dAuto" disabled>🔄 開始監控</button>
+          <button class="dbtn red" id="dStopAuto" disabled>⏸ 停止</button>
+          <br>
+          <button class="dbtn orange" id="dForceSubmit" disabled>🔥 立即送出（測試用）</button>
+
+          <div class="result-grid">
+            <div class="result-card">
+              <div class="small">階段</div>
+              <div class="v" id="dValStatus">—</div>
+              <div class="conf-bar"><div class="conf-fill" id="dConfStatus"></div></div>
+              <canvas id="dCanStatus"></canvas>
+              <div class="metrics" id="dMetrics"></div>
+            </div>
+            <div class="result-card">
+              <div class="small">地圖</div>
+              <div class="v" id="dValMap" style="font-size:12px">—</div>
+              <div class="conf-bar"><div class="conf-fill" id="dConfMap"></div></div>
+              <canvas id="dCanMap"></canvas>
+            </div>
+            <div class="result-card">
+              <div class="small">分流</div>
+              <div class="v" id="dValCh">—</div>
+              <div class="conf-bar"><div class="conf-fill" id="dConfCh"></div></div>
+              <canvas id="dCanCh"></canvas>
+            </div>
+          </div>
+
+          <div id="dDebugBox" class="debug-box" style="display:none">
+            <div class="small" style="color:#ff0">🔧 綠=紅環，藍=白字，<b style="color:#f80">橘=徽章區</b></div>
+            <canvas id="dDebugCanvas"></canvas>
+          </div>
+        </div>
+
+        <div class="sec">
+          <div style="margin-bottom:6px"><b>🎓 字典狀態</b></div>
+          <div style="font-size:11px" id="dDictInfo">載入中...</div>
+          <div class="correction-row">
+            <input type="text" id="dCorrectRaw" placeholder="OCR 讀到的字">
+            <span>→</span>
+            <input type="text" id="dCorrectCode" placeholder="正確代號" style="width:60px">
+            <button class="dbtn" onclick="window.__detector.submitCorrection()">送出</button>
+          </div>
+        </div>
+
+        <div class="sec">
+          <div style="margin-bottom:6px"><b>偵測紀錄</b></div>
+          <div id="dLog" style="max-height:100px;overflow-y:auto;font-size:10px;line-height:1.4"></div>
+        </div>
       </div>
     `;
     document.body.appendChild(panel);
@@ -1882,15 +1934,23 @@ function initChat() {
   function log(msg, color = '#888') {
     const t = new Date().toLocaleTimeString('zh-TW', { hour12: false });
     const el = document.getElementById('dLog');
-    if (!el) return;
-    el.innerHTML = `<div class="log-line" style="color:${color}">[${t}] ${msg}</div>` + el.innerHTML;
-    const lines = el.querySelectorAll('.log-line');
-    if (lines.length > 30) lines[lines.length - 1].remove();
+    if (el) {
+      el.innerHTML = `<div class="log-line" style="color:${color}">[${t}] ${msg}</div>` + el.innerHTML;
+      const lines = el.querySelectorAll('.log-line');
+      if (lines.length > 30) lines[lines.length - 1].remove();
+    }
+    // 精簡模式的狀態顯示
+    const cs = document.getElementById('dCompactStatus');
+    if (cs && !msg.startsWith('環紅') && !msg.startsWith('📚')) {
+      cs.textContent = msg.length > 32 ? msg.slice(0, 32) + '...' : msg;
+      cs.style.color = color;
+    }
   }
 
-  function updateDictInfo() {
+  function updateDictInfo(override) {
     const el = document.getElementById('dDictInfo');
     if (!el) return;
+    if (override) { el.innerHTML = override; return; }
     const total = Object.keys(state.mapDictionary).length;
     const builtin = Object.keys(BUILTIN_MAP_DICTIONARY).length;
     const custom = total - builtin;
@@ -1922,18 +1982,40 @@ function initChat() {
     box.style.display = 'block';
   }
 
+  function switchPanelMode(mode) {
+    state.panelMode = mode;
+    const panel = document.getElementById('detectorPanel');
+    panel.className = mode + (panel.classList.contains('open') ? ' open' : '');
+    // 切換按鈕圖示
+    const btn = document.getElementById('dToggleMode');
+    if (btn) btn.textContent = mode === 'compact' ? '⚙️' : '🗕';
+    if (btn) btn.title = mode === 'compact' ? '展開完整模式' : '收回精簡模式';
+  }
+
   function bindEvents() {
     const video = document.getElementById('dVideo');
     const preview = document.getElementById('dPreview');
     const drawBox = document.getElementById('dDrawBox');
     const scroll = document.getElementById('dPreviewScroll');
 
+    // 模式切換
+    document.getElementById('dToggleMode').onclick = () => {
+      switchPanelMode(state.panelMode === 'compact' ? 'full' : 'compact');
+    };
+
+    // 完整模式按鈕
     document.getElementById('dStart').onclick = startCapture;
     document.getElementById('dStop').onclick = stopCapture;
     document.getElementById('dTest').onclick = () => detectOnce(false);
     document.getElementById('dAuto').onclick = startAuto;
     document.getElementById('dStopAuto').onclick = stopAuto;
     document.getElementById('dForceSubmit').onclick = forceSubmit;
+
+    // 精簡模式按鈕
+    document.getElementById('dMiniStart').onclick = startCapture;
+    document.getElementById('dMiniStop').onclick = stopCapture;
+    document.getElementById('dMiniAuto').onclick = startAuto;
+    document.getElementById('dMiniStopAuto').onclick = stopAuto;
 
     document.getElementById('dDebugMode').onchange = (e) => {
       state.debugMode = e.target.checked;
@@ -1996,13 +2078,14 @@ function initChat() {
       if (region.w < 5 || region.h < 5) return;
       state.regions[state.currentMode] = region;
       drawRegionBox(state.currentMode, region);
-      localStorage.setItem('tosm_detector_regions_v44', JSON.stringify(state.regions));
+      localStorage.setItem('tosm_detector_regions_v45', JSON.stringify(state.regions));
       log(`✅ ${state.currentMode} 區域設定 (${region.w}×${region.h})`, '#0f0');
     });
   }
 
   function loadRegions() {
-    const s = localStorage.getItem('tosm_detector_regions_v44')
+    const s = localStorage.getItem('tosm_detector_regions_v45')
+          || localStorage.getItem('tosm_detector_regions_v44')
           || localStorage.getItem('tosm_detector_regions_v43')
           || localStorage.getItem('tosm_detector_regions_v42');
     if (!s) return;
@@ -2022,12 +2105,7 @@ function initChat() {
       video.srcObject = state.stream;
       await video.play();
       state.stream.getVideoTracks()[0].onended = stopCapture;
-      document.getElementById('dStatus').textContent = '✅ 擷取中';
-      document.getElementById('dStart').disabled = true;
-      document.getElementById('dStop').disabled = false;
-      document.getElementById('dTest').disabled = false;
-      document.getElementById('dAuto').disabled = false;
-      document.getElementById('dForceSubmit').disabled = false;
+      updateCaptureUIState(true);
       video.addEventListener('loadedmetadata', () => {
         state.zoom = 1.0;
         applyZoom();
@@ -2043,12 +2121,23 @@ function initChat() {
     if (state.stream) state.stream.getTracks().forEach(t => t.stop());
     state.stream = null;
     stopAuto();
-    document.getElementById('dStatus').textContent = '已停止';
-    document.getElementById('dStart').disabled = false;
-    document.getElementById('dStop').disabled = true;
-    document.getElementById('dTest').disabled = true;
-    document.getElementById('dAuto').disabled = true;
-    document.getElementById('dForceSubmit').disabled = true;
+    updateCaptureUIState(false);
+    log('已停止擷取', '#888');
+  }
+
+  function updateCaptureUIState(isCapturing) {
+    const statusText = isCapturing ? '✅ 擷取中' : '未啟動';
+    document.getElementById('dStatus').textContent = statusText;
+    document.getElementById('dCompactStatus').textContent = statusText;
+
+    document.getElementById('dStart').disabled = isCapturing;
+    document.getElementById('dStop').disabled = !isCapturing;
+    document.getElementById('dTest').disabled = !isCapturing;
+    document.getElementById('dAuto').disabled = !isCapturing;
+    document.getElementById('dForceSubmit').disabled = !isCapturing;
+    document.getElementById('dMiniStart').disabled = isCapturing;
+    document.getElementById('dMiniStop').disabled = !isCapturing;
+    document.getElementById('dMiniAuto').disabled = !isCapturing;
   }
 
   function updateConfBar(id, conf) {
@@ -2059,16 +2148,15 @@ function initChat() {
   }
 
   function phaseBadge(phase) {
+    return phase === 'WAITING' ? '等待' : (phase || '?');
+  }
+
+  function phaseColor(phase) {
     const m = {
-      'ON': '<span class="phase-badge phase-on">ON</span>',
-      'R1': '<span class="phase-badge phase-r1">R1</span>',
-      'R2': '<span class="phase-badge phase-r2">R2</span>',
-      'R3': '<span class="phase-badge phase-r3">R3</span>',
-      'R4': '<span class="phase-badge phase-r4">R4</span>',
-      'WAITING': '<span class="phase-badge phase-waiting">等待中</span>',
-      'UNKNOWN': '<span class="phase-badge phase-unknown">?</span>'
+      'ON': '#f33', 'R1': '#fa3', 'R2': '#f83',
+      'R3': '#f63', 'R4': '#f33', 'WAITING': '#777'
     };
-    return m[phase] || '?';
+    return m[phase] || '#999';
   }
 
   async function detectOnce(silent = false) {
@@ -2084,18 +2172,24 @@ function initChat() {
         phaseMetrics = r.metrics;
         phaseOcr = r.ocrText;
         const el = document.getElementById('dValStatus');
-        el.innerHTML = phaseBadge(phase);
+        if (el) el.innerHTML = `<span style="color:${phaseColor(phase)}">${phaseBadge(phase)}</span>`;
+        // 精簡模式
+        const mini = document.getElementById('dMiniStatus');
+        if (mini) {
+          mini.textContent = phaseBadge(phase);
+          mini.style.color = phaseColor(phase);
+        }
         updateConfBar('dConfStatus', phaseConf);
+        updateConfBar('dMiniConfStatus', phaseConf);
         const mEl = document.getElementById('dMetrics');
         if (mEl) {
           mEl.innerHTML = `
             紅環:${(phaseMetrics.redRatio*100).toFixed(0)}%<br>
             徽章白:${(phaseMetrics.badgeWhiteRatio*100).toFixed(0)}%<br>
-            亮度:${phaseMetrics.avgTotalBright.toFixed(0)}<br>
             OCR:"${phaseOcr}" ${(phaseConf*100).toFixed(0)}%
           `;
         }
-      } catch (e) { if (!silent) log('狀態分析失敗：' + e.message, '#f33'); }
+      } catch (e) { if (!silent) log('狀態分析失敗', '#f33'); }
     }
 
     if (state.regions.map) {
@@ -2107,10 +2201,16 @@ function initChat() {
         mapConf = match.confidence * ocr.confidence;
         mapMatchedName = match.matchedName || '';
         const el = document.getElementById('dValMap');
-        el.innerHTML = mapResult
+        if (el) el.innerHTML = mapResult
           ? `<span style="color:#0f0">${mapResult}</span>${mapMatchedName ? `<br><span class="small">${mapMatchedName}</span>` : ''}<br><span class="small">原:${mapRaw||'?'}</span>`
           : `<span style="color:#f33">?</span><br><span class="small">${mapRaw||'無'}</span>`;
+        const mini = document.getElementById('dMiniMap');
+        if (mini) {
+          mini.textContent = mapResult || '?';
+          mini.style.color = mapResult ? '#0f0' : '#f33';
+        }
         updateConfBar('dConfMap', mapConf);
+        updateConfBar('dMiniConfMap', mapConf);
       } catch (e) { if (!silent) log('地圖 OCR 失敗', '#f33'); }
     }
 
@@ -2122,9 +2222,14 @@ function initChat() {
         chResult = m ? m[1] : null;
         chConf = chResult ? ocr.confidence : 0;
         const el = document.getElementById('dValCh');
-        el.textContent = chResult || '?';
-        el.style.color = chResult ? '#0f0' : '#f33';
+        if (el) { el.textContent = chResult || '?'; el.style.color = chResult ? '#0f0' : '#f33'; }
+        const mini = document.getElementById('dMiniCh');
+        if (mini) {
+          mini.textContent = chResult || '?';
+          mini.style.color = chResult ? '#0f0' : '#f33';
+        }
         updateConfBar('dConfCh', chConf);
+        updateConfBar('dMiniConfCh', chConf);
       } catch (e) { if (!silent) log('CH OCR 失敗', '#f33'); }
     }
 
@@ -2135,21 +2240,17 @@ function initChat() {
   async function forceSubmit() {
     log('🔥 執行立即送出...', '#f80');
     const result = await detectOnce(false);
-    if (!result.phase || result.phase === 'UNKNOWN') {
-      log('❌ 無法辨識狀態', '#f33');
-      return;
-    }
+    if (!result.phase || result.phase === 'UNKNOWN') { log('❌ 無法辨識狀態', '#f33'); return; }
     if (!result.mapResult || !result.chResult) {
-      log(`❌ 地圖或分流無法辨識（地圖=${result.mapResult||'?'} CH=${result.chResult||'?'}）`, '#f33');
+      log(`❌ 地圖或分流無法辨識`, '#f33');
       return;
     }
     let val = null;
     if (result.phase === 'ON') val = 'ON';
     else if (result.phase === 'WAITING') val = 'DE1';
     else if (['R1', 'R2', 'R3', 'R4'].includes(result.phase)) val = result.phase;
-    if (!val) { log('❌ 無效的階段', '#f33'); return; }
-    log(`🔥 立即送出：${result.mapResult} ${result.chResult} ${val}`, '#f80');
-    doSubmit(result.mapResult, result.chResult, val);
+    if (!val) return;
+    doSubmit(result.mapResult, result.chResult, val, true);
   }
 
   async function monitorTick() {
@@ -2174,6 +2275,21 @@ function initChat() {
     else if (['R1', 'R2', 'R3', 'R4'].includes(to)) { val = to; label = `🔸 進入階段 ${to}`; }
     else return;
 
+    // ═══ 新增：重複偵測冷卻檢查 ═══
+    const cooldownSec = parseInt(document.getElementById('dCooldown').value) || 0;
+    if (cooldownSec > 0
+        && result.mapResult === state.lastSubmitted.map
+        && result.chResult === state.lastSubmitted.ch
+        && val === state.lastSubmitted.val) {
+      const elapsed = (Date.now() - state.lastSubmitted.time) / 1000;
+      if (elapsed < cooldownSec) {
+        if (state.debugMode) {
+          log(`⏱ 冷卻中（${Math.round(cooldownSec - elapsed)}秒後可重複）`, '#888');
+        }
+        return;
+      }
+    }
+
     const minConf = parseFloat(document.getElementById('dMinConf').value) || 0.5;
     const autoSubmit = document.getElementById('dAutoSubmit').checked;
     const overallConf = Math.min(result.phaseConf, result.mapConf || 0, result.chConf || 0);
@@ -2197,12 +2313,12 @@ function initChat() {
     const area = document.getElementById('dConfirmArea');
     area.innerHTML = `
       <div class="confirm-banner ${cls} ${isLow ? 'low-conf' : ''}">
-        ${label} ${isLow ? '⚠️ 低置信度' : ''}<br>
-        <span style="font-size:13px">送出：<b>${result.mapResult} ${result.chResult} ${val}</b></span><br>
+        ${label} ${isLow ? '⚠️' : ''}<br>
+        <span style="font-size:12px">送出：<b>${result.mapResult} ${result.chResult} ${val}</b></span><br>
         <span class="small">置信度 ${(conf*100)|0}%</span><br>
-        <button class="dbtn" onclick="window.__detector.confirm('${result.mapResult}','${result.chResult}','${val}')">✓ 確認</button>
-        <button class="dbtn gray" onclick="window.__detector.showEdit('${result.mapResult}','${result.chResult}','${val}','${result.mapRaw}')">✏️ 修改</button>
-        <button class="dbtn red" onclick="window.__detector.cancel()">✗ 取消</button>
+        <button class="dbtn" onclick="window.__detector.confirm('${result.mapResult}','${result.chResult}','${val}')">✓確認</button>
+        <button class="dbtn gray" onclick="window.__detector.showEdit('${result.mapResult}','${result.chResult}','${val}','${result.mapRaw}')">✏️</button>
+        <button class="dbtn red" onclick="window.__detector.cancel()">✗</button>
       </div>
     `;
     beep(val === 'ON' ? 880 : val === 'DE1' ? 440 : 660);
@@ -2213,22 +2329,22 @@ function initChat() {
     area.innerHTML = `
       <div class="confirm-banner low-conf">
         ${label} ⚠️ 無法辨識<br>
-        <span class="small">OCR：地圖=「${result.mapRaw||'(空)'}」 CH=「${result.chRaw||'(空)'}」</span>
-        <div class="correction-row" style="margin-top:8px">
-          <input type="text" id="dFixMap" placeholder="地圖代號" value="${result.mapResult||''}" style="width:60px">
+        <span class="small">OCR：${result.mapRaw||'空'} / ${result.chRaw||'空'}</span>
+        <div class="correction-row" style="margin-top:6px">
+          <input type="text" id="dFixMap" placeholder="地圖" value="${result.mapResult||''}" style="width:60px">
           <input type="text" id="dFixCh" placeholder="CH" value="${result.chResult||''}" style="width:40px">
-          <button class="dbtn" onclick="window.__detector.confirmManual('${val}','${result.mapRaw}')">送出</button>
+          <button class="dbtn" onclick="window.__detector.confirmManual('${val}','${result.mapRaw}')">送</button>
           <button class="dbtn red" onclick="window.__detector.cancel()">取消</button>
         </div>
       </div>
     `;
   }
 
-  function doSubmit(map, ch, val) {
+  function doSubmit(map, ch, val, isForceSubmit = false) {
     try {
       if (typeof saveBoss !== 'function') { log('❌ saveBoss 不存在', '#f33'); return; }
       saveBoss(map, ch, val);
-      state.lastSubmitted = { id: `${map}_${ch}`, val, time: Date.now() };
+      state.lastSubmitted = { map, ch, val, time: Date.now() };
       log(`📤 已送出：${map} ${ch} ${val}`, '#0f0');
       document.getElementById('dConfirmArea').innerHTML = '';
     } catch (e) { log('❌ 送出失敗：' + e.message, '#f33'); }
@@ -2255,6 +2371,10 @@ function initChat() {
     state.autoTimer = setInterval(monitorTick, ms);
     document.getElementById('dAuto').disabled = true;
     document.getElementById('dStopAuto').disabled = false;
+    document.getElementById('dMiniAuto').disabled = true;
+    document.getElementById('dMiniStopAuto').disabled = false;
+    const ms_el = document.getElementById('dMonitorStatus');
+    if (ms_el) { ms_el.textContent = '監控中'; ms_el.className = 'monitor-status active'; }
     log(`▶️ 監控啟動（每 ${ms}ms）`, '#0f0');
   }
 
@@ -2263,6 +2383,10 @@ function initChat() {
     state.autoTimer = null;
     document.getElementById('dAuto').disabled = false;
     document.getElementById('dStopAuto').disabled = true;
+    document.getElementById('dMiniAuto').disabled = !state.stream;
+    document.getElementById('dMiniStopAuto').disabled = true;
+    const ms_el = document.getElementById('dMonitorStatus');
+    if (ms_el) { ms_el.textContent = '閒置'; ms_el.className = 'monitor-status'; }
   }
 
   function togglePanel() {
@@ -2282,7 +2406,7 @@ function initChat() {
       const area = document.getElementById('dConfirmArea');
       area.innerHTML = `
         <div class="confirm-banner">
-          修改並送出：
+          修改送出：
           <div class="correction-row">
             <input type="text" id="dEditMap" value="${map}" style="width:60px">
             <input type="text" id="dEditCh" value="${ch}" style="width:40px">
@@ -2330,13 +2454,13 @@ function initChat() {
   loadTesseract(() => {
     waitForApp(() => {
       injectUI();
-      console.log(DEBUG_PREFIX, 'v0.4.4 Beta 已就緒');
+      console.log(DEBUG_PREFIX, 'v0.4.5 Beta 已就緒');
     });
   });
 
 })();
 </script>
-<!-- ═══ 螢幕偵測模組 v0.4.4 結束 ═══ -->
+<!-- ═══ 螢幕偵測模組 v0.4.5 結束 ═══ -->
     
 </body>
 </html>
