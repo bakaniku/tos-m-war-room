@@ -1105,6 +1105,8 @@ function initChat() {
         scrollChat();
     });
 }
+</script>
+    
 <!-- ═══════════════════════════════════════════════════════════════════════
      📷 TOS M FB TIME - 螢幕偵測模組 v0.5.0 Beta
 
@@ -1851,15 +1853,15 @@ function initChat() {
       .catch(e => log('❌ 貢獻失敗：' + e.message, '#f33'));
   }
 
-  // ═══ 音量取得：從主畫面的 volumeSlider 讀取 ═══
+  // ═══ 音量取得：從主畫面的 volRange 讀取 ═══
   function getMainVolume() {
     if (state.muted) return 0;
-    // 嘗試找主畫面的音量控制
-    const slider = document.querySelector('input[type="range"].volume-slider, #volumeSlider, input[type="range"][id*="volume" i]');
+    // TOS M FB TIME 主畫面的音量滑桿：id="volRange" class="vol-range" range 0~1
+    const slider = document.querySelector('#volRange, input.vol-range');
     if (slider) {
       const val = parseFloat(slider.value);
-      // 判斷滑桿範圍：0-1 還是 0-100
-      return slider.max > 10 ? val / 100 : val;
+      // 若 max 大於 10 視為 0-100 範圍，否則視為 0-1 範圍
+      return parseFloat(slider.max) > 10 ? val / 100 : val;
     }
     return 0.5;  // 找不到就預設 50%
   }
