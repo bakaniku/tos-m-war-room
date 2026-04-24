@@ -1107,25 +1107,13 @@ function initChat() {
 }
 </script>
 <!-- ═══════════════════════════════════════════════════════════════════════
-     📷 TOS M FB TIME - 螢幕偵測模組 v0.4.3 Beta
+     📷 TOS M FB TIME - 螢幕偵測模組 v0.4.4 Beta
 
-     【v0.4.3 關鍵重寫】
-     🔥 階段判斷邏輯徹底翻新（基於使用者澄清）
-        OLD: 先看紅環佔比 → 再看亮度 → 再 OCR
-        NEW: 只看中央 OCR 結果
-              - 讀到 1/2/3/4 → R1/R2/R3/R4
-              - 讀到 ON        → ON
-              - 什麼都讀不到   → WAITING
-        紅環佔比只用於除錯顯示，不參與判斷
-
-     🎯 強化中央 OCR
-        - 裁切範圍從 55% 縮減到 40%（更精準只抓數字）
-        - 放大倍數從 4~6x 提升到 8x
-        - 新增「亮白色像素提取」預處理（數字是白的，其他黑）
-
-     ✨ 新增「🔥 立即送出」按鈕
-        讓你可以用目前偵測結果直接送出到 Firebase 測試
-        （不用等階段變化）
+     【v0.4.4 關鍵修正】
+     🎯 數字位置修正：右上角徽章（不是中央）
+        - 裁切 x:60%~100%, y:0%~45% 區域
+        - 專門針對角標數字做 OCR
+     🎯 預設框選建議：要把右上角徽章包進來
 ═══════════════════════════════════════════════════════════════════════ -->
 <script>
 (function() {
@@ -1195,7 +1183,7 @@ function initChat() {
     stableCount: 0,
     lastSubmitted: { id: null, val: null, time: 0 },
     mapDictionary: { ...BUILTIN_MAP_DICTIONARY },
-    lastResult: null,  // ← 新增：保存最後一次偵測結果，供「立即送出」使用
+    lastResult: null,
     zoom: 1.0,
     debugMode: false
   };
@@ -1287,10 +1275,6 @@ function initChat() {
     ctx.putImageData(img, 0, 0);
     return canvas;
   }
-
-  // ═══ 新增：專門針對「白色數字」的預處理 ═══
-  // 核心原理：數字是白色/淺色，其他部分（紅環、背景）都相對暗
-  // 所以只保留「亮度很高」的像素作為白字，其他全黑
   function extractBrightPixels(sourceCanvas, threshold = 200) {
     const out = document.createElement('canvas');
     out.width = sourceCanvas.width;
@@ -1301,18 +1285,16 @@ function initChat() {
     const d = img.data;
     for (let i = 0; i < d.length; i += 4) {
       const r = d[i], g = d[i+1], b = d[i+2];
-      // 判斷是否為「亮白色」：RGB 都要夠高 + 彩度低（不是紅色）
       const maxC = Math.max(r, g, b);
       const minC = Math.min(r, g, b);
       const saturation = maxC - minC;
       const isBrightWhite = maxC > threshold && saturation < 60;
-      const v = isBrightWhite ? 0 : 255;  // 白字變黑，其他變白（方便 OCR）
+      const v = isBrightWhite ? 0 : 255;  // 白字變黑、其他變白（OCR 友善）
       d[i] = d[i+1] = d[i+2] = v;
     }
     ctx.putImageData(img, 0, 0);
     return out;
   }
-
   function preprocessForOCR(src, opts = {}) {
     let c = upscale(src, opts.scale || 4);
     toGrayscale(c);
@@ -1321,7 +1303,7 @@ function initChat() {
     return c;
   }
 
-  // ═══ 只用來顯示除錯資訊（不影響判斷）═══
+  // ═══ 度量（只用於偵錯顯示）═══
   function analyzeStatusMetrics(region) {
     const canvas = document.getElementById('dCanStatus');
     canvas.width = region.w; canvas.height = region.h;
@@ -1332,15 +1314,13 @@ function initChat() {
     const imageData = ctx.getImageData(0, 0, region.w, region.h);
     const data = imageData.data;
     const w = region.w, h = region.h;
-    const cx = w / 2, cy = h / 2;
-    const outerR = Math.min(w, h) / 2;
-    const innerR = outerR * 0.5;
-
-    let redRingCount = 0, ringTotal = 0;
-    let innerBright = 0, innerCount = 0;
-    let totalBright = 0;
-    let brightWhiteInner = 0;  // ← 新增：中央的亮白像素（白字的存在證據）
+    let redCount = 0, whiteCount = 0, totalBright = 0;
     const n = w * h;
+
+    // 徽章區域：右上角 x:60%~100%, y:0%~45%
+    const badgeX1 = Math.floor(w * 0.6), badgeY1 = 0;
+    const badgeX2 = w,                    badgeY2 = Math.floor(h * 0.45);
+    let badgeWhiteCount = 0, badgeTotalPx = 0;
 
     const debugCanvas = state.debugMode ? document.getElementById('dDebugCanvas') : null;
     let debugData = null;
@@ -1362,47 +1342,34 @@ function initChat() {
         const minC = Math.min(r, g, b);
         totalBright += bright;
 
-        const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
         const isRed = r > 80 && (r - Math.max(g, b)) > 25;
         const isBrightWhite = maxC > 200 && (maxC - minC) < 60;
 
-        if (dist > innerR && dist < outerR) {
-          ringTotal++;
-          if (isRed) {
-            redRingCount++;
-            if (debugData) {
-              for (let dy = 0; dy < 4; dy++) {
-                for (let dx = 0; dx < 4; dx++) {
-                  const px = (x * 4 + dx);
-                  const py = (y * 4 + dy);
-                  const di = (py * debugCanvas.width + px) * 4;
-                  debugData.data[di] = 0;
-                  debugData.data[di+1] = 255;
-                  debugData.data[di+2] = 0;
-                }
-              }
+        if (isRed) {
+          redCount++;
+          if (debugData) {
+            for (let dy = 0; dy < 4; dy++) for (let dx = 0; dx < 4; dx++) {
+              const px = (x * 4 + dx), py = (y * 4 + dy);
+              const di = (py * debugCanvas.width + px) * 4;
+              debugData.data[di] = 0; debugData.data[di+1] = 255; debugData.data[di+2] = 0;
             }
           }
         }
-        if (dist < innerR) {
-          innerBright += bright;
-          innerCount++;
-          if (isBrightWhite) {
-            brightWhiteInner++;
-            // 偵錯：把白字像素標為藍色
-            if (debugData) {
-              for (let dy = 0; dy < 4; dy++) {
-                for (let dx = 0; dx < 4; dx++) {
-                  const px = (x * 4 + dx);
-                  const py = (y * 4 + dy);
-                  const di = (py * debugCanvas.width + px) * 4;
-                  debugData.data[di] = 0;
-                  debugData.data[di+1] = 120;
-                  debugData.data[di+2] = 255;
-                }
-              }
+        if (isBrightWhite) {
+          whiteCount++;
+          if (debugData) {
+            for (let dy = 0; dy < 4; dy++) for (let dx = 0; dx < 4; dx++) {
+              const px = (x * 4 + dx), py = (y * 4 + dy);
+              const di = (py * debugCanvas.width + px) * 4;
+              debugData.data[di] = 0; debugData.data[di+1] = 120; debugData.data[di+2] = 255;
             }
           }
+        }
+
+        // 徽章區域內的白字
+        if (x >= badgeX1 && x < badgeX2 && y >= badgeY1 && y < badgeY2) {
+          badgeTotalPx++;
+          if (isBrightWhite) badgeWhiteCount++;
         }
       }
     }
@@ -1410,61 +1377,64 @@ function initChat() {
     if (debugData) {
       const dctx = debugCanvas.getContext('2d');
       dctx.putImageData(debugData, 0, 0);
-      dctx.strokeStyle = 'yellow';
-      dctx.lineWidth = 1;
-      dctx.beginPath();
-      dctx.arc(cx * 4, cy * 4, innerR * 4, 0, Math.PI * 2);
-      dctx.stroke();
-      dctx.strokeStyle = 'cyan';
-      dctx.beginPath();
-      dctx.arc(cx * 4, cy * 4, outerR * 4, 0, Math.PI * 2);
-      dctx.stroke();
+      // 畫出徽章區域框（橘色）
+      dctx.strokeStyle = '#f80';
+      dctx.lineWidth = 2;
+      dctx.strokeRect(badgeX1 * 4, badgeY1 * 4, (badgeX2 - badgeX1) * 4, (badgeY2 - badgeY1) * 4);
+      // 標示「徽章區」
+      dctx.fillStyle = '#f80';
+      dctx.font = 'bold 11px sans-serif';
+      dctx.fillText('徽章', badgeX1 * 4 + 2, badgeY1 * 4 + 12);
     }
 
     return {
-      redRingRatio: ringTotal > 0 ? redRingCount / ringTotal : 0,
-      avgInnerBright: innerCount > 0 ? innerBright / innerCount : 0,
-      avgTotalBright: totalBright / n,
-      brightWhiteRatio: innerCount > 0 ? brightWhiteInner / innerCount : 0
+      redRatio: redCount / n,
+      whiteRatio: whiteCount / n,
+      badgeWhiteRatio: badgeTotalPx > 0 ? badgeWhiteCount / badgeTotalPx : 0,
+      avgTotalBright: totalBright / n
     };
   }
 
-  // ═══ 強化版中央 OCR ═══
-  async function ocrCenter(region, debugTargetCanvas) {
-    // 裁切中央 40%（更精準，避開紅環）
-    const ratio = 0.4;
-    const newW = Math.floor(region.w * ratio);
-    const newH = Math.floor(region.h * ratio);
-    const cropRegion = {
-      x: region.x + Math.floor((region.w - newW) / 2),
-      y: region.y + Math.floor((region.h - newH) / 2),
-      w: newW, h: newH
+  // ═══ 核心：徽章 OCR（右上角 1/4 區域）═══
+  async function ocrBadge(region) {
+    // 裁切右上角徽章區域
+    const bx1 = Math.floor(region.w * 0.55);   // 從 55% 開始（留一點餘裕）
+    const by1 = 0;
+    const bx2 = region.w;
+    const by2 = Math.floor(region.h * 0.5);    // 到 50%
+    const badgeRegion = {
+      x: region.x + bx1,
+      y: region.y + by1,
+      w: bx2 - bx1,
+      h: by2 - by1
     };
 
+    if (state.debugMode) {
+      console.log(DEBUG_PREFIX, 'ocrBadge 裁切', {
+        originalRegion: region,
+        badgeRegion
+      });
+    }
+
     const src = document.createElement('canvas');
-    src.width = cropRegion.w; src.height = cropRegion.h;
+    src.width = badgeRegion.w; src.height = badgeRegion.h;
     const video = document.getElementById('dVideo');
     src.getContext('2d').drawImage(video,
-      cropRegion.x, cropRegion.y, cropRegion.w, cropRegion.h,
-      0, 0, cropRegion.w, cropRegion.h);
+      badgeRegion.x, badgeRegion.y, badgeRegion.w, badgeRegion.h,
+      0, 0, badgeRegion.w, badgeRegion.h);
 
-    // 三種處理管線，投票最高者
+    // 四管線投票
     const passes = [
-      { name: 'brightExtract', preprocess: (s) => {
-        // 亮白像素提取（針對白字）
+      { name: 'brightExtract180', preprocess: (s) => {
         const big = upscale(s, 8);
         return extractBrightPixels(big, 180);
       }},
-      { name: 'brightExtractStrict', preprocess: (s) => {
+      { name: 'brightExtract210', preprocess: (s) => {
         const big = upscale(s, 8);
         return extractBrightPixels(big, 210);
       }},
-      { name: 'otsuNormal', preprocess: (s) => {
-        return preprocessForOCR(s, { scale: 8, invert: false });
-      }},
-      { name: 'otsuInvert', preprocess: (s) => {
-        return preprocessForOCR(s, { scale: 8, invert: true });
-      }}
+      { name: 'otsuNormal', preprocess: (s) => preprocessForOCR(s, { scale: 8, invert: false }) },
+      { name: 'otsuInvert', preprocess: (s) => preprocessForOCR(s, { scale: 8, invert: true }) }
     ];
 
     const results = [];
@@ -1473,7 +1443,7 @@ function initChat() {
         const processed = p.preprocess(src);
         const { data } = await Tesseract.recognize(processed, 'eng', {
           logger: () => {},
-          tessedit_pageseg_mode: '10',  // 單字元模式
+          tessedit_pageseg_mode: '10',
           tessedit_char_whitelist: 'ON1234'
         });
         const text = data.text.trim().replace(/\s+/g, '').replace(/[^ON1234]/g, '');
@@ -1487,47 +1457,40 @@ function initChat() {
     }
 
     if (state.debugMode) {
-      console.log(DEBUG_PREFIX, 'ocrCenter 多管線結果', results);
+      console.log(DEBUG_PREFIX, 'ocrBadge 多管線結果', results);
     }
 
-    // 投票邏輯
+    // 投票：得票數 × 平均置信度
     const votes = {};
     for (const r of results) {
       if (!r.text) continue;
-      const key = r.text;
-      if (!votes[key]) votes[key] = { count: 0, totalConf: 0 };
-      votes[key].count++;
-      votes[key].totalConf += r.confidence;
+      if (!votes[r.text]) votes[r.text] = { count: 0, totalConf: 0 };
+      votes[r.text].count++;
+      votes[r.text].totalConf += r.confidence;
     }
 
-    // 選得票最多 + 平均置信度最高者
     let bestText = '', bestScore = 0;
     for (const [text, info] of Object.entries(votes)) {
-      const score = info.count * (info.totalConf / info.count);
+      const avgConf = info.totalConf / info.count;
+      const score = info.count * avgConf;
       if (score > bestScore) {
         bestScore = score;
         bestText = text;
       }
     }
 
-    // 平均置信度作為回傳的 confidence
     const avgConf = votes[bestText]
       ? votes[bestText].totalConf / votes[bestText].count
       : 0;
 
-    return { text: bestText, confidence: avgConf, allResults: results };
+    return { text: bestText, confidence: avgConf, allResults: results, badgeRegion };
   }
 
-  // ═══ 核心判斷邏輯（徹底重寫）═══
-  // 規則：只看中央 OCR 讀到什麼
-  //   讀到 1/2/3/4 → R1/R2/R3/R4
-  //   讀到 ON      → ON
-  //   什麼都讀不到 → WAITING
   async function detectPhase(region) {
     const metrics = analyzeStatusMetrics(region);
-    const ocr = await ocrCenter(region);
+    const ocr = await ocrBadge(region);
 
-    const minOcrConf = 0.3;  // OCR 置信度太低則視為沒讀到
+    const minOcrConf = 0.3;
 
     if (state.debugMode) {
       console.log(DEBUG_PREFIX, 'detectPhase', {
@@ -1538,29 +1501,27 @@ function initChat() {
     const text = ocr.text.toUpperCase();
     let phase, confidence;
 
-    if (ocr.confidence >= minOcrConf) {
-      if (text === 'ON') {
-        phase = 'ON';
-        confidence = ocr.confidence;
-      } else if (text === '1') {
-        phase = 'R1'; confidence = ocr.confidence;
-      } else if (text === '2') {
-        phase = 'R2'; confidence = ocr.confidence;
-      } else if (text === '3') {
-        phase = 'R3'; confidence = ocr.confidence;
-      } else if (text === '4') {
-        phase = 'R4'; confidence = ocr.confidence;
-      } else {
-        // OCR 有讀到東西但不是 1-4 / ON
-        phase = 'WAITING';
-        confidence = 0.5;
-      }
+    // 用徽章區的白字像素作為「數字存在」的補強證據
+    const hasWhiteInBadge = metrics.badgeWhiteRatio > 0.03;
+
+    if (ocr.confidence >= minOcrConf && text) {
+      if (text === 'ON') { phase = 'ON'; confidence = ocr.confidence; }
+      else if (text === '1') { phase = 'R1'; confidence = ocr.confidence; }
+      else if (text === '2') { phase = 'R2'; confidence = ocr.confidence; }
+      else if (text === '3') { phase = 'R3'; confidence = ocr.confidence; }
+      else if (text === '4') { phase = 'R4'; confidence = ocr.confidence; }
+      else { phase = 'WAITING'; confidence = 0.5; }
     } else {
-      // OCR 信心太低 → 視為沒讀到 → 等待中
-      phase = 'WAITING';
-      // 如果白字像素很少 → 確定是等待中（高信心）
-      // 如果白字像素多但 OCR 讀不到 → 可能是辨識失敗（低信心）
-      confidence = metrics.brightWhiteRatio < 0.05 ? 0.9 : 0.5;
+      // OCR 沒讀到
+      if (hasWhiteInBadge) {
+        // 徽章區有白字但 OCR 讀不到 → 可能是 OCR 失敗
+        phase = 'WAITING';
+        confidence = 0.3;
+      } else {
+        // 徽章區沒白字 → 確定是等待中
+        phase = 'WAITING';
+        confidence = 0.9;
+      }
     }
 
     return { phase, confidence, metrics, ocrText: text, ocrRaw: ocr };
@@ -1648,7 +1609,7 @@ function initChat() {
     const btn = document.createElement('button');
     btn.id = 'detectBtn';
     btn.className = 'audio-btn';
-    btn.title = '螢幕偵測 v0.4.3';
+    btn.title = '螢幕偵測 v0.4.4';
     btn.innerHTML = '📷';
     btn.onclick = togglePanel;
     audioControls.appendChild(btn);
@@ -1697,9 +1658,7 @@ function initChat() {
         position: relative; overflow: auto; max-height: 400px;
         border: 2px solid #333; background: #000;
       }
-      #detectorPanel .preview-wrap {
-        position: relative; display: inline-block;
-      }
+      #detectorPanel .preview-wrap { position: relative; display: inline-block; }
       #detectorPanel video { display: block; }
       #detectorPanel .region {
         position: absolute; border: 2px solid; background: rgba(255,255,255,0.08);
@@ -1795,6 +1754,13 @@ function initChat() {
         display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0;
         font-size: 11px;
       }
+      #detectorPanel .tip-box {
+        background: #332; border-left: 3px solid #fa0; padding: 6px 10px;
+        margin: 6px 0; font-size: 11px; color: #fd0;
+      }
+      body.light #detectorPanel .tip-box {
+        background: #fff8e0; color: #8a5c00; border-color: #c87c00;
+      }
     `;
     document.head.appendChild(style);
 
@@ -1802,7 +1768,7 @@ function initChat() {
     panel.id = 'detectorPanel';
     panel.innerHTML = `
       <button class="close-x" onclick="window.__detector.close()">×</button>
-      <h3>📷 螢幕偵測器 <span class="small">v0.4.3 Beta（白字 OCR 優先）</span></h3>
+      <h3>📷 螢幕偵測器 <span class="small">v0.4.4 Beta（右上徽章 OCR）</span></h3>
 
       <div class="sec">
         <button class="dbtn" id="dStart">▶️ 開始擷取</button>
@@ -1816,6 +1782,13 @@ function initChat() {
         <button class="mode-btn" data-mode="map">🟢 地圖名</button>
         <button class="mode-btn" data-mode="ch">🟡 分流</button>
         <button class="mode-btn" data-mode="none">✋ 停</button>
+
+        <div class="tip-box">
+          💡 <b>狀態圖示框選重點</b>：<br>
+          • 要把<b>右上角的數字徽章</b>完整包進框框<br>
+          • 數字偵測區在框的右上 45% × 45% 區域<br>
+          • 框選後偵錯圖會顯示橘色框標示徽章位置
+        </div>
 
         <div class="zoom-row">
           <span class="small">🔍</span>
@@ -1853,7 +1826,7 @@ function initChat() {
         <button class="dbtn" id="dAuto" disabled>🔄 開始監控</button>
         <button class="dbtn red" id="dStopAuto" disabled>⏸ 停止</button>
         <br>
-        <button class="dbtn orange" id="dForceSubmit" disabled title="用當前偵測結果直接送 Firebase，不需等階段變化">🔥 立即送出（測試用）</button>
+        <button class="dbtn orange" id="dForceSubmit" disabled title="用當前偵測結果直接送 Firebase">🔥 立即送出（測試用）</button>
 
         <div class="result-grid">
           <div class="result-card">
@@ -1878,7 +1851,7 @@ function initChat() {
         </div>
 
         <div id="dDebugBox" class="debug-box" style="display:none">
-          <div class="small" style="color:#ff0">🔧 偵錯：綠色=紅環像素，藍色=中央白字像素，黃圈=內圈，青圈=外圈</div>
+          <div class="small" style="color:#ff0">🔧 偵錯：綠=紅環，藍=白字像素，<b style="color:#f80">橘=徽章區</b>，黃圈=內圈，青圈=外圈</div>
           <canvas id="dDebugCanvas"></canvas>
         </div>
 
@@ -1928,10 +1901,8 @@ function initChat() {
     const video = document.getElementById('dVideo');
     const zoomVal = document.getElementById('dZoomVal');
     if (!video || !video.videoWidth) return;
-    const newW = video.videoWidth * state.zoom;
-    const newH = video.videoHeight * state.zoom;
-    video.style.width = newW + 'px';
-    video.style.height = newH + 'px';
+    video.style.width = (video.videoWidth * state.zoom) + 'px';
+    video.style.height = (video.videoHeight * state.zoom) + 'px';
     if (zoomVal) zoomVal.textContent = state.zoom.toFixed(1) + 'x';
     for (const k of ['status', 'map', 'ch']) {
       if (state.regions[k]) drawRegionBox(k, state.regions[k]);
@@ -2025,14 +1996,15 @@ function initChat() {
       if (region.w < 5 || region.h < 5) return;
       state.regions[state.currentMode] = region;
       drawRegionBox(state.currentMode, region);
-      localStorage.setItem('tosm_detector_regions_v43', JSON.stringify(state.regions));
-      log(`✅ ${state.currentMode} 區域設定 (${region.w}×${region.h}) [zoom=${state.zoom.toFixed(1)}]`, '#0f0');
+      localStorage.setItem('tosm_detector_regions_v44', JSON.stringify(state.regions));
+      log(`✅ ${state.currentMode} 區域設定 (${region.w}×${region.h})`, '#0f0');
     });
   }
 
   function loadRegions() {
-    const s = localStorage.getItem('tosm_detector_regions_v43')
-          || localStorage.getItem('tosm_detector_regions_v42');  // 相容舊版
+    const s = localStorage.getItem('tosm_detector_regions_v44')
+          || localStorage.getItem('tosm_detector_regions_v43')
+          || localStorage.getItem('tosm_detector_regions_v42');
     if (!s) return;
     try { Object.assign(state.regions, JSON.parse(s)); } catch(e) { return; }
     for (const k of ['status', 'map', 'ch']) {
@@ -2115,11 +2087,11 @@ function initChat() {
         el.innerHTML = phaseBadge(phase);
         updateConfBar('dConfStatus', phaseConf);
         const mEl = document.getElementById('dMetrics');
-        if (mEl && phaseMetrics.redRingRatio !== undefined) {
+        if (mEl) {
           mEl.innerHTML = `
-            環紅:${(phaseMetrics.redRingRatio*100).toFixed(0)}%<br>
-            白字:${(phaseMetrics.brightWhiteRatio*100).toFixed(0)}%<br>
-            中央亮:${phaseMetrics.avgInnerBright.toFixed(0)}<br>
+            紅環:${(phaseMetrics.redRatio*100).toFixed(0)}%<br>
+            徽章白:${(phaseMetrics.badgeWhiteRatio*100).toFixed(0)}%<br>
+            亮度:${phaseMetrics.avgTotalBright.toFixed(0)}<br>
             OCR:"${phaseOcr}" ${(phaseConf*100).toFixed(0)}%
           `;
         }
@@ -2156,32 +2128,26 @@ function initChat() {
       } catch (e) { if (!silent) log('CH OCR 失敗', '#f33'); }
     }
 
-    // 保存供「立即送出」用
     state.lastResult = { phase, phaseConf, phaseMetrics, phaseOcr, mapResult, mapConf, mapRaw, mapMatchedName, chResult, chConf, chRaw };
     return state.lastResult;
   }
 
-  // ═══ 新增：立即送出功能 ═══
   async function forceSubmit() {
     log('🔥 執行立即送出...', '#f80');
     const result = await detectOnce(false);
     if (!result.phase || result.phase === 'UNKNOWN') {
-      log('❌ 無法辨識狀態，取消送出', '#f33');
+      log('❌ 無法辨識狀態', '#f33');
       return;
     }
     if (!result.mapResult || !result.chResult) {
       log(`❌ 地圖或分流無法辨識（地圖=${result.mapResult||'?'} CH=${result.chResult||'?'}）`, '#f33');
       return;
     }
-
     let val = null;
     if (result.phase === 'ON') val = 'ON';
     else if (result.phase === 'WAITING') val = 'DE1';
     else if (['R1', 'R2', 'R3', 'R4'].includes(result.phase)) val = result.phase;
-
     if (!val) { log('❌ 無效的階段', '#f33'); return; }
-
-    // 立即送出不需要確認，直接送
     log(`🔥 立即送出：${result.mapResult} ${result.chResult} ${val}`, '#f80');
     doSubmit(result.mapResult, result.chResult, val);
   }
@@ -2190,7 +2156,6 @@ function initChat() {
     const result = await detectOnce(true);
     if (!result.phase) return;
     if (result.phase === 'UNKNOWN') { state.stableCount = 0; return; }
-
     if (result.phase === state.lastPhase) {
       state.stableCount++;
     } else {
@@ -2205,7 +2170,7 @@ function initChat() {
   function handlePhaseChange(from, to, result) {
     let val = null, label = '';
     if (to === 'ON') { val = 'ON'; label = '⚔️ 王已重生 (ON)'; }
-    else if (to === 'WAITING') { val = 'DE1'; label = '💀 王已擊殺 (進入等待)'; }
+    else if (to === 'WAITING') { val = 'DE1'; label = '💀 王已擊殺'; }
     else if (['R1', 'R2', 'R3', 'R4'].includes(to)) { val = to; label = `🔸 進入階段 ${to}`; }
     else return;
 
@@ -2365,13 +2330,13 @@ function initChat() {
   loadTesseract(() => {
     waitForApp(() => {
       injectUI();
-      console.log(DEBUG_PREFIX, 'v0.4.3 Beta 已就緒');
+      console.log(DEBUG_PREFIX, 'v0.4.4 Beta 已就緒');
     });
   });
 
 })();
 </script>
-<!-- ═══ 螢幕偵測模組 v0.4.3 結束 ═══ -->
+<!-- ═══ 螢幕偵測模組 v0.4.4 結束 ═══ -->
     
 </body>
 </html>
