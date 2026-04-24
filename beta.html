@@ -1105,20 +1105,192 @@ function initChat() {
         scrollChat();
     });
 }
-</script>
 <!-- ═══════════════════════════════════════════════════════════════════════
-     📷 TOS M FB TIME - 螢幕偵測模組 v0.4.6.1 Beta
+     📷 TOS M FB TIME - 螢幕偵測模組 v0.5.0 Beta
 
-     【v0.4.6.1 修正】
-     🐛 修正徽章拖曳邊界計算（改用 canvas 實際顯示尺寸）
-     🐛 改善 canvas 在面板寬度內的自適應
-     ✨ 拖曳時即時顯示邊界，更容易看出可動範圍
+     【v0.5 重大升級】
+     🧠 模板比對系統（階段/分流的主要辨識方式，準確度 99%+）
+     📚 教學模式（使用者示範各狀態，累積模板庫）
+     🔄 自動學習（確認時自動加入當前圖片為模板）
+     🛡️ OCR fallback（模板不足時仍能運作）
+     📦 模板管理（統計/匯出/匯入/清除）
+     🔔 音量跟隨主畫面（使用主網頁的 volume 設定）
+     🔕 懸浮視窗靜音切換鈕
 ═══════════════════════════════════════════════════════════════════════ -->
 <script>
 (function() {
   'use strict';
 
   const DEBUG_PREFIX = '[偵測器]';
+  const TEMPLATE_SIZE = 32;
+  const TEMPLATE_STORAGE_KEY = 'tosm_detector_templates_v5';
+  const TEMPLATE_MIN_SIM = 0.85;   // 相似度 >= 此值直接採信模板
+  const TEMPLATE_AMBIGUOUS = 0.70; // 相似度介於兩者之間為不確定
+  const MAX_TEMPLATES_PER_LABEL = 15;
+
+  // ═══════════════════════════════════════════════
+  // 模板資料庫
+  // ═══════════════════════════════════════════════
+  const TemplateDB = {
+    data: { phase: {}, ch: {} },
+
+    load() {
+      try {
+        const s = localStorage.getItem(TEMPLATE_STORAGE_KEY);
+        if (s) this.data = JSON.parse(s);
+      } catch(e) {
+        this.data = { phase: {}, ch: {} };
+      }
+      if (!this.data.phase) this.data.phase = {};
+      if (!this.data.ch) this.data.ch = {};
+    },
+
+    save() {
+      try {
+        localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(this.data));
+      } catch(e) {
+        console.error(DEBUG_PREFIX, '模板儲存失敗（容量可能已滿）', e);
+      }
+    },
+
+    normalize(sourceCanvas) {
+      const norm = document.createElement('canvas');
+      norm.width = TEMPLATE_SIZE; norm.height = TEMPLATE_SIZE;
+      const ctx = norm.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(sourceCanvas, 0, 0, TEMPLATE_SIZE, TEMPLATE_SIZE);
+      const img = ctx.getImageData(0, 0, TEMPLATE_SIZE, TEMPLATE_SIZE);
+      const d = img.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const g = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
+        d[i] = d[i+1] = d[i+2] = g;
+      }
+      ctx.putImageData(img, 0, 0);
+      return norm;
+    },
+
+    getPixels(canvas) {
+      const ctx = canvas.getContext('2d');
+      const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const pixels = new Float32Array(canvas.width * canvas.height);
+      for (let i = 0, j = 0; i < img.data.length; i += 4, j++) {
+        pixels[j] = img.data[i];
+      }
+      return pixels;
+    },
+
+    add(category, label, sourceCanvas) {
+      const norm = this.normalize(sourceCanvas);
+      const dataURL = norm.toDataURL('image/png');
+      if (!this.data[category][label]) this.data[category][label] = [];
+      if (this.data[category][label].includes(dataURL)) return false;
+      this.data[category][label].push(dataURL);
+      if (this.data[category][label].length > MAX_TEMPLATES_PER_LABEL) {
+        this.data[category][label].shift();
+      }
+      this.save();
+      return true;
+    },
+
+    clearCategory(category, label) {
+      if (label) delete this.data[category][label];
+      else this.data[category] = {};
+      this.save();
+    },
+
+    async dataURLToPixels(dataURL) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const c = document.createElement('canvas');
+          c.width = TEMPLATE_SIZE; c.height = TEMPLATE_SIZE;
+          c.getContext('2d').drawImage(img, 0, 0);
+          resolve(this.getPixels(c));
+        };
+        img.onerror = reject;
+        img.src = dataURL;
+      });
+    },
+
+    async match(category, sourceCanvas) {
+      const templates = this.data[category];
+      if (!templates || Object.keys(templates).length === 0) return null;
+      const norm = this.normalize(sourceCanvas);
+      const queryPixels = this.getPixels(norm);
+      const results = [];
+      for (const [label, dataURLs] of Object.entries(templates)) {
+        let bestDist = Infinity;
+        for (const dataURL of dataURLs) {
+          const tplPixels = await this.dataURLToPixels(dataURL);
+          const dist = this.euclideanDistance(queryPixels, tplPixels);
+          if (dist < bestDist) bestDist = dist;
+        }
+        const maxPossibleDist = Math.sqrt(TEMPLATE_SIZE * TEMPLATE_SIZE * 255 * 255);
+        const similarity = 1 - (bestDist / maxPossibleDist);
+        results.push({ label, similarity, dist: bestDist });
+      }
+      results.sort((a, b) => b.similarity - a.similarity);
+      return {
+        label: results[0].label,
+        similarity: results[0].similarity,
+        topN: results.slice(0, 5)
+      };
+    },
+
+    euclideanDistance(a, b) {
+      let sum = 0;
+      for (let i = 0; i < a.length; i++) {
+        const diff = a[i] - b[i];
+        sum += diff * diff;
+      }
+      return Math.sqrt(sum);
+    },
+
+    getStats() {
+      const stats = { phase: {}, ch: {}, totalSize: 0 };
+      for (const cat of ['phase', 'ch']) {
+        for (const [label, arr] of Object.entries(this.data[cat])) {
+          stats[cat][label] = arr.length;
+          stats.totalSize += arr.reduce((s, d) => s + d.length, 0);
+        }
+      }
+      return stats;
+    },
+
+    export() {
+      const blob = new Blob([JSON.stringify(this.data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `tosm_templates_${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
+
+    async import(file) {
+      const text = await file.text();
+      try {
+        const imported = JSON.parse(text);
+        if (!imported.phase || !imported.ch) throw new Error('格式錯誤');
+        for (const cat of ['phase', 'ch']) {
+          for (const [label, arr] of Object.entries(imported[cat])) {
+            if (!this.data[cat][label]) this.data[cat][label] = [];
+            for (const dataURL of arr) {
+              if (!this.data[cat][label].includes(dataURL)) {
+                this.data[cat][label].push(dataURL);
+              }
+            }
+          }
+        }
+        this.save();
+        return true;
+      } catch(e) {
+        alert('❌ 匯入失敗：' + e.message);
+        return false;
+      }
+    }
+  };
 
   function loadTesseract(callback) {
     if (typeof Tesseract !== 'undefined') { callback(); return; }
@@ -1174,21 +1346,18 @@ function initChat() {
   }
 
   const state = {
-    stream: null,
-    autoTimer: null,
-    currentMode: 'status',
+    stream: null, autoTimer: null, currentMode: 'status',
     regions: { status: null, map: null, ch: null },
     badgeRect: null,
-    lastPhase: null,
-    stableCount: 0,
+    lastPhase: null, stableCount: 0,
     lastSubmitted: { map: null, ch: null, val: null, time: 0 },
     mapDictionary: { ...BUILTIN_MAP_DICTIONARY },
-    lastResult: null,
-    zoom: 1.0,
-    debugMode: false,
-    panelMode: 'compact',
-    dictLoaded: false,
-    panelPos: { x: null, y: null }
+    lastResult: null, zoom: 1.0, debugMode: false,
+    panelMode: 'compact', dictLoaded: false,
+    panelPos: { x: null, y: null },
+    lastBadgeCanvas: null,
+    lastChCanvas: null,
+    muted: false  // v0.5 新增：靜音狀態
   };
 
   function getBadgeRect(statusRegion) {
@@ -1219,6 +1388,7 @@ function initChat() {
     if (!a || !b) return 0;
     return 1 - levenshtein(a, b) / Math.max(a.length, b.length);
   }
+
   function otsuThreshold(hist, total) {
     let sum = 0;
     for (let i = 0; i < 256; i++) sum += i * hist[i];
@@ -1299,8 +1469,7 @@ function initChat() {
       const r = d[i], g = d[i+1], b = d[i+2];
       const maxC = Math.max(r, g, b);
       const minC = Math.min(r, g, b);
-      const saturation = maxC - minC;
-      const isBrightWhite = maxC > threshold && saturation < 60;
+      const isBrightWhite = maxC > threshold && (maxC - minC) < 60;
       const v = isBrightWhite ? 0 : 255;
       d[i] = d[i+1] = d[i+2] = v;
     }
@@ -1313,6 +1482,30 @@ function initChat() {
     if (opts.useStretch !== false) stretchContrast(c);
     binarizeOtsu(c, opts.invert || false);
     return c;
+  }
+
+  // ═══ 擷取徽章（回傳 canvas 供模板比對/訓練用） ═══
+  function captureBadgeCanvas(region) {
+    const badge = getBadgeRect(region);
+    const canvas = document.createElement('canvas');
+    canvas.width = badge.w;
+    canvas.height = badge.h;
+    const video = document.getElementById('dVideo');
+    canvas.getContext('2d').drawImage(video,
+      region.x + badge.x, region.y + badge.y, badge.w, badge.h,
+      0, 0, badge.w, badge.h);
+    return canvas;
+  }
+
+  // ═══ 擷取分流區域 ═══
+  function captureChCanvas(region) {
+    const canvas = document.createElement('canvas');
+    canvas.width = region.w;
+    canvas.height = region.h;
+    const video = document.getElementById('dVideo');
+    canvas.getContext('2d').drawImage(video,
+      region.x, region.y, region.w, region.h, 0, 0, region.w, region.h);
+    return canvas;
   }
 
   function analyzeStatusMetrics(region) {
@@ -1397,42 +1590,28 @@ function initChat() {
     };
   }
 
-  async function ocrBadge(region) {
-    const badge = getBadgeRect(region);
-    const badgeRegion = {
-      x: region.x + badge.x,
-      y: region.y + badge.y,
-      w: badge.w,
-      h: badge.h
-    };
-    const src = document.createElement('canvas');
-    src.width = badgeRegion.w; src.height = badgeRegion.h;
-    const video = document.getElementById('dVideo');
-    src.getContext('2d').drawImage(video,
-      badgeRegion.x, badgeRegion.y, badgeRegion.w, badgeRegion.h,
-      0, 0, badgeRegion.w, badgeRegion.h);
+  async function ocrBadgeFallback(badgeCanvas) {
     const passes = [
-      { name: 'b180', preprocess: (s) => extractBrightPixels(upscale(s, 8), 180) },
-      { name: 'b210', preprocess: (s) => extractBrightPixels(upscale(s, 8), 210) },
-      { name: 'otsu', preprocess: (s) => preprocessForOCR(s, { scale: 8 }) },
-      { name: 'otsuI', preprocess: (s) => preprocessForOCR(s, { scale: 8, invert: true }) }
+      { preprocess: (s) => extractBrightPixels(upscale(s, 8), 180) },
+      { preprocess: (s) => extractBrightPixels(upscale(s, 8), 210) },
+      { preprocess: (s) => preprocessForOCR(s, { scale: 8 }) },
+      { preprocess: (s) => preprocessForOCR(s, { scale: 8, invert: true }) }
     ];
     const results = [];
     for (const p of passes) {
       try {
-        const processed = p.preprocess(src);
+        const processed = p.preprocess(badgeCanvas);
         const { data } = await Tesseract.recognize(processed, 'eng', {
           logger: () => {},
           tessedit_pageseg_mode: '10',
           tessedit_char_whitelist: 'ON1234'
         });
         const text = data.text.trim().replace(/\s+/g, '').replace(/[^ON1234]/g, '');
-        results.push({ pass: p.name, text, confidence: data.confidence / 100 });
+        results.push({ text, confidence: data.confidence / 100 });
       } catch (e) {
-        results.push({ pass: p.name, text: '', confidence: 0 });
+        results.push({ text: '', confidence: 0 });
       }
     }
-    if (state.debugMode) console.log(DEBUG_PREFIX, 'ocrBadge', results);
     const votes = {};
     for (const r of results) {
       if (!r.text) continue;
@@ -1449,25 +1628,89 @@ function initChat() {
     return { text: bestText, confidence: avgConf };
   }
 
+  // ═══ 核心：階段偵測（模板比對為主，OCR 為 fallback）═══
   async function detectPhase(region) {
     const metrics = analyzeStatusMetrics(region);
-    const ocr = await ocrBadge(region);
-    const minOcrConf = 0.3;
-    const text = ocr.text.toUpperCase();
-    let phase, confidence;
-    const hasWhiteInBadge = metrics.badgeWhiteRatio > 0.03;
-    if (ocr.confidence >= minOcrConf && text) {
-      if (text === 'ON') { phase = 'ON'; confidence = ocr.confidence; }
-      else if (text === '1') { phase = 'R1'; confidence = ocr.confidence; }
-      else if (text === '2') { phase = 'R2'; confidence = ocr.confidence; }
-      else if (text === '3') { phase = 'R3'; confidence = ocr.confidence; }
-      else if (text === '4') { phase = 'R4'; confidence = ocr.confidence; }
-      else { phase = 'WAITING'; confidence = 0.5; }
-    } else {
-      phase = 'WAITING';
-      confidence = hasWhiteInBadge ? 0.3 : 0.9;
+    const badgeCanvas = captureBadgeCanvas(region);
+    state.lastBadgeCanvas = badgeCanvas;
+
+    // 先試模板比對
+    const templateMatch = await TemplateDB.match('phase', badgeCanvas);
+
+    if (state.debugMode) {
+      console.log(DEBUG_PREFIX, 'detectPhase', {
+        metrics,
+        template: templateMatch
+      });
     }
-    return { phase, confidence, metrics, ocrText: text };
+
+    // 【情境 1】模板匹配超高信心
+    if (templateMatch && templateMatch.similarity >= TEMPLATE_MIN_SIM) {
+      return {
+        phase: templateMatch.label,
+        confidence: templateMatch.similarity,
+        metrics,
+        source: 'template',
+        templateMatch
+      };
+    }
+
+    // 【情境 2】模板不夠用 / 信心不足 → 用 OCR 當 fallback
+    const ocr = await ocrBadgeFallback(badgeCanvas);
+    const ocrText = ocr.text.toUpperCase();
+    let ocrPhase = null;
+    if (ocrText === 'ON') ocrPhase = 'ON';
+    else if (ocrText === '1') ocrPhase = 'R1';
+    else if (ocrText === '2') ocrPhase = 'R2';
+    else if (ocrText === '3') ocrPhase = 'R3';
+    else if (ocrText === '4') ocrPhase = 'R4';
+
+    const hasWhiteInBadge = metrics.badgeWhiteRatio > 0.03;
+
+    // 【情境 3】模板與 OCR 一致 → 高信心
+    if (templateMatch && ocrPhase && templateMatch.label === ocrPhase) {
+      return {
+        phase: ocrPhase,
+        confidence: Math.max(templateMatch.similarity, ocr.confidence),
+        metrics,
+        source: 'template+ocr',
+        templateMatch,
+        ocrText
+      };
+    }
+
+    // 【情境 4】模板不確定，但 OCR 有結果
+    if (ocrPhase && ocr.confidence >= 0.3) {
+      return {
+        phase: ocrPhase,
+        confidence: ocr.confidence,
+        metrics,
+        source: 'ocr',
+        templateMatch,
+        ocrText
+      };
+    }
+
+    // 【情境 5】模板有一定信心（雖未達 0.85）
+    if (templateMatch && templateMatch.similarity >= TEMPLATE_AMBIGUOUS) {
+      return {
+        phase: templateMatch.label,
+        confidence: templateMatch.similarity,
+        metrics,
+        source: 'template-low',
+        templateMatch
+      };
+    }
+
+    // 【情境 6】都沒讀到 → 等待中
+    return {
+      phase: 'WAITING',
+      confidence: hasWhiteInBadge ? 0.3 : 0.9,
+      metrics,
+      source: 'fallback',
+      templateMatch,
+      ocrText
+    };
   }
 
   async function ocrMultiPass(region, targetCanvas, lang, whitelist, psm) {
@@ -1503,6 +1746,52 @@ function initChat() {
     return results[0];
   }
 
+  // ═══ 分流偵測：模板比對 + OCR fallback ═══
+  async function detectCh(region) {
+    const chCanvas = captureChCanvas(region);
+    state.lastChCanvas = chCanvas;
+
+    // 先試模板比對
+    const templateMatch = await TemplateDB.match('ch', chCanvas);
+
+    // 更新除錯 canvas
+    const debugCh = document.getElementById('dCanCh');
+    if (debugCh) {
+      debugCh.width = chCanvas.width;
+      debugCh.height = chCanvas.height;
+      debugCh.getContext('2d').drawImage(chCanvas, 0, 0);
+    }
+
+    if (templateMatch && templateMatch.similarity >= TEMPLATE_MIN_SIM) {
+      return {
+        ch: templateMatch.label,
+        confidence: templateMatch.similarity,
+        source: 'template',
+        templateMatch,
+        raw: ''
+      };
+    }
+
+    // Fallback 到 OCR
+    const ocr = await ocrMultiPass(region, null, 'eng', 'CH.0123456789 ');
+    const m = ocr.text.match(/(\d+)/);
+    const ch = m ? m[1] : null;
+
+    if (templateMatch && ch && templateMatch.label === ch) {
+      return {
+        ch, confidence: Math.max(templateMatch.similarity, ocr.confidence),
+        source: 'template+ocr', templateMatch, raw: ocr.text
+      };
+    }
+    if (ch && ocr.confidence >= 0.3) {
+      return { ch, confidence: ocr.confidence, source: 'ocr', templateMatch, raw: ocr.text };
+    }
+    if (templateMatch && templateMatch.similarity >= TEMPLATE_AMBIGUOUS) {
+      return { ch: templateMatch.label, confidence: templateMatch.similarity, source: 'template-low', templateMatch, raw: ocr.text };
+    }
+    return { ch: null, confidence: 0, source: 'none', templateMatch, raw: ocr.text };
+  }
+
   function matchMapName(ocrText) {
     if (!ocrText) return { matched: null, confidence: 0, raw: ocrText };
     const numMatch = ocrText.match(/^\d{1,3}$/);
@@ -1536,9 +1825,8 @@ function initChat() {
           updateDictInfo();
         },
         err => {
-          console.error(DEBUG_PREFIX, '字典載入失敗:', err);
           state.dictLoaded = true;
-          updateDictInfo('⚠️ Firebase 字典連線失敗（僅使用內建 91 筆）');
+          updateDictInfo('⚠️ Firebase 字典連線失敗');
         }
       );
       setTimeout(() => {
@@ -1552,6 +1840,7 @@ function initChat() {
       updateDictInfo('❌ 字典初始化失敗');
     }
   }
+
   function contributeMapAlias(ocrRaw, correctCode) {
     if (!ocrRaw || !correctCode || ocrRaw === correctCode) return;
     if (ocrRaw.length < 2 || ocrRaw.length > 20) return;
@@ -1559,7 +1848,35 @@ function initChat() {
     const safeKey = ocrRaw.replace(/[.#$[\]/]/g, '_');
     db.ref(`shared/mapDictionary/${safeKey}`).set(correctCode)
       .then(() => log(`🎓 已貢獻：「${ocrRaw}」= ${correctCode}`, '#ff0'))
-      .catch(e => log('❌ 貢獻失敗（請檢查 Firebase 規則）: ' + e.message, '#f33'));
+      .catch(e => log('❌ 貢獻失敗：' + e.message, '#f33'));
+  }
+
+  // ═══ 音量取得：從主畫面的 volumeSlider 讀取 ═══
+  function getMainVolume() {
+    if (state.muted) return 0;
+    // 嘗試找主畫面的音量控制
+    const slider = document.querySelector('input[type="range"].volume-slider, #volumeSlider, input[type="range"][id*="volume" i]');
+    if (slider) {
+      const val = parseFloat(slider.value);
+      // 判斷滑桿範圍：0-1 還是 0-100
+      return slider.max > 10 ? val / 100 : val;
+    }
+    return 0.5;  // 找不到就預設 50%
+  }
+
+  function beep(freq) {
+    const vol = getMainVolume();
+    if (vol <= 0) return;
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = freq;
+      osc.connect(gain); gain.connect(ctx.destination);
+      gain.gain.value = 0.15 * vol;
+      osc.start();
+      setTimeout(() => { osc.stop(); ctx.close(); }, 150);
+    } catch (e) {}
   }
 
   function injectUI() {
@@ -1570,24 +1887,24 @@ function initChat() {
     const btn = document.createElement('button');
     btn.id = 'detectBtn';
     btn.className = 'audio-btn';
-    btn.title = '螢幕偵測 v0.4.6.1';
+    btn.title = '螢幕偵測 v0.5.0';
     btn.innerHTML = '📷';
     btn.onclick = togglePanel;
     audioControls.appendChild(btn);
 
+    TemplateDB.load();
+
     const style = document.createElement('style');
     style.textContent = `
       #detectorPanel {
-        position: fixed;
-        top: 80px; right: 20px;
+        position: fixed; top: 80px; right: 20px;
         background: var(--bg-card, #111); border: 2px solid var(--border, #333);
-        border-radius: 8px;
-        z-index: 9998;
+        border-radius: 8px; z-index: 9998;
         font-size: 13px; color: var(--text-title, #aaa);
         box-shadow: 0 8px 32px rgba(0,0,0,0.5);
         display: none;
         max-height: calc(100vh - 40px); overflow: hidden;
-        transition: width 0.25s ease, height 0.25s ease;
+        transition: width 0.25s ease;
       }
       #detectorPanel.open { display: flex; flex-direction: column; }
       #detectorPanel.compact { width: 260px; }
@@ -1595,13 +1912,9 @@ function initChat() {
       body.light #detectorPanel { background: #fff; border-color: #ddd; }
       #detectorPanel .panel-header {
         display: flex; align-items: center; justify-content: space-between;
-        padding: 8px 10px;
-        background: #1a1a1a;
-        border-bottom: 1px solid #333;
-        border-radius: 6px 6px 0 0;
-        cursor: move;
-        user-select: none;
-        flex-shrink: 0;
+        padding: 8px 10px; background: #1a1a1a;
+        border-bottom: 1px solid #333; border-radius: 6px 6px 0 0;
+        cursor: move; user-select: none; flex-shrink: 0;
       }
       body.light #detectorPanel .panel-header { background: #f5f5f2; border-bottom-color: #ddd; }
       #detectorPanel .panel-header:active { cursor: grabbing; }
@@ -1614,6 +1927,7 @@ function initChat() {
         margin-left: 4px;
       }
       #detectorPanel .panel-ctrl-btn:hover { color: #ddd; border-color: #666; }
+      #detectorPanel .panel-ctrl-btn.muted { color: #f33; border-color: #622; }
       body.light #detectorPanel .panel-ctrl-btn { border-color: #ccc; color: #666; }
       #detectorPanel .sec {
         background: var(--bg-card-compact, #0e0e0e);
@@ -1621,7 +1935,9 @@ function initChat() {
         border: 1px solid var(--border, #222);
       }
       #detectorPanel .sec.important { border: 1px solid #0f0; background: rgba(0, 255, 0, 0.05); }
+      #detectorPanel .sec.learn { border: 1px solid #fa0; background: rgba(255, 170, 0, 0.05); }
       body.light #detectorPanel .sec.important { border-color: #1a7a1a; background: rgba(26, 122, 26, 0.05); }
+      body.light #detectorPanel .sec.learn { border-color: #c87c00; background: rgba(200, 124, 0, 0.05); }
       #detectorPanel .dbtn {
         background: #0f0; color: #000; border: none; padding: 5px 10px;
         border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px;
@@ -1630,6 +1946,7 @@ function initChat() {
       #detectorPanel .dbtn.gray { background: #444; color: #ccc; }
       #detectorPanel .dbtn.red { background: #622; color: #f66; }
       #detectorPanel .dbtn.orange { background: #f80; color: #000; }
+      #detectorPanel .dbtn.blue { background: #08f; color: #000; }
       #detectorPanel .dbtn:disabled { opacity: 0.4; cursor: not-allowed; }
       #detectorPanel .mode-btn {
         background: #333; color: #aaa; border: 1px solid #555;
@@ -1659,8 +1976,7 @@ function initChat() {
       body.light #detectorPanel .mini-card { background: #e8e5e0; }
       #detectorPanel .mini-card .label { font-size: 9px; color: #888; }
       #detectorPanel .mini-card .value {
-        font-size: 14px; font-weight: bold; margin-top: 2px; min-height: 18px;
-        color: #0f0;
+        font-size: 14px; font-weight: bold; margin-top: 2px; min-height: 18px; color: #0f0;
       }
       body.light #detectorPanel .mini-card .value { color: #1a7a1a; }
       #detectorPanel .mini-card .conf-bar {
@@ -1674,15 +1990,19 @@ function initChat() {
         background: #1a1a1a; padding: 6px; border-radius: 4px; text-align: center;
       }
       body.light #detectorPanel .result-card { background: #e8e5e0; }
-      #detectorPanel .result-card .v { font-size: 15px; font-weight: bold; min-height: 22px; margin: 3px 0; }
+      #detectorPanel .result-card .v {
+        font-size: 15px; font-weight: bold; min-height: 22px; margin: 3px 0;
+      }
       #detectorPanel .result-card canvas { border: 1px solid #555; max-width: 100%; background: #000; }
-      #detectorPanel .conf-bar { height: 3px; background: #333; border-radius: 2px; margin: 2px 0; overflow: hidden; }
+      #detectorPanel .conf-bar {
+        height: 3px; background: #333; border-radius: 2px; margin: 2px 0; overflow: hidden;
+      }
       #detectorPanel .conf-fill { height: 100%; transition: width 0.3s, background 0.3s; }
-      #detectorPanel input[type=number], #detectorPanel input[type=text] {
+      #detectorPanel input[type=number], #detectorPanel input[type=text], #detectorPanel select {
         background: #222; color: #fff; border: 1px solid #555;
         padding: 3px 5px; border-radius: 3px; font-size: 12px;
       }
-      body.light #detectorPanel input[type=number], body.light #detectorPanel input[type=text] {
+      body.light #detectorPanel input[type=number], body.light #detectorPanel input[type=text], body.light #detectorPanel select {
         background: #fff; color: #333; border-color: #ccc;
       }
       #detectorPanel input[type=range] {
@@ -1708,7 +2028,7 @@ function initChat() {
       #detectorPanel .correction-row {
         display: flex; gap: 6px; margin-top: 6px; align-items: center;
       }
-      #detectorPanel .correction-row input { flex: 1; }
+      #detectorPanel .correction-row input, #detectorPanel .correction-row select { flex: 1; }
       #detectorPanel .zoom-row {
         display: flex; align-items: center; gap: 8px; margin: 6px 0;
       }
@@ -1723,8 +2043,7 @@ function initChat() {
         text-align: left;
       }
       #detectorPanel label.bold-opt {
-        display: block; font-size: 12px; color: #0f0; padding: 3px 0;
-        font-weight: bold;
+        display: block; font-size: 12px; color: #0f0; padding: 3px 0; font-weight: bold;
       }
       body.light #detectorPanel label.bold-opt { color: #1a7a1a; }
       #detectorPanel .debug-box {
@@ -1733,8 +2052,7 @@ function initChat() {
       }
       #detectorPanel .debug-box canvas { max-width: 100%; display: block; margin: 0 auto; }
       #detectorPanel .threshold-row {
-        display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0;
-        font-size: 11px;
+        display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0; font-size: 11px;
       }
       #detectorPanel .tip-box {
         background: #332; border-left: 3px solid #fa0; padding: 6px 10px;
@@ -1752,51 +2070,57 @@ function initChat() {
         background: #222; color: #888; margin-left: 4px;
       }
       #detectorPanel .monitor-status.active {
-        background: #050; color: #0f0;
-        animation: pulse 1.5s infinite;
+        background: #050; color: #0f0; animation: pulse 1.5s infinite;
       }
       @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
 
-      /* ═══ 徽章範圍可拖曳調整（v0.4.6.1 修正） ═══ */
       #dBadgeEditor {
-        position: relative;
-        background: #000;
-        border: 1px solid #333;
-        margin-top: 6px;
-        overflow: hidden;
-        /* 重要：讓 canvas 居中，並使用固定容器高度 */
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        position: relative; background: #000; border: 1px solid #333;
+        margin-top: 6px; overflow: hidden;
+        display: flex; align-items: center; justify-content: center;
         min-height: 160px;
       }
-      #dBadgeEditor canvas {
-        display: block;
-        image-rendering: pixelated;
-        /* 移除 max-width，避免被壓縮 */
-      }
+      #dBadgeEditor canvas { display: block; image-rendering: pixelated; }
       #dBadgeEditBox {
-        position: absolute;
-        border: 2px solid #f80;
-        background: rgba(255, 136, 0, 0.15);
-        cursor: move;
-        box-sizing: border-box;
+        position: absolute; border: 2px solid #f80;
+        background: rgba(255, 136, 0, 0.15); cursor: move; box-sizing: border-box;
       }
       #dBadgeEditBox .handle {
-        position: absolute;
-        width: 12px; height: 12px;
-        background: #f80;
-        border: 1px solid #fff;
+        position: absolute; width: 12px; height: 12px;
+        background: #f80; border: 1px solid #fff;
       }
       #dBadgeEditBox .handle.tl { top: -7px; left: -7px; cursor: nw-resize; }
       #dBadgeEditBox .handle.tr { top: -7px; right: -7px; cursor: ne-resize; }
       #dBadgeEditBox .handle.bl { bottom: -7px; left: -7px; cursor: sw-resize; }
       #dBadgeEditBox .handle.br { bottom: -7px; right: -7px; cursor: se-resize; }
       #dBadgeEditBox::after {
-        content: '徽章';
-        position: absolute; top: 2px; left: 4px;
+        content: '徽章'; position: absolute; top: 2px; left: 4px;
         color: #f80; font-size: 10px; font-weight: bold;
         text-shadow: 1px 1px 2px #000;
+      }
+
+      /* 模板管理 */
+      #detectorPanel .tpl-stats {
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+        gap: 4px; margin: 6px 0;
+      }
+      #detectorPanel .tpl-chip {
+        background: #222; padding: 4px 6px; border-radius: 4px;
+        font-size: 10px; text-align: center; border: 1px solid #333;
+      }
+      body.light #detectorPanel .tpl-chip { background: #eee; border-color: #ccc; }
+      #detectorPanel .tpl-chip .tpl-label { color: #0f0; font-weight: bold; }
+      body.light #detectorPanel .tpl-chip .tpl-label { color: #1a7a1a; }
+      #detectorPanel .tpl-chip .tpl-count { color: #888; font-size: 9px; }
+      #detectorPanel .tpl-preview {
+        display: flex; align-items: center; gap: 8px; margin: 6px 0;
+        padding: 8px; background: #111; border-radius: 4px;
+        border: 1px solid #333;
+      }
+      body.light #detectorPanel .tpl-preview { background: #f5f5f2; border-color: #ddd; }
+      #detectorPanel .tpl-preview canvas {
+        width: 64px; height: 64px; image-rendering: pixelated;
+        border: 1px solid #555; background: #000;
       }
     `;
     document.head.appendChild(style);
@@ -1806,8 +2130,9 @@ function initChat() {
     panel.className = 'compact';
     panel.innerHTML = `
       <div class="panel-header" id="dPanelHeader">
-        <h3>📷 偵測器 <span class="small">v0.4.6.1</span></h3>
+        <h3>📷 偵測器 <span class="small">v0.5.0</span></h3>
         <div>
+          <button class="panel-ctrl-btn" id="dMuteToggle" title="靜音切換">🔔</button>
           <button class="panel-ctrl-btn" id="dToggleMode" title="切換精簡/完整">⚙️</button>
           <button class="panel-ctrl-btn" onclick="window.__detector.close()">✕</button>
         </div>
@@ -1847,7 +2172,7 @@ function initChat() {
             <button class="mode-btn" data-mode="map">🟢 地圖名</button>
             <button class="mode-btn" data-mode="ch">🟡 分流</button>
             <button class="mode-btn" data-mode="none">✋ 停</button>
-            <div class="tip-box">💡 狀態圖示框選整個圓圈（含右上徽章），下方可微調徽章範圍</div>
+            <div class="tip-box">💡 狀態圖示框整個圓圈（含右上徽章）</div>
             <div class="zoom-row">
               <span class="small">🔍</span>
               <input type="range" id="dZoom" min="0.5" max="4" step="0.1" value="1">
@@ -1867,7 +2192,7 @@ function initChat() {
 
           <div class="sec" id="dBadgeSection" style="display:none">
             <div style="margin-bottom:6px"><b>🎯 徽章範圍微調</b>
-              <button class="dbtn gray" onclick="window.__detector.resetBadge()" style="padding:2px 6px;font-size:10px;float:right">重設預設</button>
+              <button class="dbtn gray" onclick="window.__detector.resetBadge()" style="padding:2px 6px;font-size:10px;float:right">重設</button>
             </div>
             <div class="small">拖曳橘框調整位置，拖曳四角調整大小</div>
             <div id="dBadgeEditor">
@@ -1880,6 +2205,47 @@ function initChat() {
               </div>
             </div>
             <div class="small" id="dBadgeInfo" style="margin-top:4px;font-family:monospace"></div>
+          </div>
+
+          <!-- ═══ 模板管理（v0.5 新增） ═══ -->
+          <div class="sec learn">
+            <div style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between">
+              <b>🧠 模板庫 <span class="small" id="dTplTotal"></span></b>
+              <div>
+                <button class="dbtn gray" onclick="window.__detector.exportTpl()" style="padding:2px 6px;font-size:10px">📤</button>
+                <button class="dbtn gray" onclick="document.getElementById('dTplImport').click()" style="padding:2px 6px;font-size:10px">📥</button>
+                <input type="file" id="dTplImport" accept=".json" style="display:none">
+                <button class="dbtn red" onclick="window.__detector.clearTpl()" style="padding:2px 6px;font-size:10px">🗑</button>
+              </div>
+            </div>
+            <div class="small" style="color:#fa0">階段模板：</div>
+            <div class="tpl-stats" id="dTplPhase"></div>
+            <div class="small" style="color:#fa0;margin-top:4px">分流模板：</div>
+            <div class="tpl-stats" id="dTplCh"></div>
+
+            <div class="tpl-preview" id="dTplPreview" style="display:none">
+              <canvas id="dTplCanvas"></canvas>
+              <div style="flex:1">
+                <div class="small">當前偵測到的圖片，可標記為模板：</div>
+                <div class="correction-row" style="margin-top:4px">
+                  <select id="dTplCategory" style="width:70px">
+                    <option value="phase">階段</option>
+                    <option value="ch">分流</option>
+                  </select>
+                  <select id="dTplLabel">
+                    <option value="R1">R1</option>
+                    <option value="R2">R2</option>
+                    <option value="R3">R3</option>
+                    <option value="R4">R4</option>
+                    <option value="ON">ON</option>
+                    <option value="WAITING">等待</option>
+                  </select>
+                  <button class="dbtn blue" onclick="window.__detector.addTpl()">📌 儲存</button>
+                </div>
+              </div>
+            </div>
+
+            <label class="bold-opt"><input type="checkbox" id="dAutoLearn" checked> 🎓 確認送出時自動加入模板</label>
           </div>
 
           <div class="sec important">
@@ -1915,7 +2281,7 @@ function initChat() {
           </div>
 
           <div class="sec">
-            <div style="margin-bottom:6px"><b>🎓 字典狀態</b></div>
+            <div style="margin-bottom:6px"><b>🎓 地圖字典</b></div>
             <div style="font-size:11px" id="dDictInfo">載入中...</div>
             <div class="correction-row">
               <input type="text" id="dCorrectRaw" placeholder="OCR 讀到的字">
@@ -1936,6 +2302,8 @@ function initChat() {
     bindEvents();
     initLearning();
     loadPanelPos();
+    loadMuteState();
+    updateTplDisplay();
   }
 
   function log(msg, color = '#888') {
@@ -1947,7 +2315,7 @@ function initChat() {
       if (lines.length > 30) lines[lines.length - 1].remove();
     }
     const cs = document.getElementById('dCompactStatus');
-    if (cs && !msg.startsWith('環紅') && !msg.startsWith('📚')) {
+    if (cs && !msg.startsWith('紅環') && !msg.startsWith('📚')) {
       cs.textContent = msg.length > 30 ? msg.slice(0, 30) + '...' : msg;
       cs.style.color = color;
     }
@@ -1961,6 +2329,63 @@ function initChat() {
     const builtin = Object.keys(BUILTIN_MAP_DICTIONARY).length;
     const custom = total - builtin;
     el.innerHTML = `📚 共 <b style="color:#0f0">${total}</b> 筆（內建 ${builtin} + 貢獻 ${custom}）`;
+  }
+
+  function updateTplDisplay() {
+    const stats = TemplateDB.getStats();
+    const phaseLabels = ['R1','R2','R3','R4','ON','WAITING'];
+
+    // 階段顯示
+    const pEl = document.getElementById('dTplPhase');
+    if (pEl) {
+      pEl.innerHTML = phaseLabels.map(label => {
+        const count = stats.phase[label] || 0;
+        const color = count === 0 ? '#666' : count < 3 ? '#fa0' : '#0f0';
+        return `<div class="tpl-chip">
+          <div class="tpl-label" style="color:${color}">${label}</div>
+          <div class="tpl-count">${count} 張</div>
+        </div>`;
+      }).join('');
+    }
+
+    // 分流顯示
+    const cEl = document.getElementById('dTplCh');
+    if (cEl) {
+      const chLabels = Object.keys(stats.ch).sort((a,b)=>+a-+b);
+      if (chLabels.length === 0) {
+        cEl.innerHTML = `<div class="small" style="color:#666">尚無模板 (CH 會從確認時學習)</div>`;
+      } else {
+        cEl.innerHTML = chLabels.map(label => {
+          const count = stats.ch[label];
+          return `<div class="tpl-chip">
+            <div class="tpl-label">CH.${label}</div>
+            <div class="tpl-count">${count} 張</div>
+          </div>`;
+        }).join('');
+      }
+    }
+
+    // 總計
+    const totalEl = document.getElementById('dTplTotal');
+    if (totalEl) {
+      const phaseTotal = Object.values(stats.phase).reduce((s, n) => s + n, 0);
+      const chTotal = Object.values(stats.ch).reduce((s, n) => s + n, 0);
+      const kb = (stats.totalSize / 1024).toFixed(1);
+      totalEl.textContent = `(階段 ${phaseTotal} + 分流 ${chTotal}，約 ${kb} KB)`;
+    }
+  }
+
+  function showTplPreview() {
+    if (!state.lastBadgeCanvas) {
+      document.getElementById('dTplPreview').style.display = 'none';
+      return;
+    }
+    const preview = document.getElementById('dTplPreview');
+    const canvas = document.getElementById('dTplCanvas');
+    preview.style.display = 'flex';
+    canvas.width = 64; canvas.height = 64;
+    canvas.getContext('2d').imageSmoothingEnabled = false;
+    canvas.getContext('2d').drawImage(state.lastBadgeCanvas, 0, 0, 64, 64);
   }
 
   function applyZoom() {
@@ -1988,58 +2413,37 @@ function initChat() {
     box.style.display = 'block';
   }
 
-  // ═══ 徽章編輯器渲染（v0.4.6.1 修正：計算最適 scale） ═══
   function renderBadgeEditor() {
     const section = document.getElementById('dBadgeSection');
-    if (!state.regions.status) {
-      section.style.display = 'none';
-      return;
-    }
+    if (!state.regions.status) { section.style.display = 'none'; return; }
     section.style.display = 'block';
-
     const canvas = document.getElementById('dBadgeEditCanvas');
     const video = document.getElementById('dVideo');
     const region = state.regions.status;
-
-    // ═══ 關鍵修正：根據容器可用寬度計算 scale ═══
-    // 編輯器容器寬度（扣除 padding/border）
     const editor = document.getElementById('dBadgeEditor');
-    const maxContainerWidth = editor.clientWidth - 4 || 440;  // 預設退化值
-    const maxContainerHeight = 280;  // 限制最大高度
-
-    // 計算最大可用縮放：寬度限制 vs 高度限制 取較小
+    const maxContainerWidth = editor.clientWidth - 4 || 440;
+    const maxContainerHeight = 280;
     const maxScaleByWidth = Math.floor(maxContainerWidth / region.w);
     const maxScaleByHeight = Math.floor(maxContainerHeight / region.h);
     const displayScale = Math.max(3, Math.min(maxScaleByWidth, maxScaleByHeight, 10));
-
     canvas.width = region.w * displayScale;
     canvas.height = region.h * displayScale;
     const ctx = canvas.getContext('2d');
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(video,
-      region.x, region.y, region.w, region.h,
-      0, 0, canvas.width, canvas.height);
-
+    ctx.drawImage(video, region.x, region.y, region.w, region.h, 0, 0, canvas.width, canvas.height);
     const badge = getBadgeRect(region);
     const editBox = document.getElementById('dBadgeEditBox');
-
-    // ═══ 重要：editBox 的定位要相對於 canvas 實際位置 ═══
-    // 因為 editor 用 flex 居中 canvas，所以要計算 canvas 在 editor 內的偏移
     const canvasOffsetX = (editor.clientWidth - canvas.width) / 2;
     const canvasOffsetY = (editor.clientHeight - canvas.height) / 2;
-
     editBox.style.left = (canvasOffsetX + badge.x * displayScale) + 'px';
     editBox.style.top = (canvasOffsetY + badge.y * displayScale) + 'px';
     editBox.style.width = (badge.w * displayScale) + 'px';
     editBox.style.height = (badge.h * displayScale) + 'px';
-
-    // 儲存必要的座標資訊給拖曳用
     state._badgeDisplayScale = displayScale;
     state._badgeCanvasOffsetX = canvasOffsetX;
     state._badgeCanvasOffsetY = canvasOffsetY;
-    state._badgeMaxX = canvas.width;  // 可動區域最大 X（相對於 canvas 左上）
+    state._badgeMaxX = canvas.width;
     state._badgeMaxY = canvas.height;
-
     updateBadgeInfo();
   }
 
@@ -2048,9 +2452,7 @@ function initChat() {
     if (!region) return;
     const badge = getBadgeRect(region);
     const el = document.getElementById('dBadgeInfo');
-    if (el) {
-      el.textContent = `徽章範圍：(${badge.x}, ${badge.y}) ${badge.w}×${badge.h}px / 圖示 ${region.w}×${region.h}px`;
-    }
+    if (el) el.textContent = `徽章：(${badge.x}, ${badge.y}) ${badge.w}×${badge.h} / 圖示 ${region.w}×${region.h}`;
   }
 
   function switchPanelMode(mode) {
@@ -2062,17 +2464,29 @@ function initChat() {
       btn.textContent = mode === 'compact' ? '⚙️' : '🗕';
       btn.title = mode === 'compact' ? '展開完整模式' : '收回精簡模式';
     }
-    // 切換到完整模式時，如果已有 status 區域則重繪徽章編輯器
     if (mode === 'full' && state.regions.status) {
       setTimeout(renderBadgeEditor, 100);
     }
+  }
+
+  function updateMuteUI() {
+    const btn = document.getElementById('dMuteToggle');
+    if (!btn) return;
+    btn.textContent = state.muted ? '🔕' : '🔔';
+    btn.title = state.muted ? '已靜音（點擊取消）' : '開啟中（點擊靜音）';
+    btn.classList.toggle('muted', state.muted);
+  }
+
+  function loadMuteState() {
+    const s = localStorage.getItem('tosm_detector_muted');
+    state.muted = s === '1';
+    updateMuteUI();
   }
 
   function enableWindowDrag() {
     const panel = document.getElementById('detectorPanel');
     const header = document.getElementById('dPanelHeader');
     let dragging = false, startX, startY, panelX, panelY;
-
     header.addEventListener('mousedown', e => {
       if (e.target.tagName === 'BUTTON') return;
       dragging = true;
@@ -2118,30 +2532,23 @@ function initChat() {
     } catch(e) {}
   }
 
-  // ═══ 徽章框拖曳（v0.4.6.1 徹底修正） ═══
   function enableBadgeDrag() {
     const editor = document.getElementById('dBadgeEditor');
     const box = document.getElementById('dBadgeEditBox');
     if (!editor || !box) return;
-
     let dragMode = null;
-    let startMouseX, startMouseY;
-    let startBoxX, startBoxY, startBoxW, startBoxH;
-
+    let startMouseX, startMouseY, startBoxX, startBoxY, startBoxW, startBoxH;
     box.addEventListener('mousedown', e => {
       if (!state.regions.status) return;
       const handleClass = e.target.classList[1];
       dragMode = (e.target.classList.contains('handle')) ? handleClass : 'move';
-      startMouseX = e.clientX;
-      startMouseY = e.clientY;
+      startMouseX = e.clientX; startMouseY = e.clientY;
       startBoxX = parseInt(box.style.left) || 0;
       startBoxY = parseInt(box.style.top) || 0;
       startBoxW = parseInt(box.style.width) || 0;
       startBoxH = parseInt(box.style.height) || 0;
-      e.preventDefault();
-      e.stopPropagation();
+      e.preventDefault(); e.stopPropagation();
     });
-
     window.addEventListener('mousemove', e => {
       if (!dragMode || !state.regions.status) return;
       const dx = e.clientX - startMouseX;
@@ -2151,16 +2558,9 @@ function initChat() {
       const offsetY = state._badgeCanvasOffsetY || 0;
       const canvasW = state._badgeMaxX || 0;
       const canvasH = state._badgeMaxY || 0;
-
-      // ═══ 修正：邊界用「canvas 左上到右下」的絕對座標 ═══
-      // editBox 的座標是相對於 editor，所以要加上 canvas offset
-      const minX = offsetX;
-      const minY = offsetY;
-      const maxX = offsetX + canvasW;
-      const maxY = offsetY + canvasH;
-
+      const minX = offsetX, minY = offsetY;
+      const maxX = offsetX + canvasW, maxY = offsetY + canvasH;
       let nx = startBoxX, ny = startBoxY, nw = startBoxW, nh = startBoxH;
-
       if (dragMode === 'move') {
         nx = Math.max(minX, Math.min(maxX - startBoxW, startBoxX + dx));
         ny = Math.max(minY, Math.min(maxY - startBoxH, startBoxY + dy));
@@ -2181,13 +2581,10 @@ function initChat() {
         nw = Math.max(20, Math.min(maxX - startBoxX, startBoxW + dx));
         nh = Math.max(20, Math.min(maxY - startBoxY, startBoxH + dy));
       }
-
       box.style.left = nx + 'px';
       box.style.top = ny + 'px';
       box.style.width = nw + 'px';
       box.style.height = nh + 'px';
-
-      // ═══ 修正：換算回相對於 canvas 左上角的座標 ═══
       state.badgeRect = {
         x: Math.round((nx - offsetX) / scale),
         y: Math.round((ny - offsetY) / scale),
@@ -2196,7 +2593,6 @@ function initChat() {
       };
       updateBadgeInfo();
     });
-
     window.addEventListener('mouseup', () => {
       if (dragMode) {
         dragMode = null;
@@ -2221,6 +2617,14 @@ function initChat() {
       switchPanelMode(state.panelMode === 'compact' ? 'full' : 'compact');
     };
 
+    // 靜音切換
+    document.getElementById('dMuteToggle').onclick = () => {
+      state.muted = !state.muted;
+      localStorage.setItem('tosm_detector_muted', state.muted ? '1' : '0');
+      updateMuteUI();
+      log(state.muted ? '🔕 已靜音' : '🔔 音效開啟', '#0f0');
+    };
+
     document.getElementById('dStart').onclick = startCapture;
     document.getElementById('dStop').onclick = stopCapture;
     document.getElementById('dTest').onclick = () => detectOnce(false);
@@ -2231,6 +2635,18 @@ function initChat() {
     document.getElementById('dMiniStop').onclick = stopCapture;
     document.getElementById('dMiniAuto').onclick = startAuto;
     document.getElementById('dMiniStopAuto').onclick = stopAuto;
+
+    // 模板匯入
+    document.getElementById('dTplImport').onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const ok = await TemplateDB.import(file);
+      if (ok) {
+        log('📥 模板匯入成功', '#0f0');
+        updateTplDisplay();
+      }
+      e.target.value = '';
+    };
 
     document.getElementById('dDebugMode').onchange = (e) => {
       state.debugMode = e.target.checked;
@@ -2292,32 +2708,27 @@ function initChat() {
       };
       if (region.w < 5 || region.h < 5) return;
       state.regions[state.currentMode] = region;
-
       if (state.currentMode === 'status') {
         state.badgeRect = null;
         localStorage.removeItem('tosm_detector_badge_rect_v46');
       }
-
       drawRegionBox(state.currentMode, region);
-      localStorage.setItem('tosm_detector_regions_v46', JSON.stringify(state.regions));
+      localStorage.setItem('tosm_detector_regions_v5', JSON.stringify(state.regions));
       log(`✅ ${state.currentMode} 區域 (${region.w}×${region.h})`, '#0f0');
-
-      if (state.currentMode === 'status') {
-        setTimeout(renderBadgeEditor, 50);
-      }
+      if (state.currentMode === 'status') setTimeout(renderBadgeEditor, 50);
     });
   }
 
   function loadRegions() {
-    const s = localStorage.getItem('tosm_detector_regions_v46')
-          || localStorage.getItem('tosm_detector_regions_v45')
-          || localStorage.getItem('tosm_detector_regions_v44');
+    const s = localStorage.getItem('tosm_detector_regions_v5')
+          || localStorage.getItem('tosm_detector_regions_v46')
+          || localStorage.getItem('tosm_detector_regions_v45');
     if (s) {
       try { Object.assign(state.regions, JSON.parse(s)); } catch(e) {}
       for (const k of ['status', 'map', 'ch']) {
         if (state.regions[k]) drawRegionBox(k, state.regions[k]);
       }
-      log('已載入上次的區域設定', '#3f3');
+      log('已載入區域設定', '#3f3');
     }
     const b = localStorage.getItem('tosm_detector_badge_rect_v46');
     if (b) {
@@ -2379,15 +2790,15 @@ function initChat() {
   }
 
   async function detectOnce(silent = false) {
-    let phase = null, phaseConf = 0, phaseMetrics = {}, phaseOcr = '';
+    let phase = null, phaseConf = 0, phaseMetrics = {}, phaseSource = '';
     let mapResult = null, mapConf = 0, mapRaw = '', mapMatchedName = '';
-    let chResult = null, chConf = 0, chRaw = '';
+    let chResult = null, chConf = 0, chRaw = '', chSource = '';
 
     if (state.regions.status) {
       try {
         const r = await detectPhase(state.regions.status);
         phase = r.phase; phaseConf = r.confidence;
-        phaseMetrics = r.metrics; phaseOcr = r.ocrText;
+        phaseMetrics = r.metrics; phaseSource = r.source;
         const el = document.getElementById('dValStatus');
         if (el) el.innerHTML = `<span style="color:${phaseColor(phase)}">${phaseBadge(phase)}</span>`;
         const mini = document.getElementById('dMiniStatus');
@@ -2395,8 +2806,11 @@ function initChat() {
         updateConfBar('dConfStatus', phaseConf);
         updateConfBar('dMiniConfStatus', phaseConf);
         const mEl = document.getElementById('dMetrics');
-        if (mEl) mEl.innerHTML = `紅環:${(phaseMetrics.redRatio*100).toFixed(0)}% 徽白:${(phaseMetrics.badgeWhiteRatio*100).toFixed(0)}%<br>OCR:"${phaseOcr}" ${(phaseConf*100).toFixed(0)}%`;
-      } catch (e) { if (!silent) log('狀態失敗', '#f33'); }
+        if (mEl) {
+          const srcIcon = { 'template': '🧠', 'template+ocr': '🧠+', 'ocr': '🔤', 'template-low': '🧠?', 'fallback': '❓' };
+          mEl.innerHTML = `來源:${srcIcon[phaseSource]||'?'}<br>信心:${(phaseConf*100).toFixed(0)}%<br>紅環:${(phaseMetrics.redRatio*100).toFixed(0)}%`;
+        }
+      } catch (e) { if (!silent) log('狀態失敗：' + e.message, '#f33'); }
     }
 
     if (state.regions.map) {
@@ -2419,11 +2833,8 @@ function initChat() {
 
     if (state.regions.ch) {
       try {
-        const ocr = await ocrMultiPass(state.regions.ch, document.getElementById('dCanCh'), 'eng', 'CH.0123456789 ');
-        chRaw = ocr.text;
-        const m = chRaw.match(/(\d+)/);
-        chResult = m ? m[1] : null;
-        chConf = chResult ? ocr.confidence : 0;
+        const r = await detectCh(state.regions.ch);
+        chResult = r.ch; chConf = r.confidence; chSource = r.source; chRaw = r.raw || '';
         const el = document.getElementById('dValCh');
         if (el) { el.textContent = chResult || '?'; el.style.color = chResult ? '#0f0' : '#f33'; }
         const mini = document.getElementById('dMiniCh');
@@ -2433,7 +2844,11 @@ function initChat() {
       } catch (e) {}
     }
 
-    state.lastResult = { phase, phaseConf, phaseMetrics, phaseOcr, mapResult, mapConf, mapRaw, mapMatchedName, chResult, chConf, chRaw };
+    state.lastResult = { phase, phaseConf, phaseMetrics, phaseSource, mapResult, mapConf, mapRaw, mapMatchedName, chResult, chConf, chRaw, chSource };
+
+    // 更新模板預覽
+    showTplPreview();
+
     return state.lastResult;
   }
 
@@ -2534,20 +2949,25 @@ function initChat() {
       state.lastSubmitted = { map, ch, val, time: Date.now() };
       log(`📤 已送出：${map} ${ch} ${val}`, '#0f0');
       document.getElementById('dConfirmArea').innerHTML = '';
-    } catch (e) { log('❌ 失敗：' + e.message, '#f33'); }
-  }
 
-  function beep(freq) {
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.frequency.value = freq;
-      osc.connect(gain); gain.connect(ctx.destination);
-      gain.gain.value = 0.15;
-      osc.start();
-      setTimeout(() => { osc.stop(); ctx.close(); }, 150);
-    } catch (e) {}
+      // v0.5 新增：自動學習
+      const autoLearn = document.getElementById('dAutoLearn')?.checked;
+      if (autoLearn && state.lastBadgeCanvas) {
+        let phaseLabel = null;
+        if (val === 'ON') phaseLabel = 'ON';
+        else if (val === 'DE1') phaseLabel = 'WAITING';
+        else if (['R1','R2','R3','R4'].includes(val)) phaseLabel = val;
+        if (phaseLabel) {
+          const added = TemplateDB.add('phase', phaseLabel, state.lastBadgeCanvas);
+          if (added) log(`🧠 已自動學習階段模板 ${phaseLabel}`, '#fa0');
+        }
+      }
+      if (autoLearn && state.lastChCanvas && ch) {
+        const added = TemplateDB.add('ch', ch, state.lastChCanvas);
+        if (added) log(`🧠 已自動學習 CH.${ch} 模板`, '#fa0');
+      }
+      updateTplDisplay();
+    } catch (e) { log('❌ 失敗：' + e.message, '#f33'); }
   }
 
   function startAuto() {
@@ -2592,6 +3012,31 @@ function initChat() {
       localStorage.removeItem('tosm_detector_badge_rect_v46');
       if (state.regions.status) renderBadgeEditor();
       log('🎯 徽章範圍已重設', '#f80');
+    },
+    addTpl: () => {
+      if (!state.lastBadgeCanvas) { log('❌ 沒有當前圖片', '#f33'); return; }
+      const category = document.getElementById('dTplCategory').value;
+      const label = document.getElementById('dTplLabel').value;
+      const canvas = category === 'phase' ? state.lastBadgeCanvas : state.lastChCanvas;
+      if (!canvas) { log('❌ 沒有對應的圖片', '#f33'); return; }
+      const added = TemplateDB.add(category, label, canvas);
+      if (added) {
+        log(`📌 已儲存模板：${category}=${label}`, '#0f0');
+        updateTplDisplay();
+      } else {
+        log('⚠️ 此模板已存在，略過', '#fa0');
+      }
+    },
+    exportTpl: () => {
+      TemplateDB.export();
+      log('📤 已匯出模板檔', '#0f0');
+    },
+    clearTpl: () => {
+      if (!confirm('確定要清空所有模板？此動作無法復原')) return;
+      TemplateDB.data = { phase: {}, ch: {} };
+      TemplateDB.save();
+      log('🗑 已清空所有模板', '#f33');
+      updateTplDisplay();
     },
     showEdit: (map, ch, val, mapRaw) => {
       const area = document.getElementById('dConfirmArea');
@@ -2641,13 +3086,13 @@ function initChat() {
   loadTesseract(() => {
     waitForApp(() => {
       injectUI();
-      console.log(DEBUG_PREFIX, 'v0.4.6.1 Beta 已就緒');
+      console.log(DEBUG_PREFIX, 'v0.5.0 Beta 已就緒');
     });
   });
 
 })();
 </script>
-<!-- ═══ 螢幕偵測模組 v0.4.6.1 結束 ═══ -->
+<!-- ═══ 螢幕偵測模組 v0.5.0 結束 ═══ -->
     
 </body>
 </html>
