@@ -158,9 +158,9 @@
             background: none; border: none; color: inherit; line-height: 1;
         }
         .member-count-btn:hover { opacity: 1; }
-        /* 右上角人數顯示（與 × 同高） */
+        /* 右上角人數顯示（與 × 底部對齊） */
         .member-top-display {
-            position: absolute; top: 7px; right: 28px;
+            position: absolute; top: 20px; right: 28px;
             font-size: 10px; color: #666; font-family: monospace;
             line-height: 1; pointer-events: none; white-space: nowrap;
         }
@@ -875,8 +875,9 @@ function saveBoss(map, ch, val, doFocus = false) {
         tt = Date.now() + ((ps.length===2 ? parseInt(ps[0])*60+parseInt(ps[1]) : parseFloat(uv)||0)*60000);
     }
 
-    // 人數 ≥ 30 自動切換為 MAX
-    const autoMax = memberCount >= 30;
+    // 人數 ≥ 30 自動切換為 MAX（保留舊 isMax 若未達門檻）
+    const oldIsMax = oldData ? !!oldData.isMax : false;
+    const autoMax = memberCount >= 30 ? true : oldIsMax;
 
     const updatePayload = {
         map, ch, targetTime: tt, lastInput: uv, displayValue: dv,
@@ -887,7 +888,7 @@ function saveBoss(map, ch, val, doFocus = false) {
     if (tt > 0 || uv.startsWith("DE")) {
         const oldCP = oldData ? (oldData.callPriority || 0) : 0;
         updatePayload.callPriority = 0;
-        // 進入計時或擊殺時，重置人數與MAX
+        // 計時 或 擊殺(DE) 才重置人數與MAX；NEXT(R→R, R→ON) 不重置
         updatePayload.memberCount = 0;
         updatePayload.isMax = false;
         if (oldCP === 1) {
@@ -1031,7 +1032,27 @@ function startSession(id) {
                 }
                 lastProcessedInput[k] = v;
             });
-            window.currentData = incoming; renderList();
+            window.currentData = incoming;
+            // 若有 inline-input 正在編輯，檢查是否是該卡片被外部改動
+            const activeInput = document.querySelector('.inline-input');
+            if (activeInput) {
+                // 找出正在編輯的卡片 id
+                const editingTitleRow = activeInput.closest('[id^="title_"]');
+                const editingId = editingTitleRow ? editingTitleRow.id.replace('title_', '') : null;
+                // 只有當該卡片被他人修改時才中斷編輯並重繪
+                if (editingId && incoming[editingId]) {
+                    const cur = incoming[editingId].lastInput.toString().toUpperCase();
+                    if (cur !== lastProcessedInput[editingId]) {
+                        // 他人動了這張卡 → 中斷編輯，重繪
+                        renderList();
+                    }
+                    // 否則：其他卡片被編輯，不打擾，不重繪
+                } else {
+                    renderList();
+                }
+            } else {
+                renderList();
+            }
         });
         initChat(); initLogs(); initNotice();
     });
