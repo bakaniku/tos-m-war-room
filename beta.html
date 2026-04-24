@@ -1108,15 +1108,12 @@ function initChat() {
 </script>
     
 <!-- ═══════════════════════════════════════════════════════════════════════
-     📷 TOS M FB TIME - 螢幕偵測模組 v0.5.2 Beta
+     📷 TOS M FB TIME - 螢幕偵測模組 v0.5.3 Beta
 
-     【v0.5.2 新增】
-     🎯 訓練模式：只存模板不送 Firebase（累積模板庫用）
-     🔍 模板瀏覽：逐張檢視 + 單張刪除
-     🐛 徽章框真正能拖到右邊（座標系統重寫）
-     🐛 徽章小圖預覽與橘框視覺範圍對齊
-     ✨ 模板庫顯示在精簡懸浮視窗（可收合）
-     📚 分流模板：自動從你確認過的 CH 學習
+     【v0.5.3 更新】
+     📸 精簡模式新增擷取預覽（3 張小圖 + 手動標記）
+     🔕 無效偵測（地圖/分流 = ?）不再彈通知
+     📁 模板庫、擷取預覽獨立收合狀態
 ═══════════════════════════════════════════════════════════════════════ -->
 <script>
 (function() {
@@ -1200,7 +1197,7 @@ function initChat() {
       this.save();
     },
 
-    // v0.5.2: 刪除某標籤的某一張模板
+    // v0.5.3: 刪除某標籤的某一張模板
     deleteAt(category, label, index) {
       if (!this.data[category] || !this.data[category][label]) return false;
       if (index < 0 || index >= this.data[category][label].length) return false;
@@ -1372,7 +1369,7 @@ function initChat() {
     lastBadgeCanvas: null,
     lastChCanvas: null,
     muted: false,  // v0.5 新增：靜音狀態
-    trainingMode: false  // v0.5.2 新增：訓練模式（只存模板不送 Firebase）
+    trainingMode: false  // v0.5.3 新增：訓練模式（只存模板不送 Firebase）
   };
 
   function getBadgeRect(statusRegion) {
@@ -1902,7 +1899,7 @@ function initChat() {
     const btn = document.createElement('button');
     btn.id = 'detectBtn';
     btn.className = 'audio-btn';
-    btn.title = '螢幕偵測 v0.5.2';
+    btn.title = '螢幕偵測 v0.5.3';
     btn.innerHTML = '📷';
     btn.onclick = togglePanel;
     audioControls.appendChild(btn);
@@ -1943,7 +1940,7 @@ function initChat() {
       }
       #detectorPanel .panel-ctrl-btn:hover { color: #ddd; border-color: #666; }
       #detectorPanel .panel-ctrl-btn.muted { color: #f33; border-color: #622; }
-      /* v0.5.2: 訓練模式啟用時 */
+      /* v0.5.3: 訓練模式啟用時 */
       #detectorPanel .panel-ctrl-btn.training {
         color: #fa0; border-color: #fa0;
         background: rgba(255, 170, 0, 0.15);
@@ -2154,7 +2151,7 @@ function initChat() {
         border: 1px solid #555; background: #000;
       }
 
-      /* v0.5.2: 模板瀏覽 */
+      /* v0.5.3: 模板瀏覽 */
       #detectorPanel .tpl-browse-grid {
         display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
         gap: 4px; margin-top: 8px;
@@ -2221,6 +2218,38 @@ function initChat() {
       #detectorPanel .tpl-stats-mini .tpl-chip-mini .tpl-label-mini {
         font-weight: bold;
       }
+
+      /* v0.5.3: 精簡擷取預覽 */
+      #detectorPanel .mini-preview-grid {
+        display: grid; grid-template-columns: 1fr 2fr 1.2fr; gap: 4px;
+        align-items: start;
+      }
+      #detectorPanel .mini-preview-cell {
+        background: #000; padding: 3px;
+        border: 1px solid #333; border-radius: 3px;
+        text-align: center;
+      }
+      body.light #detectorPanel .mini-preview-cell {
+        background: #f0f0f0; border-color: #ccc;
+      }
+      #detectorPanel .mini-preview-cell .small {
+        margin-bottom: 2px; color: #888;
+      }
+      #detectorPanel .mini-preview-cell canvas {
+        width: 100%; max-height: 48px; display: block;
+        image-rendering: pixelated;
+        object-fit: contain;
+        background: #000;
+      }
+      body.light #detectorPanel .mini-preview-cell canvas { background: #222; }
+
+      #detectorPanel #dMiniPreviewBody {
+        overflow: hidden; transition: max-height 0.2s, opacity 0.2s;
+        max-height: 300px;
+      }
+      #detectorPanel #dMiniPreviewBody.collapsed {
+        max-height: 0; opacity: 0; margin-top: 0 !important;
+      }
     `;
     document.head.appendChild(style);
 
@@ -2229,7 +2258,7 @@ function initChat() {
     panel.className = 'compact';
     panel.innerHTML = `
       <div class="panel-header" id="dPanelHeader">
-        <h3>📷 偵測器 <span class="small">v0.5.2</span></h3>
+        <h3>📷 偵測器 <span class="small">v0.5.3</span></h3>
         <div>
           <button class="panel-ctrl-btn" id="dTrainToggle" title="訓練模式：只存模板不送 Firebase">🎯</button>
           <button class="panel-ctrl-btn" id="dMuteToggle" title="靜音切換">🔔</button>
@@ -2256,6 +2285,53 @@ function initChat() {
               <button class="dbtn red" id="dMiniStopAuto" disabled>⏸</button>
             </div>
           </div>
+          <!-- v0.5.3: 擷取預覽 + 手動標記（可收合） -->
+          <div class="sec" style="padding:6px;border:1px solid #08f;background:rgba(0,136,255,0.05)">
+            <div class="mini-tpl-header" id="dMiniPreviewHeader" style="color:#08f">
+              <span class="collapse-arrow" id="dMiniPreviewArrow">▼</span>
+              <span>📸 擷取預覽</span>
+              <span class="small" id="dMiniPreviewStatus" style="margin-left:auto;color:#888">閒置</span>
+            </div>
+            <div id="dMiniPreviewBody" style="margin-top:6px">
+              <!-- 3 張小圖 -->
+              <div class="mini-preview-grid">
+                <div class="mini-preview-cell">
+                  <div class="small">階段</div>
+                  <canvas id="dMiniPrevBadge"></canvas>
+                </div>
+                <div class="mini-preview-cell">
+                  <div class="small">地圖</div>
+                  <canvas id="dMiniPrevMap"></canvas>
+                </div>
+                <div class="mini-preview-cell">
+                  <div class="small">分流</div>
+                  <canvas id="dMiniPrevCh"></canvas>
+                </div>
+              </div>
+              <!-- 手動標記 -->
+              <div style="margin-top:8px;padding-top:6px;border-top:1px dashed #333">
+                <div class="small" style="color:#08f;margin-bottom:4px">✏️ 手動標記此次擷取</div>
+                <div style="display:flex;gap:4px;align-items:center;margin-bottom:4px">
+                  <span class="small" style="width:32px">階段</span>
+                  <select id="dQuickPhaseLabel" style="flex:1;padding:2px;font-size:11px">
+                    <option value="R1">R1</option>
+                    <option value="R2">R2</option>
+                    <option value="R3">R3</option>
+                    <option value="R4">R4</option>
+                    <option value="ON">ON</option>
+                    <option value="WAITING">等待中</option>
+                  </select>
+                  <button class="dbtn blue" onclick="window.__detector.quickSavePhase()" style="padding:3px 8px;font-size:10px">💾</button>
+                </div>
+                <div style="display:flex;gap:4px;align-items:center">
+                  <span class="small" style="width:32px">分流</span>
+                  <input type="text" id="dQuickChLabel" placeholder="CH 數字" style="flex:1;padding:2px;font-size:11px" inputmode="numeric">
+                  <button class="dbtn blue" onclick="window.__detector.quickSaveCh()" style="padding:3px 8px;font-size:10px">💾</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- v0.5.1 新增：精簡模式的模板庫（可收合） -->
           <div class="sec learn" style="padding:6px">
             <div class="mini-tpl-header" id="dMiniTplHeader">
@@ -2361,7 +2437,7 @@ function initChat() {
 
             <label class="bold-opt"><input type="checkbox" id="dAutoLearn" checked> 🎓 確認送出時自動加入模板</label>
 
-            <!-- v0.5.2: 瀏覽模板 -->
+            <!-- v0.5.3: 瀏覽模板 -->
             <div style="margin-top:8px;padding-top:8px;border-top:1px dashed #444">
               <div style="margin-bottom:6px"><b>🔍 瀏覽模板</b></div>
               <div class="correction-row">
@@ -2531,11 +2607,11 @@ function initChat() {
     if (totalEl) totalEl.textContent = `(階段 ${phaseTotal} + 分流 ${chTotal}，約 ${kb} KB)`;
     if (miniTotalEl) miniTotalEl.textContent = `${phaseTotal}+${chTotal}`;
 
-    // v0.5.2: 更新瀏覽器的標籤選單
+    // v0.5.3: 更新瀏覽器的標籤選單
     refreshBrowseLabels();
   }
 
-  // v0.5.2: 瀏覽模板相關函式
+  // v0.5.3: 瀏覽模板相關函式
   function refreshBrowseLabels() {
     const catSel = document.getElementById('dBrowseCategory');
     const labelSel = document.getElementById('dBrowseLabel');
@@ -2593,6 +2669,39 @@ function initChat() {
     canvas.width = 64; canvas.height = 64;
     canvas.getContext('2d').imageSmoothingEnabled = false;
     canvas.getContext('2d').drawImage(state.lastBadgeCanvas, 0, 0, 64, 64);
+  }
+
+  // v0.5.3: 更新精簡模式的擷取預覽 3 張小圖
+  function updateMiniPreview(mapRegion) {
+    // 階段徽章預覽
+    const badgeCan = document.getElementById('dMiniPrevBadge');
+    if (badgeCan && state.lastBadgeCanvas) {
+      badgeCan.width = state.lastBadgeCanvas.width;
+      badgeCan.height = state.lastBadgeCanvas.height;
+      const ctx = badgeCan.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(state.lastBadgeCanvas, 0, 0);
+    }
+    // 地圖預覽（直接從 video 擷取）
+    const mapCan = document.getElementById('dMiniPrevMap');
+    if (mapCan && state.regions.map) {
+      const r = state.regions.map;
+      mapCan.width = r.w;
+      mapCan.height = r.h;
+      const video = document.getElementById('dVideo');
+      if (video && video.videoWidth) {
+        mapCan.getContext('2d').drawImage(video, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+      }
+    }
+    // 分流預覽
+    const chCan = document.getElementById('dMiniPrevCh');
+    if (chCan && state.lastChCanvas) {
+      chCan.width = state.lastChCanvas.width;
+      chCan.height = state.lastChCanvas.height;
+      const ctx = chCan.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(state.lastChCanvas, 0, 0);
+    }
   }
 
   function applyZoom() {
@@ -2698,7 +2807,7 @@ function initChat() {
     updateMuteUI();
   }
 
-  // v0.5.2: 訓練模式 UI 更新
+  // v0.5.3: 訓練模式 UI 更新
   function updateTrainModeUI() {
     const btn = document.getElementById('dTrainToggle');
     const panel = document.getElementById('detectorPanel');
@@ -2858,7 +2967,7 @@ function initChat() {
       log(state.muted ? '🔕 已靜音' : '🔔 音效開啟', '#0f0');
     };
 
-    // v0.5.2: 訓練模式切換
+    // v0.5.3: 訓練模式切換
     document.getElementById('dTrainToggle').onclick = () => {
       state.trainingMode = !state.trainingMode;
       localStorage.setItem('tosm_detector_training_mode', state.trainingMode ? '1' : '0');
@@ -2869,7 +2978,7 @@ function initChat() {
         state.trainingMode ? '#fa0' : '#0f0');
     };
 
-    // v0.5.2: 瀏覽模板類別/標籤變更
+    // v0.5.3: 瀏覽模板類別/標籤變更
     const browseCat = document.getElementById('dBrowseCategory');
     const browseLabel = document.getElementById('dBrowseLabel');
     if (browseCat) browseCat.onchange = refreshBrowseLabels;
@@ -2888,6 +2997,21 @@ function initChat() {
         const isCol = miniTplHeader.classList.toggle('collapsed');
         document.getElementById('dMiniTplBody').classList.toggle('collapsed', isCol);
         localStorage.setItem('tosm_detector_mini_tpl_collapsed', isCol ? '1' : '0');
+      };
+    }
+
+    // v0.5.3: 精簡擷取預覽收合
+    const miniPrevHeader = document.getElementById('dMiniPreviewHeader');
+    if (miniPrevHeader) {
+      const collapsed = localStorage.getItem('tosm_detector_mini_prev_collapsed') === '1';
+      if (collapsed) {
+        miniPrevHeader.classList.add('collapsed');
+        document.getElementById('dMiniPreviewBody').classList.add('collapsed');
+      }
+      miniPrevHeader.onclick = () => {
+        const isCol = miniPrevHeader.classList.toggle('collapsed');
+        document.getElementById('dMiniPreviewBody').classList.toggle('collapsed', isCol);
+        localStorage.setItem('tosm_detector_mini_prev_collapsed', isCol ? '1' : '0');
       };
     }
 
@@ -3114,6 +3238,8 @@ function initChat() {
 
     // 更新模板預覽
     showTplPreview();
+    // v0.5.3: 更新精簡模式的擷取預覽
+    updateMiniPreview();
 
     return state.lastResult;
   }
@@ -3152,6 +3278,14 @@ function initChat() {
     else if (['R1','R2','R3','R4'].includes(to)) { val = to; label = `🔸 進入 ${to}`; }
     else return;
 
+    // v0.5.3: 地圖或分流辨識不出來 → 完全不通知（避免垃圾警示）
+    if (!result.mapResult || !result.chResult) {
+      if (state.debugMode) {
+        log(`⏭️ 略過：${label}（地圖/分流無法辨識）`, '#666');
+      }
+      return;
+    }
+
     const cooldownSec = parseInt(document.getElementById('dCooldown').value) || 0;
     if (cooldownSec > 0
         && result.mapResult === state.lastSubmitted.map
@@ -3165,13 +3299,9 @@ function initChat() {
     const autoSubmit = document.getElementById('dAutoSubmit').checked;
     const overallConf = Math.min(result.phaseConf, result.mapConf || 0, result.chConf || 0);
 
-    log(`${label} | ${result.mapResult||'?'} ${result.chResult||'?'} (${(overallConf*100)|0}%)`, '#f90');
+    log(`${label} | ${result.mapResult} ${result.chResult} (${(overallConf*100)|0}%)`, '#f90');
 
-    if (!result.mapResult || !result.chResult) {
-      showCorrectionPrompt(result, val, label);
-      return;
-    }
-    // v0.5.2: 訓練模式下「自動送出」= 自動存模板
+    // v0.5.3: 訓練模式下「自動送出」= 自動存模板
     if (autoSubmit && overallConf >= minConf) {
       doSubmit(result.mapResult, result.chResult, val);
       return;
@@ -3216,7 +3346,7 @@ function initChat() {
 
   function doSubmit(map, ch, val) {
     try {
-      // v0.5.2: 訓練模式 → 只存模板，不送 Firebase
+      // v0.5.3: 訓練模式 → 只存模板，不送 Firebase
       if (state.trainingMode) {
         let phaseLabel = null;
         if (val === 'ON') phaseLabel = 'ON';
@@ -3280,6 +3410,8 @@ function initChat() {
     document.getElementById('dMiniStopAuto').disabled = false;
     const ms_el = document.getElementById('dMonitorStatus');
     if (ms_el) { ms_el.textContent = '監控中'; ms_el.className = 'monitor-status active'; }
+    const prevStatus = document.getElementById('dMiniPreviewStatus');
+    if (prevStatus) { prevStatus.textContent = '監控中'; prevStatus.style.color = '#0f0'; }
     log(`▶️ 監控啟動`, '#0f0');
   }
   function stopAuto() {
@@ -3291,6 +3423,8 @@ function initChat() {
     document.getElementById('dMiniStopAuto').disabled = true;
     const ms_el = document.getElementById('dMonitorStatus');
     if (ms_el) { ms_el.textContent = '閒置'; ms_el.className = 'monitor-status'; }
+    const prevStatus = document.getElementById('dMiniPreviewStatus');
+    if (prevStatus) { prevStatus.textContent = '閒置'; prevStatus.style.color = '#888'; }
   }
 
   function togglePanel() {
@@ -3337,13 +3471,37 @@ function initChat() {
       log('🗑 已清空所有模板', '#f33');
       updateTplDisplay();
     },
-    // v0.5.2: 刪除單張模板
+    // v0.5.3: 刪除單張模板
     deleteTpl: (category, label, index) => {
       if (!confirm(`確定要刪除 ${category === 'ch' ? 'CH.'+label : label} 的第 ${index+1} 張模板？`)) return;
       const ok = TemplateDB.deleteAt(category, label, index);
       if (ok) {
         log(`🗑 已刪除 ${category === 'ch' ? 'CH.'+label : label} #${index+1}`, '#f80');
         updateTplDisplay();
+      }
+    },
+    // v0.5.3: 精簡模式的快速標記
+    quickSavePhase: () => {
+      if (!state.lastBadgeCanvas) { log('❌ 尚無徽章圖片（需先擷取）', '#f33'); return; }
+      const label = document.getElementById('dQuickPhaseLabel').value;
+      const added = TemplateDB.add('phase', label, state.lastBadgeCanvas);
+      if (added) {
+        log(`📌 已儲存階段模板：${label}`, '#0f0');
+        updateTplDisplay();
+      } else {
+        log('⚠️ 此模板已存在', '#fa0');
+      }
+    },
+    quickSaveCh: () => {
+      if (!state.lastChCanvas) { log('❌ 尚無分流圖片（需先擷取）', '#f33'); return; }
+      const label = document.getElementById('dQuickChLabel').value.trim();
+      if (!label || !/^\d+$/.test(label)) { log('❌ 請輸入 CH 數字', '#f33'); return; }
+      const added = TemplateDB.add('ch', label, state.lastChCanvas);
+      if (added) {
+        log(`📌 已儲存分流模板：CH.${label}`, '#0f0');
+        updateTplDisplay();
+      } else {
+        log('⚠️ 此模板已存在', '#fa0');
       }
     },
     showEdit: (map, ch, val, mapRaw) => {
@@ -3394,13 +3552,13 @@ function initChat() {
   loadTesseract(() => {
     waitForApp(() => {
       injectUI();
-      console.log(DEBUG_PREFIX, 'v0.5.2 Beta 已就緒');
+      console.log(DEBUG_PREFIX, 'v0.5.3 Beta 已就緒');
     });
   });
 
 })();
 </script>
-<!-- ═══ 螢幕偵測模組 v0.5.2 結束 ═══ -->
+<!-- ═══ 螢幕偵測模組 v0.5.3 結束 ═══ -->
     
 </body>
 </html>
