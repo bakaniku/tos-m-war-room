@@ -1108,16 +1108,13 @@ function initChat() {
 </script>
     
 <!-- ═══════════════════════════════════════════════════════════════════════
-     📷 TOS M FB TIME - 螢幕偵測模組 v0.5.0 Beta
+     📷 TOS M FB TIME - 螢幕偵測模組 v0.5.1 Beta
 
-     【v0.5 重大升級】
-     🧠 模板比對系統（階段/分流的主要辨識方式，準確度 99%+）
-     📚 教學模式（使用者示範各狀態，累積模板庫）
-     🔄 自動學習（確認時自動加入當前圖片為模板）
-     🛡️ OCR fallback（模板不足時仍能運作）
-     📦 模板管理（統計/匯出/匯入/清除）
-     🔔 音量跟隨主畫面（使用主網頁的 volume 設定）
-     🔕 懸浮視窗靜音切換鈕
+     【v0.5.1 修正】
+     🐛 徽章框真正能拖到右邊（重寫座標系統）
+     🐛 徽章小圖預覽與橘框視覺範圍對齊
+     ✨ 模板庫顯示在精簡懸浮視窗（可收合）
+     📚 分流模板：自動從你確認過的 CH 學習
 ═══════════════════════════════════════════════════════════════════════ -->
 <script>
 (function() {
@@ -1889,7 +1886,7 @@ function initChat() {
     const btn = document.createElement('button');
     btn.id = 'detectBtn';
     btn.className = 'audio-btn';
-    btn.title = '螢幕偵測 v0.5.0';
+    btn.title = '螢幕偵測 v0.5.1';
     btn.innerHTML = '📷';
     btn.onclick = togglePanel;
     audioControls.appendChild(btn);
@@ -2078,7 +2075,9 @@ function initChat() {
 
       #dBadgeEditor {
         position: relative; background: #000; border: 1px solid #333;
-        margin-top: 6px; overflow: hidden;
+        margin-top: 6px;
+        /* 關鍵：拿掉 overflow:hidden 讓 handle 不被切掉，讓 padding 保留 handle 空間 */
+        padding: 8px;
         display: flex; align-items: center; justify-content: center;
         min-height: 160px;
       }
@@ -2088,13 +2087,14 @@ function initChat() {
         background: rgba(255, 136, 0, 0.15); cursor: move; box-sizing: border-box;
       }
       #dBadgeEditBox .handle {
-        position: absolute; width: 12px; height: 12px;
+        position: absolute; width: 10px; height: 10px;
         background: #f80; border: 1px solid #fff;
       }
-      #dBadgeEditBox .handle.tl { top: -7px; left: -7px; cursor: nw-resize; }
-      #dBadgeEditBox .handle.tr { top: -7px; right: -7px; cursor: ne-resize; }
-      #dBadgeEditBox .handle.bl { bottom: -7px; left: -7px; cursor: sw-resize; }
-      #dBadgeEditBox .handle.br { bottom: -7px; right: -7px; cursor: se-resize; }
+      /* handle 往內縮 2px（不會被切掉且仍可辨識） */
+      #dBadgeEditBox .handle.tl { top: -5px; left: -5px; cursor: nw-resize; }
+      #dBadgeEditBox .handle.tr { top: -5px; right: -5px; cursor: ne-resize; }
+      #dBadgeEditBox .handle.bl { bottom: -5px; left: -5px; cursor: sw-resize; }
+      #dBadgeEditBox .handle.br { bottom: -5px; right: -5px; cursor: se-resize; }
       #dBadgeEditBox::after {
         content: '徽章'; position: absolute; top: 2px; left: 4px;
         color: #f80; font-size: 10px; font-weight: bold;
@@ -2124,6 +2124,42 @@ function initChat() {
         width: 64px; height: 64px; image-rendering: pixelated;
         border: 1px solid #555; background: #000;
       }
+
+      /* v0.5.1 新增：精簡模式的模板庫 */
+      #detectorPanel .mini-tpl-header {
+        display: flex; align-items: center; gap: 6px;
+        cursor: pointer; user-select: none;
+        font-size: 12px; color: #fa0; font-weight: bold;
+      }
+      body.light #detectorPanel .mini-tpl-header { color: #c87c00; }
+      #detectorPanel .mini-tpl-header .collapse-arrow {
+        font-size: 9px; transition: transform 0.2s;
+        display: inline-block;
+      }
+      #detectorPanel .mini-tpl-header.collapsed .collapse-arrow {
+        transform: rotate(-90deg);
+      }
+      #detectorPanel #dMiniTplBody {
+        overflow: hidden; transition: max-height 0.2s, opacity 0.2s;
+        max-height: 200px;
+      }
+      #detectorPanel #dMiniTplBody.collapsed {
+        max-height: 0; opacity: 0; margin-top: 0 !important;
+      }
+      #detectorPanel .tpl-stats-mini {
+        display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px;
+        margin: 3px 0;
+      }
+      #detectorPanel .tpl-stats-mini .tpl-chip-mini {
+        background: #1a1a1a; padding: 2px 4px; border-radius: 3px;
+        font-size: 9px; text-align: center; border: 1px solid #333;
+      }
+      body.light #detectorPanel .tpl-stats-mini .tpl-chip-mini {
+        background: #eee; border-color: #ccc;
+      }
+      #detectorPanel .tpl-stats-mini .tpl-chip-mini .tpl-label-mini {
+        font-weight: bold;
+      }
     `;
     document.head.appendChild(style);
 
@@ -2132,7 +2168,7 @@ function initChat() {
     panel.className = 'compact';
     panel.innerHTML = `
       <div class="panel-header" id="dPanelHeader">
-        <h3>📷 偵測器 <span class="small">v0.5.0</span></h3>
+        <h3>📷 偵測器 <span class="small">v0.5.1</span></h3>
         <div>
           <button class="panel-ctrl-btn" id="dMuteToggle" title="靜音切換">🔔</button>
           <button class="panel-ctrl-btn" id="dToggleMode" title="切換精簡/完整">⚙️</button>
@@ -2156,6 +2192,20 @@ function initChat() {
               <button class="dbtn red" id="dMiniStop" disabled>⏹</button>
               <button class="dbtn" id="dMiniAuto" disabled>🔄 監控</button>
               <button class="dbtn red" id="dMiniStopAuto" disabled>⏸</button>
+            </div>
+          </div>
+          <!-- v0.5.1 新增：精簡模式的模板庫（可收合） -->
+          <div class="sec learn" style="padding:6px">
+            <div class="mini-tpl-header" id="dMiniTplHeader">
+              <span class="collapse-arrow" id="dMiniTplArrow">▼</span>
+              <span>🧠 模板庫</span>
+              <span class="small" id="dMiniTplTotal" style="margin-left:auto"></span>
+            </div>
+            <div id="dMiniTplBody" style="margin-top:6px">
+              <div class="small" style="color:#fa0">階段：</div>
+              <div class="tpl-stats-mini" id="dMiniTplPhase"></div>
+              <div class="small" style="color:#fa0;margin-top:4px">分流：</div>
+              <div class="tpl-stats-mini" id="dMiniTplCh"></div>
             </div>
           </div>
           <div id="dConfirmArea"></div>
@@ -2337,7 +2387,7 @@ function initChat() {
     const stats = TemplateDB.getStats();
     const phaseLabels = ['R1','R2','R3','R4','ON','WAITING'];
 
-    // 階段顯示
+    // 階段顯示（完整模式）
     const pEl = document.getElementById('dTplPhase');
     if (pEl) {
       pEl.innerHTML = phaseLabels.map(label => {
@@ -2350,7 +2400,7 @@ function initChat() {
       }).join('');
     }
 
-    // 分流顯示
+    // 分流顯示（完整模式）
     const cEl = document.getElementById('dTplCh');
     if (cEl) {
       const chLabels = Object.keys(stats.ch).sort((a,b)=>+a-+b);
@@ -2367,14 +2417,42 @@ function initChat() {
       }
     }
 
-    // 總計
-    const totalEl = document.getElementById('dTplTotal');
-    if (totalEl) {
-      const phaseTotal = Object.values(stats.phase).reduce((s, n) => s + n, 0);
-      const chTotal = Object.values(stats.ch).reduce((s, n) => s + n, 0);
-      const kb = (stats.totalSize / 1024).toFixed(1);
-      totalEl.textContent = `(階段 ${phaseTotal} + 分流 ${chTotal}，約 ${kb} KB)`;
+    // ═══ v0.5.1：精簡模式顯示 ═══
+    const miniP = document.getElementById('dMiniTplPhase');
+    if (miniP) {
+      miniP.innerHTML = phaseLabels.map(label => {
+        const count = stats.phase[label] || 0;
+        const color = count === 0 ? '#666' : count < 3 ? '#fa0' : '#0f0';
+        return `<div class="tpl-chip-mini">
+          <span class="tpl-label-mini" style="color:${color}">${label}</span>
+          <span style="color:#888">${count}</span>
+        </div>`;
+      }).join('');
     }
+    const miniC = document.getElementById('dMiniTplCh');
+    if (miniC) {
+      const chLabels = Object.keys(stats.ch).sort((a,b)=>+a-+b);
+      if (chLabels.length === 0) {
+        miniC.innerHTML = `<div class="small" style="color:#666;grid-column:1/-1;text-align:center">尚無模板</div>`;
+      } else {
+        miniC.innerHTML = chLabels.map(label => {
+          const count = stats.ch[label];
+          return `<div class="tpl-chip-mini">
+            <span class="tpl-label-mini" style="color:#0f0">CH.${label}</span>
+            <span style="color:#888">${count}</span>
+          </div>`;
+        }).join('');
+      }
+    }
+
+    // 總計（完整）
+    const totalEl = document.getElementById('dTplTotal');
+    const miniTotalEl = document.getElementById('dMiniTplTotal');
+    const phaseTotal = Object.values(stats.phase).reduce((s, n) => s + n, 0);
+    const chTotal = Object.values(stats.ch).reduce((s, n) => s + n, 0);
+    const kb = (stats.totalSize / 1024).toFixed(1);
+    if (totalEl) totalEl.textContent = `(階段 ${phaseTotal} + 分流 ${chTotal}，約 ${kb} KB)`;
+    if (miniTotalEl) miniTotalEl.textContent = `${phaseTotal}+${chTotal}`;
   }
 
   function showTplPreview() {
@@ -2423,7 +2501,8 @@ function initChat() {
     const video = document.getElementById('dVideo');
     const region = state.regions.status;
     const editor = document.getElementById('dBadgeEditor');
-    const maxContainerWidth = editor.clientWidth - 4 || 440;
+    // editor 現在有 padding:8px，扣掉
+    const maxContainerWidth = editor.clientWidth - 16 || 420;
     const maxContainerHeight = 280;
     const maxScaleByWidth = Math.floor(maxContainerWidth / region.w);
     const maxScaleByHeight = Math.floor(maxContainerHeight / region.h);
@@ -2435,17 +2514,24 @@ function initChat() {
     ctx.drawImage(video, region.x, region.y, region.w, region.h, 0, 0, canvas.width, canvas.height);
     const badge = getBadgeRect(region);
     const editBox = document.getElementById('dBadgeEditBox');
-    const canvasOffsetX = (editor.clientWidth - canvas.width) / 2;
-    const canvasOffsetY = (editor.clientHeight - canvas.height) / 2;
-    editBox.style.left = (canvasOffsetX + badge.x * displayScale) + 'px';
-    editBox.style.top = (canvasOffsetY + badge.y * displayScale) + 'px';
-    editBox.style.width = (badge.w * displayScale) + 'px';
-    editBox.style.height = (badge.h * displayScale) + 'px';
-    state._badgeDisplayScale = displayScale;
-    state._badgeCanvasOffsetX = canvasOffsetX;
-    state._badgeCanvasOffsetY = canvasOffsetY;
-    state._badgeMaxX = canvas.width;
-    state._badgeMaxY = canvas.height;
+
+    // ═══ 關鍵修正：等瀏覽器 layout 完再取 canvas 實際位置 ═══
+    requestAnimationFrame(() => {
+      const canvasOffsetX = canvas.offsetLeft;
+      const canvasOffsetY = canvas.offsetTop;
+
+      editBox.style.left = (canvasOffsetX + badge.x * displayScale) + 'px';
+      editBox.style.top = (canvasOffsetY + badge.y * displayScale) + 'px';
+      editBox.style.width = (badge.w * displayScale) + 'px';
+      editBox.style.height = (badge.h * displayScale) + 'px';
+
+      state._badgeDisplayScale = displayScale;
+      state._badgeCanvasOffsetX = canvasOffsetX;
+      state._badgeCanvasOffsetY = canvasOffsetY;
+      state._badgeMaxX = canvas.width;
+      state._badgeMaxY = canvas.height;
+    });
+
     updateBadgeInfo();
   }
 
@@ -2626,6 +2712,22 @@ function initChat() {
       updateMuteUI();
       log(state.muted ? '🔕 已靜音' : '🔔 音效開啟', '#0f0');
     };
+
+    // v0.5.1: 精簡模板庫收合
+    const miniTplHeader = document.getElementById('dMiniTplHeader');
+    if (miniTplHeader) {
+      // 載入收合狀態
+      const collapsed = localStorage.getItem('tosm_detector_mini_tpl_collapsed') === '1';
+      if (collapsed) {
+        miniTplHeader.classList.add('collapsed');
+        document.getElementById('dMiniTplBody').classList.add('collapsed');
+      }
+      miniTplHeader.onclick = () => {
+        const isCol = miniTplHeader.classList.toggle('collapsed');
+        document.getElementById('dMiniTplBody').classList.toggle('collapsed', isCol);
+        localStorage.setItem('tosm_detector_mini_tpl_collapsed', isCol ? '1' : '0');
+      };
+    }
 
     document.getElementById('dStart').onclick = startCapture;
     document.getElementById('dStop').onclick = stopCapture;
@@ -3088,13 +3190,13 @@ function initChat() {
   loadTesseract(() => {
     waitForApp(() => {
       injectUI();
-      console.log(DEBUG_PREFIX, 'v0.5.0 Beta 已就緒');
+      console.log(DEBUG_PREFIX, 'v0.5.1 Beta 已就緒');
     });
   });
 
 })();
 </script>
-<!-- ═══ 螢幕偵測模組 v0.5.0 結束 ═══ -->
+<!-- ═══ 螢幕偵測模組 v0.5.1 結束 ═══ -->
     
 </body>
 </html>
