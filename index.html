@@ -406,6 +406,16 @@ function hasAuth() {
     if (!pass) return true;
     return localStorage.getItem(`auth_${currentRoom}`) === pass;
 }
+
+// 是否為保護房間（黑名單功能限保護房間）
+function isProtectedRoom() {
+    return !!protectedRooms[currentRoom];
+}
+
+// 黑名單功能權限：必須同時是保護房間 AND 已解鎖該房間管理員
+function hasBanAuth() {
+    return isProtectedRoom() && hasAuth();
+}
 function canIUseCall() {
     if (hasAuth()) return true;
     const onlineCounts = currentOnlineUsers.map(n => contributorCounts[n] || 0);
@@ -687,7 +697,7 @@ function renderList() {
     const clearBtn = document.getElementById('clearAllBtn');
     if (clearBtn) clearBtn.style.display = auth ? 'block' : 'none';
     const unbanBtn = document.getElementById('unbanAllBtn');
-    if (unbanBtn) unbanBtn.style.display = auth ? 'inline-block' : 'none';
+    if (unbanBtn) unbanBtn.style.display = hasBanAuth() ? 'inline-block' : 'none';
 
     const drawBox = (items, label, collapsible = false) => {
         if (!items.length) return;
@@ -1010,7 +1020,7 @@ function updateOnlineUsersDisplay() {
         const color = getColor(name), count = contributorCounts[name] || 0;
         const isTop = (count === onlineMax && count >= 5);
         const isSelf = (name === myName);
-        const clickAttr = (hasAuth() && !isSelf)
+        const clickAttr = (hasBanAuth() && !isSelf)
             ? `onclick="adminBanUser('${name.replace(/'/g,"\\'")}', event)" style="color:${color};cursor:pointer;" title="點擊加入黑名單"`
             : `style="color:${color};"`;
         return `<span class="${isTop?'top-editor':''}" ${clickAttr} title="已編輯 ${count} 次">${name}</span>`;
@@ -1021,6 +1031,7 @@ function updateOnlineUsersDisplay() {
 let banPanelOpen = false;
 
 function toggleBanPanel() {
+    if (!hasBanAuth()) return;
     banPanelOpen = !banPanelOpen;
     const panel = document.getElementById('banPanel');
     panel.style.display = banPanelOpen ? 'flex' : 'none';
@@ -1058,9 +1069,16 @@ function renderBanList() {
 
 function adminBanUser(name, event) {
     if (event) event.stopPropagation();
-    if (!hasAuth()) return;
+    if (!hasBanAuth()) return;
     if (name === myName) return;
-    if (!confirm(`確定要將「${name}」加入黑名單？`)) return;
+
+    // 必填原由
+    const reason = prompt(`將「${name}」加入黑名單\n\n請填寫封鎖原由（必填）：`);
+    if (reason === null) return; // 取消
+    if (!reason.trim()) {
+        alert('請填寫封鎖原由才能加入黑名單。');
+        return;
+    }
 
     db.ref(`rooms/${currentRoom}/users`).once('value', s => {
         const users = s.val() || {};
@@ -1073,27 +1091,28 @@ function adminBanUser(name, event) {
 
         db.ref(`rooms/${currentRoom}/banned/${banKey}`).set({
             name, fixedId: targetFixedId || null,
-            bannedAt: Date.now(), bannedBy: myName, note: ''
+            bannedAt: Date.now(), bannedBy: myName,
+            note: reason.trim()
         });
         if (banPanelOpen) setTimeout(renderBanList, 500);
     });
 }
 
 function adminUnban(key) {
-    if (!hasAuth()) return;
+    if (!hasBanAuth()) return;
     db.ref(`rooms/${currentRoom}/banned/${key}`).remove();
     setTimeout(renderBanList, 300);
 }
 
 function adminUnbanAll() {
-    if (!hasAuth()) return;
+    if (!hasBanAuth()) return;
     if (!confirm('確定解除所有封鎖？')) return;
     db.ref(`rooms/${currentRoom}/banned`).remove();
     setTimeout(renderBanList, 300);
 }
 
 function adminAddNote(key, note) {
-    if (!hasAuth() || !note.trim()) return;
+    if (!hasBanAuth() || !note.trim()) return;
     db.ref(`rooms/${currentRoom}/banned/${key}/note`).set(note.trim());
     setTimeout(renderBanList, 300);
 }
@@ -1141,15 +1160,16 @@ function startSession(id) {
         const userRef = db.ref(`rooms/${currentRoom}/users`).push({ name: myName, fixedId: myFixedId });
         userRef.onDisconnect().remove();
 
-        // 即時監聽黑名單（若自己被封則啟動隱形懲罰）
-        db.ref(`rooms/${currentRoom}/banned`).on('value', s => {
-            const banned = s.val() || {};
-            const myKey = myFixedId ? myFixedId.replace(/[.#$[\]]/g,'_') : '';
-            const nameKey = 'name_' + myName.replace(/[.#$[\]]/g,'_');
-            isBanned = !!(myKey && banned[myKey]) || !!(banned[nameKey]);
-            // 若黑名單面板開著就更新顯示
-            if (banPanelOpen) renderBanList();
-        });
+        // 即時監聽黑名單（僅保護房間，若自己被封則啟動隱形懲罰）
+        if (isProtectedRoom()) {
+            db.ref(`rooms/${currentRoom}/banned`).on('value', s => {
+                const banned = s.val() || {};
+                const myKey = myFixedId ? myFixedId.replace(/[.#$[\]]/g,'_') : '';
+                const nameKey = 'name_' + myName.replace(/[.#$[\]]/g,'_');
+                isBanned = !!(myKey && banned[myKey]) || !!(banned[nameKey]);
+                if (banPanelOpen) renderBanList();
+            });
+        }
         db.ref(`rooms/${currentRoom}/users`).on('value', s => {
             const u = Object.values(s.val() || {});
             document.getElementById('onlineCount').innerText = u.length;
