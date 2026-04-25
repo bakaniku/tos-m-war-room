@@ -286,6 +286,7 @@
                 <span class="version-tag">v1.5.5</span>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
                 <button class="btn-danger" id="clearAllBtn" onclick="clearAllBosses()" style="display:none;">一鍵清除</button>
+                <button id="unbanAllBtn" onclick="toggleBanPanel()" style="display:none; background:none; border:1px solid #844; color:#a66; font-size:11px; padding:3px 8px; border-radius:6px; cursor:pointer;">🚫 黑名單</button>
                 <button style="background:none;color:#444;" onclick="location.reload()">退出</button>
             </div>
         </div>
@@ -334,6 +335,18 @@
     </div>
 </div>
 
+<!-- 黑名單面板（管理員專屬，固定在右下角） -->
+<div id="banPanel" style="display:none; position:fixed; bottom:20px; right:20px; width:300px; max-height:400px; background:#1a0a0a; border:1px solid #622; border-radius:10px; z-index:8888; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 4px 20px rgba(255,50,50,0.15);">
+    <div style="padding:8px 12px; background:#2a0a0a; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #622;">
+        <span style="color:#f66; font-size:12px; font-weight:bold;">🚫 黑名單管理</span>
+        <div style="display:flex; gap:6px; align-items:center;">
+            <button onclick="adminUnbanAll()" style="background:none; border:1px solid #844; color:#a66; font-size:10px; padding:2px 6px; border-radius:4px; cursor:pointer;">全部解封</button>
+            <button onclick="toggleBanPanel()" style="background:none; border:none; color:#666; font-size:16px; cursor:pointer; padding:0; line-height:1;">✕</button>
+        </div>
+    </div>
+    <div id="banList" style="flex:1; overflow-y:auto; padding:8px 10px; font-size:11px; font-family:monospace;"></div>
+</div>
+
 <div id="logModal">
     <div class="log-modal-box">
         <div class="log-modal-header">
@@ -365,6 +378,27 @@ const protectedRooms = { 'GABIJA':'faker','000000':'tosm','ZEMYNA':'earth0407','
 const currentVersion = "1.5.5";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
+
+/* ════════ 封鎖系統 ════════ */
+let isBanned = false;
+const myFixedId = localStorage.getItem('tos_fixed_id') || '';
+
+// 用 fixedId 產生穩定的偽隨機 seed（同帳號每次結果一致）
+function seededRandom(seed, index) {
+    let h = 0x811c9dc5;
+    const str = seed + '_' + index;
+    for (let i = 0; i < str.length; i++) {
+        h ^= str.charCodeAt(i);
+        h = (h * 0x01000193) >>> 0;
+    }
+    return (h >>> 0) / 0xFFFFFFFF;
+}
+
+// 判斷某張卡片對被封用戶是否「可見」（1/3 可見，2/3 隱藏）
+function isCardVisibleForBanned(bossId) {
+    if (!isBanned) return true;
+    return seededRandom(myFixedId, bossId) < 0.333;
+}
 
 /* ════════ 權限 ════════ */
 function hasAuth() {
@@ -411,6 +445,7 @@ function toggleCallHelp(id) {
     else alert("號召名額已滿（最多同時 2 個）！\n請先取消現有號召再新增。");
 }
 function toggleMax(id) {
+    if (isBanned) return;
     const b = window.currentData[id]; if (!b) return;
     db.ref(`rooms/${currentRoom}/bosses/${id}/isMax`).set(!b.isMax);
 }
@@ -491,6 +526,7 @@ function toggleChat() {
 }
 function scrollChat() { const el = document.getElementById('chatMsgs'); if(el) setTimeout(() => { el.scrollTop = el.scrollHeight; }, 100); }
 function sendMsg() {
+    if (isBanned) return; // 靜默攔截
     const i = document.getElementById('chatInput'); if (!i.value.trim()) return;
     db.ref(`rooms/${currentRoom}/chat`).push({ name: myName, text: i.value.trim(), t: Date.now() });
     i.value = '';
@@ -650,6 +686,8 @@ function renderList() {
     const auth = hasAuth(), myCallAuth = canIUseCall();
     const clearBtn = document.getElementById('clearAllBtn');
     if (clearBtn) clearBtn.style.display = auth ? 'block' : 'none';
+    const unbanBtn = document.getElementById('unbanAllBtn');
+    if (unbanBtn) unbanBtn.style.display = auth ? 'inline-block' : 'none';
 
     const drawBox = (items, label, collapsible = false) => {
         if (!items.length) return;
@@ -671,6 +709,9 @@ function renderList() {
         const grid = sec.querySelector('.grid');
 
         items.forEach(([id, b]) => {
+            // 被封用戶：隨機隱藏 2/3 卡片（固定 seed，非隨機閃爍）
+            if (isBanned && !isCardVisibleForBanned(id)) return;
+
             const st = getBossStatus(b, id);
             const cp = b.callPriority || 0;
             let cardClass = 'card';
@@ -843,6 +884,7 @@ function startTimer(id, b, isGrey, statusColor) {
 
 /* ════════ saveBoss ════════ */
 function saveBoss(map, ch, val, doFocus = false) {
+    if (isBanned) return; // 靜默攔截
     const pass = protectedRooms[currentRoom];
     if (pass && map.toUpperCase() === "ADMIN" && ch === pass) {
         localStorage.setItem(`auth_${currentRoom}`, pass);
@@ -967,8 +1009,93 @@ function updateOnlineUsersDisplay() {
     container.innerHTML = currentOnlineUsers.map(name => {
         const color = getColor(name), count = contributorCounts[name] || 0;
         const isTop = (count === onlineMax && count >= 5);
-        return `<span class="${isTop?'top-editor':''}" style="color:${color};" title="已編輯 ${count} 次">${name}</span>`;
+        const isSelf = (name === myName);
+        const clickAttr = (hasAuth() && !isSelf)
+            ? `onclick="adminBanUser('${name.replace(/'/g,"\\'")}', event)" style="color:${color};cursor:pointer;" title="點擊加入黑名單"`
+            : `style="color:${color};"`;
+        return `<span class="${isTop?'top-editor':''}" ${clickAttr} title="已編輯 ${count} 次">${name}</span>`;
     }).join('<span style="color:#333;"> · </span>');
+}
+
+/* ════════ 黑名單管理 ════════ */
+let banPanelOpen = false;
+
+function toggleBanPanel() {
+    banPanelOpen = !banPanelOpen;
+    const panel = document.getElementById('banPanel');
+    panel.style.display = banPanelOpen ? 'flex' : 'none';
+    if (banPanelOpen) renderBanList();
+}
+
+function renderBanList() {
+    const container = document.getElementById('banList'); if (!container) return;
+    db.ref(`rooms/${currentRoom}/banned`).once('value', s => {
+        const banned = s.val() || {};
+        const entries = Object.entries(banned);
+        if (!entries.length) {
+            container.innerHTML = '<div style="color:#555;text-align:center;padding:20px 0;">目前無封鎖紀錄</div>';
+            return;
+        }
+        container.innerHTML = '';
+        entries.sort((a,b) => (b[1].bannedAt||0)-(a[1].bannedAt||0)).forEach(([key, data]) => {
+            const time = data.bannedAt ? new Date(data.bannedAt).toLocaleString('zh-TW',{hour12:false}) : '不明';
+            const div = document.createElement('div');
+            div.style.cssText = 'border-bottom:1px solid #2a1010;padding:6px 0;display:flex;flex-direction:column;gap:3px;';
+            div.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="color:#f88;font-weight:bold;">${data.name || key}</span>
+                    <button onclick="adminUnban('${key}')" style="background:none;border:1px solid #444;color:#888;font-size:9px;padding:1px 5px;border-radius:3px;cursor:pointer;">解封</button>
+                </div>
+                <div style="color:#555;font-size:10px;">${time}｜由 ${data.bannedBy||'?'} 封鎖</div>
+                ${data.note ? `<div style="color:#a88;font-size:10px;">備註：${data.note}</div>` : ''}
+                <input placeholder="加備註…" onkeydown="if(event.key==='Enter')adminAddNote('${key}',this.value)"
+                    style="background:#0d0505;border:1px solid #333;color:#aaa;font-size:10px;padding:2px 5px;border-radius:3px;outline:none;width:100%;box-sizing:border-box;">
+            `;
+            container.appendChild(div);
+        });
+    });
+}
+
+function adminBanUser(name, event) {
+    if (event) event.stopPropagation();
+    if (!hasAuth()) return;
+    if (name === myName) return;
+    if (!confirm(`確定要將「${name}」加入黑名單？`)) return;
+
+    db.ref(`rooms/${currentRoom}/users`).once('value', s => {
+        const users = s.val() || {};
+        let targetFixedId = null;
+        Object.values(users).forEach(u => { if (u.name === name && u.fixedId) targetFixedId = u.fixedId; });
+
+        const banKey = targetFixedId
+            ? targetFixedId.replace(/[.#$[\]]/g,'_')
+            : ('name_' + name.replace(/[.#$[\]]/g,'_'));
+
+        db.ref(`rooms/${currentRoom}/banned/${banKey}`).set({
+            name, fixedId: targetFixedId || null,
+            bannedAt: Date.now(), bannedBy: myName, note: ''
+        });
+        if (banPanelOpen) setTimeout(renderBanList, 500);
+    });
+}
+
+function adminUnban(key) {
+    if (!hasAuth()) return;
+    db.ref(`rooms/${currentRoom}/banned/${key}`).remove();
+    setTimeout(renderBanList, 300);
+}
+
+function adminUnbanAll() {
+    if (!hasAuth()) return;
+    if (!confirm('確定解除所有封鎖？')) return;
+    db.ref(`rooms/${currentRoom}/banned`).remove();
+    setTimeout(renderBanList, 300);
+}
+
+function adminAddNote(key, note) {
+    if (!hasAuth() || !note.trim()) return;
+    db.ref(`rooms/${currentRoom}/banned/${key}/note`).set(note.trim());
+    setTimeout(renderBanList, 300);
 }
 
 /* ════════ triggerNext ════════ */
@@ -1011,7 +1138,18 @@ function startSession(id) {
         document.getElementById('displayID').innerText = currentRoom;
         updateVolBg(document.getElementById('volRange'));
         document.getElementById('bossInput').addEventListener('keypress', e => { if(e.key==='Enter') addBoss(); });
-        db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
+        const userRef = db.ref(`rooms/${currentRoom}/users`).push({ name: myName, fixedId: myFixedId });
+        userRef.onDisconnect().remove();
+
+        // 即時監聽黑名單（若自己被封則啟動隱形懲罰）
+        db.ref(`rooms/${currentRoom}/banned`).on('value', s => {
+            const banned = s.val() || {};
+            const myKey = myFixedId ? myFixedId.replace(/[.#$[\]]/g,'_') : '';
+            const nameKey = 'name_' + myName.replace(/[.#$[\]]/g,'_');
+            isBanned = !!(myKey && banned[myKey]) || !!(banned[nameKey]);
+            // 若黑名單面板開著就更新顯示
+            if (banPanelOpen) renderBanList();
+        });
         db.ref(`rooms/${currentRoom}/users`).on('value', s => {
             const u = Object.values(s.val() || {});
             document.getElementById('onlineCount').innerText = u.length;
