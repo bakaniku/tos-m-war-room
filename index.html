@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.5.6</title>
+    <title>TOS M FB TIME v1.5.5</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -250,7 +250,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.5.6</div>
+        <div class="ver-info">v1.5.5</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10" oninput="this.value=this.value.replace('#','')">
             <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
@@ -283,7 +283,7 @@
                 </div>
             </div>
             <div class="room-info">
-                <span class="version-tag">v1.5.6</span>
+                <span class="version-tag">v1.5.5</span>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
                 <button class="btn-danger" id="clearAllBtn" onclick="clearAllBosses()" style="display:none;">一鍵清除</button>
                 <button id="unbanAllBtn" onclick="toggleBanPanel()" style="display:none; background:none; border:1px solid #844; color:#a66; font-size:11px; padding:3px 8px; border-radius:6px; cursor:pointer;">🚫 黑名單</button>
@@ -335,18 +335,6 @@
     </div>
 </div>
 
-<!-- 黑名單面板（管理員專屬，固定在右下角） -->
-<div id="banPanel" style="display:none; position:fixed; bottom:20px; right:20px; width:300px; max-height:400px; background:#1a0a0a; border:1px solid #622; border-radius:10px; z-index:8888; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 4px 20px rgba(255,50,50,0.15);">
-    <div style="padding:8px 12px; background:#2a0a0a; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #622;">
-        <span style="color:#f66; font-size:12px; font-weight:bold;">🚫 黑名單管理</span>
-        <div style="display:flex; gap:6px; align-items:center;">
-            <button onclick="adminUnbanAll()" style="background:none; border:1px solid #844; color:#a66; font-size:10px; padding:2px 6px; border-radius:4px; cursor:pointer;">全部解封</button>
-            <button onclick="toggleBanPanel()" style="background:none; border:none; color:#666; font-size:16px; cursor:pointer; padding:0; line-height:1;">✕</button>
-        </div>
-    </div>
-    <div id="banList" style="flex:1; overflow-y:auto; padding:8px 10px; font-size:11px; font-family:monospace;"></div>
-</div>
-
 <div id="logModal">
     <div class="log-modal-box">
         <div class="log-modal-header">
@@ -375,7 +363,7 @@ window.currentData = {};
 let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
 let lastProcessedInput = {};
 const protectedRooms = { 'GABIJA':'faker','000000':'tosm','ZEMYNA':'earth0407','SAULE':'apple','ASRINE':'lostu' };
-const currentVersion = "1.5.6";
+const currentVersion = "1.5.5";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
 
@@ -394,10 +382,29 @@ function seededRandom(seed, index) {
     return (h >>> 0) / 0xFFFFFFFF;
 }
 
-// 判斷某張卡片對被封用戶是否「可見」（1/3 可見，2/3 隱藏）
-function isCardVisibleForBanned(bossId) {
+// 被封時的隱藏快照（封鎖當下決定哪些卡片隱藏，之後不再變動）
+let bannedHiddenSnapshot = null;
+
+// 判斷某張卡片對被封用戶是否可見
+function isCardVisibleForBanned(bossId, b) {
     if (!isBanned) return true;
-    return seededRandom(myFixedId, bossId) < 0.333;
+
+    // 計時中的卡片（targetTime > 0）：對被封用戶直接隱藏（最自然，像沒同步）
+    if (b && b.targetTime > 0) return false;
+
+    // 其他卡片：用快照決定（封鎖當下固定，不會閃爍變動）
+    if (!bannedHiddenSnapshot) {
+        // 尚未建立快照：現在建立
+        bannedHiddenSnapshot = {};
+        Object.keys(window.currentData || {}).forEach(id => {
+            bannedHiddenSnapshot[id] = seededRandom(myFixedId, id) < 0.333; // true = 可見
+        });
+    }
+    // 快照中沒有的新卡片，即時決定
+    if (!(bossId in bannedHiddenSnapshot)) {
+        bannedHiddenSnapshot[bossId] = seededRandom(myFixedId, bossId) < 0.333;
+    }
+    return bannedHiddenSnapshot[bossId];
 }
 
 /* ════════ 權限 ════════ */
@@ -719,8 +726,8 @@ function renderList() {
         const grid = sec.querySelector('.grid');
 
         items.forEach(([id, b]) => {
-            // 被封用戶：隨機隱藏 2/3 卡片（固定 seed，非隨機閃爍）
-            if (isBanned && !isCardVisibleForBanned(id)) return;
+            // 被封用戶：計時中卡片直接隱藏，其他卡片依快照隱藏 2/3
+            if (isBanned && !isCardVisibleForBanned(id, b)) return;
 
             const st = getBossStatus(b, id);
             const cp = b.callPriority || 0;
@@ -1033,7 +1040,26 @@ let banPanelOpen = false;
 function toggleBanPanel() {
     if (!hasBanAuth()) return;
     banPanelOpen = !banPanelOpen;
-    const panel = document.getElementById('banPanel');
+
+    let panel = document.getElementById('banPanel');
+    if (!panel) {
+        // 首次開啟才建立 DOM
+        panel = document.createElement('div');
+        panel.id = 'banPanel';
+        panel.style.cssText = 'position:fixed;bottom:20px;right:20px;width:300px;max-height:400px;background:#1a0a0a;border:1px solid #622;border-radius:10px;z-index:8888;flex-direction:column;overflow:hidden;box-shadow:0 4px 20px rgba(255,50,50,0.15);';
+        panel.innerHTML = `
+            <div style="padding:8px 12px;background:#2a0a0a;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #622;">
+                <span style="color:#f66;font-size:12px;font-weight:bold;">🚫 黑名單管理</span>
+                <div style="display:flex;gap:6px;align-items:center;">
+                    <button onclick="adminUnbanAll()" style="background:none;border:1px solid #844;color:#a66;font-size:10px;padding:2px 6px;border-radius:4px;cursor:pointer;">全部解封</button>
+                    <button onclick="toggleBanPanel()" style="background:none;border:none;color:#666;font-size:16px;cursor:pointer;padding:0;line-height:1;">✕</button>
+                </div>
+            </div>
+            <div id="banList" style="flex:1;overflow-y:auto;padding:8px 10px;font-size:11px;font-family:monospace;"></div>
+        `;
+        document.body.appendChild(panel);
+    }
+
     panel.style.display = banPanelOpen ? 'flex' : 'none';
     if (banPanelOpen) renderBanList();
 }
@@ -1166,7 +1192,10 @@ function startSession(id) {
                 const banned = s.val() || {};
                 const myKey = myFixedId ? myFixedId.replace(/[.#$[\]]/g,'_') : '';
                 const nameKey = 'name_' + myName.replace(/[.#$[\]]/g,'_');
-                isBanned = !!(myKey && banned[myKey]) || !!(banned[nameKey]);
+                const newBanned = !!(myKey && banned[myKey]) || !!(banned[nameKey]);
+                // 封鎖狀態改變時重設快照，重新決定哪些卡片隱藏
+                if (newBanned !== isBanned) bannedHiddenSnapshot = null;
+                isBanned = newBanned;
                 if (banPanelOpen) renderBanList();
             });
         }
