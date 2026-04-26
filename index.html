@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.5.6</title>
+    <title>TOS M FB TIME v1.5.5</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -250,7 +250,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.5.6</div>
+        <div class="ver-info">v1.5.5</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10" oninput="this.value=this.value.replace('#','')">
             <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
@@ -283,7 +283,7 @@
                 </div>
             </div>
             <div class="room-info">
-                <span class="version-tag">v1.5.6</span>
+                <span class="version-tag">v1.5.5</span>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
                 <button class="btn-danger" id="clearAllBtn" onclick="clearAllBosses()" style="display:none;">一鍵清除</button>
                 <button id="unbanAllBtn" onclick="toggleBanPanel()" style="display:none; background:none; border:1px solid #844; color:#a66; font-size:11px; padding:3px 8px; border-radius:6px; cursor:pointer;">🚫 黑名單</button>
@@ -363,7 +363,7 @@ window.currentData = {};
 let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
 let lastProcessedInput = {};
 const protectedRooms = { 'GABIJA':'faker','000000':'tosm','ZEMYNA':'earth0407','SAULE':'apple','ASRINE':'lostu' };
-const currentVersion = "1.5.6";
+const currentVersion = "1.5.5";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
 
@@ -382,7 +382,38 @@ function seededRandom(seed, index) {
     return (h >>> 0) / 0xFFFFFFFF;
 }
 
-// 被封時的隱藏快照（封鎖當下決定哪些卡片隱藏，之後不再變動）
+// 本地隱藏名單（只影響自己，存 localStorage）
+let localMuted = new Set(JSON.parse(localStorage.getItem('tos_muted_users') || '[]'));
+
+function toggleMuteUser(name) {
+    if (localMuted.has(name)) {
+        localMuted.delete(name);
+    } else {
+        localMuted.add(name);
+    }
+    localStorage.setItem('tos_muted_users', JSON.stringify([...localMuted]));
+    updateOnlineUsersDisplay();
+    scrollChat(); // 重新渲染留言板
+    // 重刷聊天室（觸發 value 事件重繪）
+    const chatMsgs = document.getElementById('chatMsgs');
+    if (chatMsgs) {
+        // 直接重繪現有訊息，不需重新 fetch
+        renderChatMessages();
+    }
+}
+
+let lastChatList = []; // 快取最近的訊息列表
+
+function renderChatMessages() {
+    const container = document.getElementById('chatMsgs'); if (!container) return;
+    container.innerHTML = '';
+    lastChatList.forEach(m => {
+        if (localMuted.has(m.name) && m.name !== myName) return; // 隱藏
+        const time = m.t ? new Date(m.t).toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '';
+        container.innerHTML += `<div class="msg-row"><span class="msg-name ${m.name===myName?'self':''}">${m.name}</span><span class="msg-bubble">${m.text}</span><span class="msg-time">${time}</span></div>`;
+    });
+    setTimeout(() => { if(container) container.scrollTop = container.scrollHeight; }, 50);
+}
 let bannedHiddenSnapshot = null;
 
 // 判斷某張卡片對被封用戶是否可見
@@ -1023,14 +1054,34 @@ function updateOnlineUsersDisplay() {
     const onlineCounts = currentOnlineUsers.map(n => contributorCounts[n] || 0);
     const onlineMax = Math.max(...onlineCounts, 0);
     const getColor = name => { const c=contributorCounts[name]||0,isG=name.startsWith('#'); if(!c) return '#555'; return `hsl(50,${(isG?30:40)+(c/contributorMax)*(isG?40:60)}%,${(isG?40:55)+(c/contributorMax)*(isG?30:35)}%)`; };
+
     container.innerHTML = currentOnlineUsers.map(name => {
-        const color = getColor(name), count = contributorCounts[name] || 0;
+        const color = getColor(name);
+        const count = contributorCounts[name] || 0;
         const isTop = (count === onlineMax && count >= 5);
         const isSelf = (name === myName);
-        const clickAttr = (hasBanAuth() && !isSelf)
-            ? `onclick="adminBanUser('${name.replace(/'/g,"\\'")}', event)" style="color:${color};cursor:pointer;" title="點擊加入黑名單"`
-            : `style="color:${color};"`;
-        return `<span class="${isTop?'top-editor':''}" ${clickAttr} title="已編輯 ${count} 次">${name}</span>`;
+        const isMuted = localMuted.has(name);
+
+        let spanStyle, onclick, title;
+        if (isSelf) {
+            // 自己：不可點
+            spanStyle = `color:${color};`;
+            onclick = '';
+            title = `已編輯 ${count} 次`;
+        } else if (hasBanAuth()) {
+            // 管理員：點擊黑名單
+            spanStyle = `color:${color};cursor:pointer;`;
+            onclick = `onclick="adminBanUser('${name.replace(/'/g,"\\'")}', event)"`;
+            title = `已編輯 ${count} 次（點擊加入黑名單）`;
+        } else {
+            // 一般用戶：點擊隱藏/解除隱藏
+            const displayColor = isMuted ? '#555' : color;
+            spanStyle = `color:${displayColor};cursor:pointer;${isMuted ? 'text-decoration:line-through;' : ''}`;
+            onclick = `onclick="toggleMuteUser('${name.replace(/'/g,"\\'")}')"`; 
+            title = isMuted ? `${name}（已隱藏，點擊解除）` : `已編輯 ${count} 次（點擊隱藏留言）`;
+        }
+
+        return `<span class="${isTop&&!isMuted?'top-editor':''}" style="${spanStyle}" ${onclick} title="${title}">${name}</span>`;
     }).join('<span style="color:#333;"> · </span>');
 }
 
@@ -1303,14 +1354,13 @@ function initChat() {
     document.getElementById('chatInput').addEventListener('keypress', e => { if(e.key==='Enter') sendMsg(); });
     db.ref(`rooms/${currentRoom}/chat`).limitToLast(50).on('value', s => {
         const container = document.getElementById('chatMsgs'); if(!container) return;
-        container.innerHTML = '';
-        const list = Object.values(s.val()||{}).sort((a,b) => a.t-b.t);
-        list.forEach(m => {
-            const time = m.t ? new Date(m.t).toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '';
-            container.innerHTML += `<div class="msg-row"><span class="msg-name ${m.name===myName?'self':''}">${m.name}</span><span class="msg-bubble">${m.text}</span><span class="msg-time">${time}</span></div>`;
-        });
-        if (chatMode==='hidden'&&list.length>0&&list[list.length-1].t>lastReadMsgTime&&list[list.length-1].name!==myName) document.getElementById('chatDot').classList.add('show');
-        scrollChat();
+        lastChatList = Object.values(s.val()||{}).sort((a,b) => a.t-b.t);
+        renderChatMessages();
+        if (chatMode==='hidden' && lastChatList.length>0 &&
+            lastChatList[lastChatList.length-1].t > lastReadMsgTime &&
+            lastChatList[lastChatList.length-1].name !== myName) {
+            document.getElementById('chatDot').classList.add('show');
+        }
     });
 }
 </script>
