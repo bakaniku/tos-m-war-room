@@ -370,6 +370,7 @@ const protectedRooms = { 'GABIJA':'faker','000000':'tosm','ZEMYNA':'earth0407','
 const currentVersion = "1.5.6";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
+let globalNextLocked = false; // 全域 NEXT/KILL 鎖定狀態
 
 /* ════════ 登入頁固定代碼 placeholder ════════ */
 function getFixedIdPlaceholder() {
@@ -802,9 +803,9 @@ function renderList() {
             const maxHtml  = `<button class="max-btn ${maxClass}" onclick="toggleMax('${id}')" title="${b.isMax?'取消滿員':'標記滿員'}">M</button>`;
 
             const hasNext = (b.targetTime === 0 && st.weight !== 7);
-            const isLocked = !!b.isFlash;
+            const isLocked = !!b.isFlash || globalNextLocked;
             const nextHtml = hasNext
-                ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color};border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')" ${isLocked?'disabled title="處理中，請稍候..."':''}>${b.displayValue==='ON'?'KILL':'NEXT'}</button>`
+                ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color};border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')" ${isLocked?'disabled title="請稍候..."':''}>${b.displayValue==='ON'?'KILL':'NEXT'}</button>`
                 : '';
 
             if (!hasNext) cardClass += ' compact';
@@ -1287,6 +1288,20 @@ function startSession(id) {
                 lastProcessedInput[k] = v;
             });
             window.currentData = incoming;
+            // 有任何卡片狀態變化 → 鎖定所有 NEXT/KILL 0.5 秒，防止錯報
+            const hasChange = Object.keys(incoming).some(k => {
+                const v = incoming[k].lastInput.toString().toUpperCase();
+                return v !== lastProcessedInput[k];
+            });
+            if (hasChange) {
+                globalNextLocked = true;
+                clearTimeout(window._nextLockTimer);
+                window._nextLockTimer = setTimeout(() => {
+                    globalNextLocked = false;
+                    // 解鎖後重繪，讓按鈕恢復可點擊狀態
+                    renderList();
+                }, 500);
+            }
             // 若有 inline-input 正在編輯，檢查是否是該卡片被外部改動
             const activeInput = document.querySelector('.inline-input');
             if (activeInput) {
