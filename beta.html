@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.5.5</title>
+    <title>TOS M FB TIME v1.5.6</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -158,9 +158,9 @@
             background: none; border: none; color: inherit; line-height: 1;
         }
         .member-count-btn:hover { opacity: 1; }
-        /* 右上角人數顯示（與 × 同高） */
+        /* 右上角人數顯示（與 × 底部對齊） */
         .member-top-display {
-            position: absolute; top: 7px; right: 28px;
+            position: absolute; top: 20px; right: 28px;
             font-size: 10px; color: #666; font-family: monospace;
             line-height: 1; pointer-events: none; white-space: nowrap;
         }
@@ -250,9 +250,13 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.5.5</div>
+        <div class="ver-info">v1.5.6</div>
         <div class="input-group">
-            <input type="text" id="userNameInput" placeholder="你的稱呼" maxlength="10" oninput="this.value=this.value.replace('#','')">
+            <input type="text" id="userNameInput" placeholder="" maxlength="10"
+                oninput="this.value=this.value.replace('#','')"
+                onfocus="if(!this.value.trim()) this.placeholder=''"
+                onblur="if(!this.value.trim()) this.placeholder=getFixedIdPlaceholder()">
+            <div id="nameHint" style="font-size:10px; color:#555; text-align:center; margin-top:-10px;">留空使用隨機代碼</div>
             <button class="btn-outline" onclick="createRoom()">＋ 創建新房間</button>
             <input type="text" id="roomInput" placeholder="輸入房號" maxlength="6">
             <button class="btn-solid" onclick="joinRoom()">進入房間</button>
@@ -283,9 +287,10 @@
                 </div>
             </div>
             <div class="room-info">
-                <span class="version-tag">v1.5.5</span>
+                <span class="version-tag">v1.5.6</span>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
                 <button class="btn-danger" id="clearAllBtn" onclick="clearAllBosses()" style="display:none;">一鍵清除</button>
+                <button id="unbanAllBtn" onclick="toggleBanPanel()" style="display:none; background:none; border:1px solid #844; color:#a66; font-size:11px; padding:3px 8px; border-radius:6px; cursor:pointer;">🚫 黑名單</button>
                 <button style="background:none;color:#444;" onclick="location.reload()">退出</button>
             </div>
         </div>
@@ -362,15 +367,111 @@ window.currentData = {};
 let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
 let lastProcessedInput = {};
 const protectedRooms = { 'GABIJA':'faker','000000':'tosm','ZEMYNA':'earth0407','SAULE':'apple','ASRINE':'lostu' };
-const currentVersion = "1.5.5";
+const currentVersion = "1.5.6";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
+let globalNextLocked = false; // 全域 NEXT/KILL 鎖定狀態
+
+/* ════════ 登入頁固定代碼 placeholder ════════ */
+function getFixedIdPlaceholder() {
+    let savedID = localStorage.getItem('tos_fixed_id');
+    if (!savedID) {
+        savedID = "#" + Math.floor(1000 + Math.random() * 9000);
+        localStorage.setItem('tos_fixed_id', savedID);
+    }
+    return savedID;
+}
+
+// 頁面載入時設定 placeholder
+window.addEventListener('DOMContentLoaded', () => {
+    const input = document.getElementById('userNameInput');
+    if (input) input.placeholder = getFixedIdPlaceholder();
+});
+let isBanned = false;
+const myFixedId = localStorage.getItem('tos_fixed_id') || '';
+
+// 用 fixedId 產生穩定的偽隨機 seed（同帳號每次結果一致）
+function seededRandom(seed, index) {
+    let h = 0x811c9dc5;
+    const str = seed + '_' + index;
+    for (let i = 0; i < str.length; i++) {
+        h ^= str.charCodeAt(i);
+        h = (h * 0x01000193) >>> 0;
+    }
+    return (h >>> 0) / 0xFFFFFFFF;
+}
+
+// 本地隱藏名單（只影響自己，存 localStorage）
+let localMuted = new Set(JSON.parse(localStorage.getItem('tos_muted_users') || '[]'));
+
+function toggleMuteUser(name) {
+    if (localMuted.has(name)) {
+        localMuted.delete(name);
+    } else {
+        localMuted.add(name);
+    }
+    localStorage.setItem('tos_muted_users', JSON.stringify([...localMuted]));
+    updateOnlineUsersDisplay();
+    scrollChat(); // 重新渲染留言板
+    // 重刷聊天室（觸發 value 事件重繪）
+    const chatMsgs = document.getElementById('chatMsgs');
+    if (chatMsgs) {
+        // 直接重繪現有訊息，不需重新 fetch
+        renderChatMessages();
+    }
+}
+
+let lastChatList = []; // 快取最近的訊息列表
+
+function renderChatMessages() {
+    const container = document.getElementById('chatMsgs'); if (!container) return;
+    container.innerHTML = '';
+    lastChatList.forEach(m => {
+        if (localMuted.has(m.name) && m.name !== myName) return; // 隱藏
+        const time = m.t ? new Date(m.t).toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '';
+        container.innerHTML += `<div class="msg-row"><span class="msg-name ${m.name===myName?'self':''}">${m.name}</span><span class="msg-bubble">${m.text}</span><span class="msg-time">${time}</span></div>`;
+    });
+    setTimeout(() => { if(container) container.scrollTop = container.scrollHeight; }, 50);
+}
+let bannedHiddenSnapshot = null;
+
+// 判斷某張卡片對被封用戶是否可見
+function isCardVisibleForBanned(bossId, b) {
+    if (!isBanned) return true;
+
+    // 計時中的卡片（targetTime > 0）：對被封用戶直接隱藏（最自然，像沒同步）
+    if (b && b.targetTime > 0) return false;
+
+    // 其他卡片：用快照決定（封鎖當下固定，不會閃爍變動）
+    if (!bannedHiddenSnapshot) {
+        // 尚未建立快照：現在建立
+        bannedHiddenSnapshot = {};
+        Object.keys(window.currentData || {}).forEach(id => {
+            bannedHiddenSnapshot[id] = seededRandom(myFixedId, id) < 0.333; // true = 可見
+        });
+    }
+    // 快照中沒有的新卡片，即時決定
+    if (!(bossId in bannedHiddenSnapshot)) {
+        bannedHiddenSnapshot[bossId] = seededRandom(myFixedId, bossId) < 0.333;
+    }
+    return bannedHiddenSnapshot[bossId];
+}
 
 /* ════════ 權限 ════════ */
 function hasAuth() {
     const pass = protectedRooms[currentRoom];
     if (!pass) return true;
     return localStorage.getItem(`auth_${currentRoom}`) === pass;
+}
+
+// 是否為保護房間（黑名單功能限保護房間）
+function isProtectedRoom() {
+    return !!protectedRooms[currentRoom];
+}
+
+// 黑名單功能權限：必須同時是保護房間 AND 已解鎖該房間管理員
+function hasBanAuth() {
+    return isProtectedRoom() && hasAuth();
 }
 function canIUseCall() {
     if (hasAuth()) return true;
@@ -411,6 +512,7 @@ function toggleCallHelp(id) {
     else alert("號召名額已滿（最多同時 2 個）！\n請先取消現有號召再新增。");
 }
 function toggleMax(id) {
+    if (isBanned) return;
     const b = window.currentData[id]; if (!b) return;
     db.ref(`rooms/${currentRoom}/bosses/${id}/isMax`).set(!b.isMax);
 }
@@ -491,6 +593,7 @@ function toggleChat() {
 }
 function scrollChat() { const el = document.getElementById('chatMsgs'); if(el) setTimeout(() => { el.scrollTop = el.scrollHeight; }, 100); }
 function sendMsg() {
+    if (isBanned) return; // 靜默攔截
     const i = document.getElementById('chatInput'); if (!i.value.trim()) return;
     db.ref(`rooms/${currentRoom}/chat`).push({ name: myName, text: i.value.trim(), t: Date.now() });
     i.value = '';
@@ -650,6 +753,8 @@ function renderList() {
     const auth = hasAuth(), myCallAuth = canIUseCall();
     const clearBtn = document.getElementById('clearAllBtn');
     if (clearBtn) clearBtn.style.display = auth ? 'block' : 'none';
+    const unbanBtn = document.getElementById('unbanAllBtn');
+    if (unbanBtn) unbanBtn.style.display = hasBanAuth() ? 'inline-block' : 'none';
 
     const drawBox = (items, label, collapsible = false) => {
         if (!items.length) return;
@@ -671,6 +776,9 @@ function renderList() {
         const grid = sec.querySelector('.grid');
 
         items.forEach(([id, b]) => {
+            // 被封用戶：計時中卡片直接隱藏，其他卡片依快照隱藏 2/3
+            if (isBanned && !isCardVisibleForBanned(id, b)) return;
+
             const st = getBossStatus(b, id);
             const cp = b.callPriority || 0;
             let cardClass = 'card';
@@ -695,9 +803,9 @@ function renderList() {
             const maxHtml  = `<button class="max-btn ${maxClass}" onclick="toggleMax('${id}')" title="${b.isMax?'取消滿員':'標記滿員'}">M</button>`;
 
             const hasNext = (b.targetTime === 0 && st.weight !== 7);
-            const isLocked = !!b.isFlash;
+            const isLocked = !!b.isFlash || globalNextLocked;
             const nextHtml = hasNext
-                ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color};border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')" ${isLocked?'disabled title="處理中，請稍候..."':''}>${b.displayValue==='ON'?'KILL':'NEXT'}</button>`
+                ? `<button class="btn-next" style="color:${st.isGrey?'#555':st.color};border-color:${st.isGrey?'#555':st.color}" onclick="triggerNext('${b.map}','${b.ch}')" ${isLocked?'disabled title="請稍候..."':''}>${b.displayValue==='ON'?'KILL':'NEXT'}</button>`
                 : '';
 
             if (!hasNext) cardClass += ' compact';
@@ -843,6 +951,7 @@ function startTimer(id, b, isGrey, statusColor) {
 
 /* ════════ saveBoss ════════ */
 function saveBoss(map, ch, val, doFocus = false) {
+    if (isBanned) return; // 靜默攔截
     const pass = protectedRooms[currentRoom];
     if (pass && map.toUpperCase() === "ADMIN" && ch === pass) {
         localStorage.setItem(`auth_${currentRoom}`, pass);
@@ -875,8 +984,9 @@ function saveBoss(map, ch, val, doFocus = false) {
         tt = Date.now() + ((ps.length===2 ? parseInt(ps[0])*60+parseInt(ps[1]) : parseFloat(uv)||0)*60000);
     }
 
-    // 人數 ≥ 30 自動切換為 MAX
-    const autoMax = memberCount >= 30;
+    // 人數 ≥ 30 自動切換為 MAX（保留舊 isMax 若未達門檻）
+    const oldIsMax = oldData ? !!oldData.isMax : false;
+    const autoMax = memberCount >= 30 ? true : oldIsMax;
 
     const updatePayload = {
         map, ch, targetTime: tt, lastInput: uv, displayValue: dv,
@@ -887,7 +997,7 @@ function saveBoss(map, ch, val, doFocus = false) {
     if (tt > 0 || uv.startsWith("DE")) {
         const oldCP = oldData ? (oldData.callPriority || 0) : 0;
         updatePayload.callPriority = 0;
-        // 進入計時或擊殺時，重置人數與MAX
+        // 計時 或 擊殺(DE) 才重置人數與MAX；NEXT(R→R, R→ON) 不重置
         updatePayload.memberCount = 0;
         updatePayload.isMax = false;
         if (oldCP === 1) {
@@ -963,11 +1073,144 @@ function updateOnlineUsersDisplay() {
     const onlineCounts = currentOnlineUsers.map(n => contributorCounts[n] || 0);
     const onlineMax = Math.max(...onlineCounts, 0);
     const getColor = name => { const c=contributorCounts[name]||0,isG=name.startsWith('#'); if(!c) return '#555'; return `hsl(50,${(isG?30:40)+(c/contributorMax)*(isG?40:60)}%,${(isG?40:55)+(c/contributorMax)*(isG?30:35)}%)`; };
+
     container.innerHTML = currentOnlineUsers.map(name => {
-        const color = getColor(name), count = contributorCounts[name] || 0;
+        const color = getColor(name);
+        const count = contributorCounts[name] || 0;
         const isTop = (count === onlineMax && count >= 5);
-        return `<span class="${isTop?'top-editor':''}" style="color:${color};" title="已編輯 ${count} 次">${name}</span>`;
+        const isSelf = (name === myName);
+        const isMuted = localMuted.has(name);
+
+        let spanStyle, onclick, title;
+        if (isSelf) {
+            // 自己：不可點
+            spanStyle = `color:${color};`;
+            onclick = '';
+            title = `已編輯 ${count} 次`;
+        } else if (hasBanAuth()) {
+            // 管理員：點擊黑名單
+            spanStyle = `color:${color};cursor:pointer;`;
+            onclick = `onclick="adminBanUser('${name.replace(/'/g,"\\'")}', event)"`;
+            title = `已編輯 ${count} 次（點擊加入黑名單）`;
+        } else {
+            // 一般用戶：點擊隱藏/解除隱藏
+            const displayColor = isMuted ? '#555' : color;
+            spanStyle = `color:${displayColor};cursor:pointer;${isMuted ? 'text-decoration:line-through;' : ''}`;
+            onclick = `onclick="toggleMuteUser('${name.replace(/'/g,"\\'")}')"`; 
+            title = isMuted ? `${name}（已隱藏，點擊解除）` : `已編輯 ${count} 次（點擊隱藏留言）`;
+        }
+
+        return `<span class="${isTop&&!isMuted?'top-editor':''}" style="${spanStyle}" ${onclick} title="${title}">${name}</span>`;
     }).join('<span style="color:#333;"> · </span>');
+}
+
+/* ════════ 黑名單管理 ════════ */
+let banPanelOpen = false;
+
+function toggleBanPanel() {
+    if (!hasBanAuth()) return;
+    banPanelOpen = !banPanelOpen;
+
+    let panel = document.getElementById('banPanel');
+    if (!panel) {
+        // 首次開啟才建立 DOM
+        panel = document.createElement('div');
+        panel.id = 'banPanel';
+        panel.style.cssText = 'position:fixed;bottom:20px;right:20px;width:300px;max-height:400px;background:#1a0a0a;border:1px solid #622;border-radius:10px;z-index:8888;flex-direction:column;overflow:hidden;box-shadow:0 4px 20px rgba(255,50,50,0.15);';
+        panel.innerHTML = `
+            <div style="padding:8px 12px;background:#2a0a0a;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #622;">
+                <span style="color:#f66;font-size:12px;font-weight:bold;">🚫 黑名單管理</span>
+                <div style="display:flex;gap:6px;align-items:center;">
+                    <button onclick="adminUnbanAll()" style="background:none;border:1px solid #844;color:#a66;font-size:10px;padding:2px 6px;border-radius:4px;cursor:pointer;">全部解封</button>
+                    <button onclick="toggleBanPanel()" style="background:none;border:none;color:#666;font-size:16px;cursor:pointer;padding:0;line-height:1;">✕</button>
+                </div>
+            </div>
+            <div id="banList" style="flex:1;overflow-y:auto;padding:8px 10px;font-size:11px;font-family:monospace;"></div>
+        `;
+        document.body.appendChild(panel);
+    }
+
+    panel.style.display = banPanelOpen ? 'flex' : 'none';
+    if (banPanelOpen) renderBanList();
+}
+
+function renderBanList() {
+    const container = document.getElementById('banList'); if (!container) return;
+    db.ref(`rooms/${currentRoom}/banned`).once('value', s => {
+        const banned = s.val() || {};
+        const entries = Object.entries(banned);
+        if (!entries.length) {
+            container.innerHTML = '<div style="color:#555;text-align:center;padding:20px 0;">目前無封鎖紀錄</div>';
+            return;
+        }
+        container.innerHTML = '';
+        entries.sort((a,b) => (b[1].bannedAt||0)-(a[1].bannedAt||0)).forEach(([key, data]) => {
+            const time = data.bannedAt ? new Date(data.bannedAt).toLocaleString('zh-TW',{hour12:false}) : '不明';
+            const div = document.createElement('div');
+            div.style.cssText = 'border-bottom:1px solid #2a1010;padding:6px 0;display:flex;flex-direction:column;gap:3px;';
+            div.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="color:#f88;font-weight:bold;">${data.name || key}</span>
+                    <button onclick="adminUnban('${key}')" style="background:none;border:1px solid #444;color:#888;font-size:9px;padding:1px 5px;border-radius:3px;cursor:pointer;">解封</button>
+                </div>
+                <div style="color:#555;font-size:10px;">${time}｜由 ${data.bannedBy||'?'} 封鎖</div>
+                ${data.note ? `<div style="color:#a88;font-size:10px;">備註：${data.note}</div>` : ''}
+                <input placeholder="加備註…" onkeydown="if(event.key==='Enter')adminAddNote('${key}',this.value)"
+                    style="background:#0d0505;border:1px solid #333;color:#aaa;font-size:10px;padding:2px 5px;border-radius:3px;outline:none;width:100%;box-sizing:border-box;">
+            `;
+            container.appendChild(div);
+        });
+    });
+}
+
+function adminBanUser(name, event) {
+    if (event) event.stopPropagation();
+    if (!hasBanAuth()) return;
+    if (name === myName) return;
+
+    // 必填原由
+    const reason = prompt(`將「${name}」加入黑名單\n\n請填寫封鎖原由（必填）：`);
+    if (reason === null) return; // 取消
+    if (!reason.trim()) {
+        alert('請填寫封鎖原由才能加入黑名單。');
+        return;
+    }
+
+    db.ref(`rooms/${currentRoom}/users`).once('value', s => {
+        const users = s.val() || {};
+        let targetFixedId = null;
+        Object.values(users).forEach(u => { if (u.name === name && u.fixedId) targetFixedId = u.fixedId; });
+
+        const banKey = targetFixedId
+            ? targetFixedId.replace(/[.#$[\]]/g,'_')
+            : ('name_' + name.replace(/[.#$[\]]/g,'_'));
+
+        db.ref(`rooms/${currentRoom}/banned/${banKey}`).set({
+            name, fixedId: targetFixedId || null,
+            bannedAt: Date.now(), bannedBy: myName,
+            note: reason.trim()
+        });
+        if (banPanelOpen) setTimeout(renderBanList, 500);
+    });
+}
+
+function adminUnban(key) {
+    if (!hasBanAuth()) return;
+    db.ref(`rooms/${currentRoom}/banned/${key}`).remove();
+    setTimeout(renderBanList, 300);
+}
+
+function adminUnbanAll() {
+    if (!hasBanAuth()) return;
+    if (!confirm('確定解除所有封鎖？')) return;
+    db.ref(`rooms/${currentRoom}/banned`).remove();
+    setTimeout(renderBanList, 300);
+}
+
+function adminAddNote(key, note) {
+    if (!hasBanAuth() || !note.trim()) return;
+    db.ref(`rooms/${currentRoom}/banned/${key}/note`).set(note.trim());
+    setTimeout(renderBanList, 300);
 }
 
 /* ════════ triggerNext ════════ */
@@ -998,9 +1241,7 @@ function startSession(id) {
     });
     let inputName = document.getElementById('userNameInput').value.trim();
     if (!inputName) {
-        let savedID = localStorage.getItem('tos_fixed_id');
-        if (!savedID) { savedID = "#" + Math.floor(1000 + Math.random() * 9000); localStorage.setItem('tos_fixed_id', savedID); }
-        myName = savedID;
+        myName = getFixedIdPlaceholder(); // 已確保存在 localStorage
     } else { myName = inputName; }
     db.ref(`rooms/${currentRoom}/users`).once('value', snapshot => {
         const users = snapshot.val() ? Object.values(snapshot.val()) : [];
@@ -1010,7 +1251,22 @@ function startSession(id) {
         document.getElementById('displayID').innerText = currentRoom;
         updateVolBg(document.getElementById('volRange'));
         document.getElementById('bossInput').addEventListener('keypress', e => { if(e.key==='Enter') addBoss(); });
-        db.ref(`rooms/${currentRoom}/users`).push({ name: myName }).onDisconnect().remove();
+        const userRef = db.ref(`rooms/${currentRoom}/users`).push({ name: myName, fixedId: myFixedId });
+        userRef.onDisconnect().remove();
+
+        // 即時監聽黑名單（僅保護房間，若自己被封則啟動隱形懲罰）
+        if (isProtectedRoom()) {
+            db.ref(`rooms/${currentRoom}/banned`).on('value', s => {
+                const banned = s.val() || {};
+                const myKey = myFixedId ? myFixedId.replace(/[.#$[\]]/g,'_') : '';
+                const nameKey = 'name_' + myName.replace(/[.#$[\]]/g,'_');
+                const newBanned = !!(myKey && banned[myKey]) || !!(banned[nameKey]);
+                // 封鎖狀態改變時重設快照，重新決定哪些卡片隱藏
+                if (newBanned !== isBanned) bannedHiddenSnapshot = null;
+                isBanned = newBanned;
+                if (banPanelOpen) renderBanList();
+            });
+        }
         db.ref(`rooms/${currentRoom}/users`).on('value', s => {
             const u = Object.values(s.val() || {});
             document.getElementById('onlineCount').innerText = u.length;
@@ -1031,7 +1287,41 @@ function startSession(id) {
                 }
                 lastProcessedInput[k] = v;
             });
-            window.currentData = incoming; renderList();
+            window.currentData = incoming;
+            // 有任何卡片狀態變化 → 鎖定所有 NEXT/KILL 0.5 秒，防止錯報
+            const hasChange = Object.keys(incoming).some(k => {
+                const v = incoming[k].lastInput.toString().toUpperCase();
+                return v !== lastProcessedInput[k];
+            });
+            if (hasChange) {
+                globalNextLocked = true;
+                clearTimeout(window._nextLockTimer);
+                window._nextLockTimer = setTimeout(() => {
+                    globalNextLocked = false;
+                    // 解鎖後重繪，讓按鈕恢復可點擊狀態
+                    renderList();
+                }, 500);
+            }
+            // 若有 inline-input 正在編輯，檢查是否是該卡片被外部改動
+            const activeInput = document.querySelector('.inline-input');
+            if (activeInput) {
+                // 找出正在編輯的卡片 id
+                const editingTitleRow = activeInput.closest('[id^="title_"]');
+                const editingId = editingTitleRow ? editingTitleRow.id.replace('title_', '') : null;
+                // 只有當該卡片被他人修改時才中斷編輯並重繪
+                if (editingId && incoming[editingId]) {
+                    const cur = incoming[editingId].lastInput.toString().toUpperCase();
+                    if (cur !== lastProcessedInput[editingId]) {
+                        // 他人動了這張卡 → 中斷編輯，重繪
+                        renderList();
+                    }
+                    // 否則：其他卡片被編輯，不打擾，不重繪
+                } else {
+                    renderList();
+                }
+            } else {
+                renderList();
+            }
         });
         initChat(); initLogs(); initNotice();
     });
@@ -1095,25 +1385,25 @@ function initChat() {
     document.getElementById('chatInput').addEventListener('keypress', e => { if(e.key==='Enter') sendMsg(); });
     db.ref(`rooms/${currentRoom}/chat`).limitToLast(50).on('value', s => {
         const container = document.getElementById('chatMsgs'); if(!container) return;
-        container.innerHTML = '';
-        const list = Object.values(s.val()||{}).sort((a,b) => a.t-b.t);
-        list.forEach(m => {
-            const time = m.t ? new Date(m.t).toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '';
-            container.innerHTML += `<div class="msg-row"><span class="msg-name ${m.name===myName?'self':''}">${m.name}</span><span class="msg-bubble">${m.text}</span><span class="msg-time">${time}</span></div>`;
-        });
-        if (chatMode==='hidden'&&list.length>0&&list[list.length-1].t>lastReadMsgTime&&list[list.length-1].name!==myName) document.getElementById('chatDot').classList.add('show');
-        scrollChat();
+        lastChatList = Object.values(s.val()||{}).sort((a,b) => a.t-b.t);
+        renderChatMessages();
+        if (chatMode==='hidden' && lastChatList.length>0 &&
+            lastChatList[lastChatList.length-1].t > lastReadMsgTime &&
+            lastChatList[lastChatList.length-1].name !== myName) {
+            document.getElementById('chatDot').classList.add('show');
+        }
     });
 }
 </script>
-    
 <!-- ═══════════════════════════════════════════════════════════════════════
-     📷 TOS M FB TIME - 螢幕偵測模組 v0.5.3 Beta
+     📷 TOS M FB TIME - 螢幕偵測模組 v0.6.0 Beta
 
-     【v0.5.3 更新】
-     📸 精簡模式新增擷取預覽（3 張小圖 + 手動標記）
-     🔕 無效偵測（地圖/分流 = ?）不再彈通知
-     📁 模板庫、擷取預覽獨立收合狀態
+     【v0.6.0 演算法重大升級】
+     🧠 三重相似度演算法：歐氏距離 + 餘弦相似度 + pHash
+     🎯 多重指標投票 → 大幅降低跳躍式誤判
+     📈 模板上限 15 → 30 張
+     🔬 偵錯比對：看模板比對的細節，找出搞鬼的模板
+     ✨ 自適應二值化（去除背景雜訊）
 ═══════════════════════════════════════════════════════════════════════ -->
 <script>
 (function() {
@@ -1124,7 +1414,7 @@ function initChat() {
   const TEMPLATE_STORAGE_KEY = 'tosm_detector_templates_v5';
   const TEMPLATE_MIN_SIM = 0.85;   // 相似度 >= 此值直接採信模板
   const TEMPLATE_AMBIGUOUS = 0.70; // 相似度介於兩者之間為不確定
-  const MAX_TEMPLATES_PER_LABEL = 15;
+  const MAX_TEMPLATES_PER_LABEL = 30;
 
   // ═══════════════════════════════════════════════
   // 模板資料庫
@@ -1151,6 +1441,8 @@ function initChat() {
       }
     },
 
+    // v0.6: 將原始圖片正規化並同時計算多種特徵
+    // 回傳：{ pixels (32x32 灰階), pHash (64-bit BigInt), magnitude (用於餘弦相似度) }
     normalize(sourceCanvas) {
       const norm = document.createElement('canvas');
       norm.width = TEMPLATE_SIZE; norm.height = TEMPLATE_SIZE;
@@ -1168,6 +1460,44 @@ function initChat() {
       return norm;
     },
 
+    // v0.6: 從正規化圖片計算多種特徵
+    extractFeatures(canvas) {
+      const ctx = canvas.getContext('2d');
+      const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const len = canvas.width * canvas.height;
+      const pixels = new Float32Array(len);
+      let mag = 0;
+      for (let i = 0, j = 0; i < img.data.length; i += 4, j++) {
+        pixels[j] = img.data[i];
+        mag += pixels[j] * pixels[j];
+      }
+      // v0.6 新增：pHash（簡化版：基於平均亮度的二值化雜湊）
+      // 計算平均
+      let sum = 0;
+      for (let i = 0; i < len; i++) sum += pixels[i];
+      const avg = sum / len;
+      // 64-bit hash（從 32x32 採樣 8x8 = 64 個位置）
+      const hash = new Uint8Array(64);
+      const step = TEMPLATE_SIZE / 8;
+      for (let y = 0; y < 8; y++) {
+        for (let x = 0; x < 8; x++) {
+          // 取每個 4x4 區塊的平均
+          let regionSum = 0;
+          for (let dy = 0; dy < step; dy++) {
+            for (let dx = 0; dx < step; dx++) {
+              const px = Math.floor(x * step + dx);
+              const py = Math.floor(y * step + dy);
+              regionSum += pixels[py * TEMPLATE_SIZE + px];
+            }
+          }
+          const regionAvg = regionSum / (step * step);
+          hash[y * 8 + x] = regionAvg > avg ? 1 : 0;
+        }
+      }
+      return { pixels, magnitude: Math.sqrt(mag), hash };
+    },
+
+    // 舊 API：保留向下相容，回傳像素陣列
     getPixels(canvas) {
       const ctx = canvas.getContext('2d');
       const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -1197,7 +1527,7 @@ function initChat() {
       this.save();
     },
 
-    // v0.5.3: 刪除某標籤的某一張模板
+    // v0.6.0: 刪除某標籤的某一張模板
     deleteAt(category, label, index) {
       if (!this.data[category] || !this.data[category][label]) return false;
       if (index < 0 || index >= this.data[category][label].length) return false;
@@ -1224,28 +1554,99 @@ function initChat() {
       });
     },
 
+    // v0.6: 從 dataURL 載入並計算所有特徵
+    async dataURLToFeatures(dataURL) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const c = document.createElement('canvas');
+          c.width = TEMPLATE_SIZE; c.height = TEMPLATE_SIZE;
+          c.getContext('2d').drawImage(img, 0, 0);
+          resolve(this.extractFeatures(c));
+        };
+        img.onerror = reject;
+        img.src = dataURL;
+      });
+    },
+
+    // v0.6: 三重相似度指標
+    // 1. 歐氏距離（整體像素差）
+    euclideanSim(a, b) {
+      let sum = 0;
+      const len = a.length;
+      for (let i = 0; i < len; i++) {
+        const diff = a[i] - b[i];
+        sum += diff * diff;
+      }
+      const dist = Math.sqrt(sum);
+      const maxDist = Math.sqrt(len * 255 * 255);
+      return 1 - (dist / maxDist);
+    },
+
+    // 2. 餘弦相似度（向量夾角，不受亮度影響）
+    cosineSim(a, b, magA, magB) {
+      let dot = 0;
+      const len = a.length;
+      for (let i = 0; i < len; i++) {
+        dot += a[i] * b[i];
+      }
+      if (magA === 0 || magB === 0) return 0;
+      return dot / (magA * magB);
+    },
+
+    // 3. pHash Hamming 距離 → 相似度
+    pHashSim(hashA, hashB) {
+      let diff = 0;
+      for (let i = 0; i < hashA.length; i++) {
+        if (hashA[i] !== hashB[i]) diff++;
+      }
+      return 1 - (diff / hashA.length);
+    },
+
     async match(category, sourceCanvas) {
       const templates = this.data[category];
       if (!templates || Object.keys(templates).length === 0) return null;
       const norm = this.normalize(sourceCanvas);
-      const queryPixels = this.getPixels(norm);
+      const queryFeat = this.extractFeatures(norm);
+
       const results = [];
+      const allMatches = [];  // 用於偵錯：每個模板的詳細比對結果
+
       for (const [label, dataURLs] of Object.entries(templates)) {
-        let bestDist = Infinity;
-        for (const dataURL of dataURLs) {
-          const tplPixels = await this.dataURLToPixels(dataURL);
-          const dist = this.euclideanDistance(queryPixels, tplPixels);
-          if (dist < bestDist) bestDist = dist;
+        let bestSim = -1;
+        let bestDetail = null;
+        for (let idx = 0; idx < dataURLs.length; idx++) {
+          const dataURL = dataURLs[idx];
+          const tplFeat = await this.dataURLToFeatures(dataURL);
+
+          // 三重相似度
+          const eucSim = this.euclideanSim(queryFeat.pixels, tplFeat.pixels);
+          const cosSim = this.cosineSim(queryFeat.pixels, tplFeat.pixels, queryFeat.magnitude, tplFeat.magnitude);
+          const hashSim = this.pHashSim(queryFeat.hash, tplFeat.hash);
+
+          // v0.6: 加權平均（pHash 最重要，餘弦次之，歐氏最輕）
+          const combined = hashSim * 0.5 + cosSim * 0.3 + eucSim * 0.2;
+
+          allMatches.push({ label, idx, eucSim, cosSim, hashSim, combined });
+
+          if (combined > bestSim) {
+            bestSim = combined;
+            bestDetail = { idx, eucSim, cosSim, hashSim, combined };
+          }
         }
-        const maxPossibleDist = Math.sqrt(TEMPLATE_SIZE * TEMPLATE_SIZE * 255 * 255);
-        const similarity = 1 - (bestDist / maxPossibleDist);
-        results.push({ label, similarity, dist: bestDist });
+        results.push({ label, similarity: bestSim, detail: bestDetail });
       }
+
       results.sort((a, b) => b.similarity - a.similarity);
+      // 偵錯資料：所有模板的比對結果（按 combined 排序）
+      allMatches.sort((a, b) => b.combined - a.combined);
+
       return {
         label: results[0].label,
         similarity: results[0].similarity,
-        topN: results.slice(0, 5)
+        topN: results.slice(0, 5),
+        // v0.6: 額外提供詳細所有比對結果
+        allMatches: allMatches.slice(0, 10)
       };
     },
 
@@ -1369,7 +1770,7 @@ function initChat() {
     lastBadgeCanvas: null,
     lastChCanvas: null,
     muted: false,  // v0.5 新增：靜音狀態
-    trainingMode: false  // v0.5.3 新增：訓練模式（只存模板不送 Firebase）
+    trainingMode: false  // v0.6.0 新增：訓練模式（只存模板不送 Firebase）
   };
 
   function getBadgeRect(statusRegion) {
@@ -1899,7 +2300,7 @@ function initChat() {
     const btn = document.createElement('button');
     btn.id = 'detectBtn';
     btn.className = 'audio-btn';
-    btn.title = '螢幕偵測 v0.5.3';
+    btn.title = '螢幕偵測 v0.6.0';
     btn.innerHTML = '📷';
     btn.onclick = togglePanel;
     audioControls.appendChild(btn);
@@ -1940,7 +2341,7 @@ function initChat() {
       }
       #detectorPanel .panel-ctrl-btn:hover { color: #ddd; border-color: #666; }
       #detectorPanel .panel-ctrl-btn.muted { color: #f33; border-color: #622; }
-      /* v0.5.3: 訓練模式啟用時 */
+      /* v0.6.0: 訓練模式啟用時 */
       #detectorPanel .panel-ctrl-btn.training {
         color: #fa0; border-color: #fa0;
         background: rgba(255, 170, 0, 0.15);
@@ -2151,7 +2552,7 @@ function initChat() {
         border: 1px solid #555; background: #000;
       }
 
-      /* v0.5.3: 模板瀏覽 */
+      /* v0.6.0: 模板瀏覽 */
       #detectorPanel .tpl-browse-grid {
         display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
         gap: 4px; margin-top: 8px;
@@ -2219,7 +2620,7 @@ function initChat() {
         font-weight: bold;
       }
 
-      /* v0.5.3: 精簡擷取預覽 */
+      /* v0.6.0: 精簡擷取預覽 */
       #detectorPanel .mini-preview-grid {
         display: grid; grid-template-columns: 1fr 2fr 1.2fr; gap: 4px;
         align-items: start;
@@ -2250,6 +2651,98 @@ function initChat() {
       #detectorPanel #dMiniPreviewBody.collapsed {
         max-height: 0; opacity: 0; margin-top: 0 !important;
       }
+
+      /* v0.6: 偵錯比對模態框 */
+      #dInspectModal {
+        display: none;
+        position: fixed; inset: 0;
+        background: rgba(0, 0, 0, 0.85);
+        z-index: 10000;
+        justify-content: center;
+        align-items: center;
+      }
+      #dInspectModal.show { display: flex; }
+      #dInspectModal .inspect-box {
+        background: #111; border: 2px solid #08f;
+        border-radius: 10px;
+        max-width: 600px; width: 90%;
+        max-height: 85vh;
+        display: flex; flex-direction: column;
+        overflow: hidden;
+      }
+      body.light #dInspectModal .inspect-box {
+        background: #fff; border-color: #08f;
+      }
+      #dInspectModal .inspect-header {
+        padding: 12px 16px;
+        background: #1a1a1a;
+        border-bottom: 1px solid #333;
+        display: flex; justify-content: space-between; align-items: center;
+        color: #08f; font-size: 14px; font-weight: bold;
+      }
+      body.light #dInspectModal .inspect-header { background: #f5f5f2; border-bottom-color: #ddd; }
+      #dInspectModal .inspect-close {
+        background: none; border: none; color: #888;
+        font-size: 18px; cursor: pointer; padding: 0;
+      }
+      #dInspectModal .inspect-body {
+        overflow-y: auto; padding: 14px;
+        font-size: 12px; color: #ccc;
+      }
+      body.light #dInspectModal .inspect-body { color: #333; }
+      #dInspectModal .inspect-query {
+        display: flex; gap: 12px; align-items: center;
+        margin-bottom: 14px; padding: 10px;
+        background: #0a0a0a; border-radius: 6px;
+        border: 1px solid #333;
+      }
+      body.light #dInspectModal .inspect-query { background: #f5f5f2; border-color: #ddd; }
+      #dInspectModal .inspect-query canvas {
+        width: 64px; height: 64px;
+        image-rendering: pixelated;
+        border: 1px solid #555; background: #000;
+      }
+      #dInspectModal .inspect-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 11px;
+        margin-top: 8px;
+      }
+      #dInspectModal .inspect-table th,
+      #dInspectModal .inspect-table td {
+        padding: 4px 6px;
+        border-bottom: 1px solid #222;
+        text-align: center;
+      }
+      body.light #dInspectModal .inspect-table th,
+      body.light #dInspectModal .inspect-table td {
+        border-bottom-color: #eee;
+      }
+      #dInspectModal .inspect-table th {
+        background: #1a1a1a; color: #08f; font-weight: bold;
+      }
+      body.light #dInspectModal .inspect-table th { background: #f0f0f0; color: #0066aa; }
+      #dInspectModal .inspect-table tr.winner { background: rgba(0, 255, 0, 0.1); }
+      #dInspectModal .inspect-table tr.suspect { background: rgba(255, 80, 80, 0.1); }
+      #dInspectModal .inspect-table .tpl-thumb {
+        width: 32px; height: 32px;
+        image-rendering: pixelated;
+        border: 1px solid #444; background: #000;
+        vertical-align: middle;
+      }
+      #dInspectModal .inspect-table .del-tpl {
+        background: #f33; color: #fff; border: none;
+        padding: 2px 5px; border-radius: 3px;
+        font-size: 10px; cursor: pointer;
+      }
+      #dInspectModal .inspect-bar {
+        display: inline-block; height: 4px; width: 40px;
+        background: #333; border-radius: 2px; overflow: hidden;
+        vertical-align: middle; margin-left: 4px;
+      }
+      #dInspectModal .inspect-bar-fill {
+        height: 100%; background: #0f0;
+      }
     `;
     document.head.appendChild(style);
 
@@ -2258,7 +2751,7 @@ function initChat() {
     panel.className = 'compact';
     panel.innerHTML = `
       <div class="panel-header" id="dPanelHeader">
-        <h3>📷 偵測器 <span class="small">v0.5.3</span></h3>
+        <h3>📷 偵測器 <span class="small">v0.6.0</span></h3>
         <div>
           <button class="panel-ctrl-btn" id="dTrainToggle" title="訓練模式：只存模板不送 Firebase">🎯</button>
           <button class="panel-ctrl-btn" id="dMuteToggle" title="靜音切換">🔔</button>
@@ -2283,9 +2776,10 @@ function initChat() {
               <button class="dbtn red" id="dMiniStop" disabled>⏹</button>
               <button class="dbtn" id="dMiniAuto" disabled>🔄 監控</button>
               <button class="dbtn red" id="dMiniStopAuto" disabled>⏸</button>
+              <button class="dbtn gray" id="dMiniInspect" title="檢視當前偵測的詳細比對結果">🔬</button>
             </div>
           </div>
-          <!-- v0.5.3: 擷取預覽 + 手動標記（可收合） -->
+          <!-- v0.6.0: 擷取預覽 + 手動標記（可收合） -->
           <div class="sec" style="padding:6px;border:1px solid #08f;background:rgba(0,136,255,0.05)">
             <div class="mini-tpl-header" id="dMiniPreviewHeader" style="color:#08f">
               <span class="collapse-arrow" id="dMiniPreviewArrow">▼</span>
@@ -2437,7 +2931,7 @@ function initChat() {
 
             <label class="bold-opt"><input type="checkbox" id="dAutoLearn" checked> 🎓 確認送出時自動加入模板</label>
 
-            <!-- v0.5.3: 瀏覽模板 -->
+            <!-- v0.6.0: 瀏覽模板 -->
             <div style="margin-top:8px;padding-top:8px;border-top:1px dashed #444">
               <div style="margin-bottom:6px"><b>🔍 瀏覽模板</b></div>
               <div class="correction-row">
@@ -2503,6 +2997,21 @@ function initChat() {
       </div>
     `;
     document.body.appendChild(panel);
+
+    // v0.6: 注入偵錯模態框
+    const inspectModal = document.createElement('div');
+    inspectModal.id = 'dInspectModal';
+    inspectModal.innerHTML = `
+      <div class="inspect-box">
+        <div class="inspect-header">
+          <span>🔬 模板比對診斷</span>
+          <button class="inspect-close" onclick="window.__detector.closeInspect()">✕</button>
+        </div>
+        <div class="inspect-body" id="dInspectBody"></div>
+      </div>
+    `;
+    document.body.appendChild(inspectModal);
+
     bindEvents();
     initLearning();
     loadPanelPos();
@@ -2607,11 +3116,11 @@ function initChat() {
     if (totalEl) totalEl.textContent = `(階段 ${phaseTotal} + 分流 ${chTotal}，約 ${kb} KB)`;
     if (miniTotalEl) miniTotalEl.textContent = `${phaseTotal}+${chTotal}`;
 
-    // v0.5.3: 更新瀏覽器的標籤選單
+    // v0.6.0: 更新瀏覽器的標籤選單
     refreshBrowseLabels();
   }
 
-  // v0.5.3: 瀏覽模板相關函式
+  // v0.6.0: 瀏覽模板相關函式
   function refreshBrowseLabels() {
     const catSel = document.getElementById('dBrowseCategory');
     const labelSel = document.getElementById('dBrowseLabel');
@@ -2671,7 +3180,7 @@ function initChat() {
     canvas.getContext('2d').drawImage(state.lastBadgeCanvas, 0, 0, 64, 64);
   }
 
-  // v0.5.3: 更新精簡模式的擷取預覽 3 張小圖
+  // v0.6.0: 更新精簡模式的擷取預覽 3 張小圖
   function updateMiniPreview(mapRegion) {
     // 階段徽章預覽
     const badgeCan = document.getElementById('dMiniPrevBadge');
@@ -2807,7 +3316,7 @@ function initChat() {
     updateMuteUI();
   }
 
-  // v0.5.3: 訓練模式 UI 更新
+  // v0.6.0: 訓練模式 UI 更新
   function updateTrainModeUI() {
     const btn = document.getElementById('dTrainToggle');
     const panel = document.getElementById('detectorPanel');
@@ -2967,7 +3476,7 @@ function initChat() {
       log(state.muted ? '🔕 已靜音' : '🔔 音效開啟', '#0f0');
     };
 
-    // v0.5.3: 訓練模式切換
+    // v0.6.0: 訓練模式切換
     document.getElementById('dTrainToggle').onclick = () => {
       state.trainingMode = !state.trainingMode;
       localStorage.setItem('tosm_detector_training_mode', state.trainingMode ? '1' : '0');
@@ -2978,7 +3487,7 @@ function initChat() {
         state.trainingMode ? '#fa0' : '#0f0');
     };
 
-    // v0.5.3: 瀏覽模板類別/標籤變更
+    // v0.6.0: 瀏覽模板類別/標籤變更
     const browseCat = document.getElementById('dBrowseCategory');
     const browseLabel = document.getElementById('dBrowseLabel');
     if (browseCat) browseCat.onchange = refreshBrowseLabels;
@@ -3000,7 +3509,7 @@ function initChat() {
       };
     }
 
-    // v0.5.3: 精簡擷取預覽收合
+    // v0.6.0: 精簡擷取預覽收合
     const miniPrevHeader = document.getElementById('dMiniPreviewHeader');
     if (miniPrevHeader) {
       const collapsed = localStorage.getItem('tosm_detector_mini_prev_collapsed') === '1';
@@ -3025,6 +3534,12 @@ function initChat() {
     document.getElementById('dMiniStop').onclick = stopCapture;
     document.getElementById('dMiniAuto').onclick = startAuto;
     document.getElementById('dMiniStopAuto').onclick = stopAuto;
+    // v0.6: 偵錯比對按鈕
+    document.getElementById('dMiniInspect').onclick = () => window.__detector.openInspect();
+    // 點偵錯模態背景關閉
+    document.getElementById('dInspectModal').addEventListener('click', e => {
+      if (e.target.id === 'dInspectModal') window.__detector.closeInspect();
+    });
 
     // 模板匯入
     document.getElementById('dTplImport').onchange = async (e) => {
@@ -3238,7 +3753,7 @@ function initChat() {
 
     // 更新模板預覽
     showTplPreview();
-    // v0.5.3: 更新精簡模式的擷取預覽
+    // v0.6.0: 更新精簡模式的擷取預覽
     updateMiniPreview();
 
     return state.lastResult;
@@ -3278,7 +3793,7 @@ function initChat() {
     else if (['R1','R2','R3','R4'].includes(to)) { val = to; label = `🔸 進入 ${to}`; }
     else return;
 
-    // v0.5.3: 地圖或分流辨識不出來 → 完全不通知（避免垃圾警示）
+    // v0.6.0: 地圖或分流辨識不出來 → 完全不通知（避免垃圾警示）
     if (!result.mapResult || !result.chResult) {
       if (state.debugMode) {
         log(`⏭️ 略過：${label}（地圖/分流無法辨識）`, '#666');
@@ -3301,7 +3816,7 @@ function initChat() {
 
     log(`${label} | ${result.mapResult} ${result.chResult} (${(overallConf*100)|0}%)`, '#f90');
 
-    // v0.5.3: 訓練模式下「自動送出」= 自動存模板
+    // v0.6.0: 訓練模式下「自動送出」= 自動存模板
     if (autoSubmit && overallConf >= minConf) {
       doSubmit(result.mapResult, result.chResult, val);
       return;
@@ -3346,7 +3861,7 @@ function initChat() {
 
   function doSubmit(map, ch, val) {
     try {
-      // v0.5.3: 訓練模式 → 只存模板，不送 Firebase
+      // v0.6.0: 訓練模式 → 只存模板，不送 Firebase
       if (state.trainingMode) {
         let phaseLabel = null;
         if (val === 'ON') phaseLabel = 'ON';
@@ -3471,7 +3986,7 @@ function initChat() {
       log('🗑 已清空所有模板', '#f33');
       updateTplDisplay();
     },
-    // v0.5.3: 刪除單張模板
+    // v0.6.0: 刪除單張模板
     deleteTpl: (category, label, index) => {
       if (!confirm(`確定要刪除 ${category === 'ch' ? 'CH.'+label : label} 的第 ${index+1} 張模板？`)) return;
       const ok = TemplateDB.deleteAt(category, label, index);
@@ -3480,7 +3995,7 @@ function initChat() {
         updateTplDisplay();
       }
     },
-    // v0.5.3: 精簡模式的快速標記
+    // v0.6.0: 精簡模式的快速標記
     quickSavePhase: () => {
       if (!state.lastBadgeCanvas) { log('❌ 尚無徽章圖片（需先擷取）', '#f33'); return; }
       const label = document.getElementById('dQuickPhaseLabel').value;
@@ -3502,6 +4017,151 @@ function initChat() {
         updateTplDisplay();
       } else {
         log('⚠️ 此模板已存在', '#fa0');
+      }
+    },
+
+    // v0.6: 偵錯比對
+    openInspect: async () => {
+      if (!state.lastBadgeCanvas && !state.lastChCanvas) {
+        log('❌ 尚未擷取任何畫面', '#f33');
+        return;
+      }
+      const modal = document.getElementById('dInspectModal');
+      const body = document.getElementById('dInspectBody');
+
+      let html = '';
+
+      // 階段比對
+      if (state.lastBadgeCanvas && Object.keys(TemplateDB.data.phase).length > 0) {
+        const m = await TemplateDB.match('phase', state.lastBadgeCanvas);
+        const queryDataURL = TemplateDB.normalize(state.lastBadgeCanvas).toDataURL('image/png');
+        html += `
+          <div style="margin-bottom:8px;color:#08f;font-weight:bold">📌 階段比對</div>
+          <div class="inspect-query">
+            <canvas width="64" height="64" id="dInspectQueryPhase"></canvas>
+            <div>
+              <div>當前畫面（已正規化為 32×32 灰階）</div>
+              <div style="margin-top:4px;font-size:11px;color:#888">
+                系統判定：<span style="color:#0f0;font-weight:bold">${m.label}</span>
+                （信心度 ${(m.similarity*100).toFixed(1)}%）
+              </div>
+            </div>
+          </div>
+          <table class="inspect-table">
+            <thead>
+              <tr>
+                <th>圖</th><th>標籤</th><th>歐氏</th><th>餘弦</th><th>pHash</th>
+                <th>總分</th><th></th>
+              </tr>
+            </thead>
+            <tbody>`;
+        for (const item of m.allMatches) {
+          const tplDataURL = TemplateDB.data.phase[item.label][item.idx];
+          const isWinner = item === m.allMatches[0];
+          const isSuspect = !isWinner && (m.allMatches[0].label !== item.label) && item.combined > 0.7;
+          html += `
+            <tr class="${isWinner ? 'winner' : (isSuspect ? 'suspect' : '')}">
+              <td><img class="tpl-thumb" src="${tplDataURL}"></td>
+              <td><b>${item.label}</b><br><span style="color:#666">#${item.idx+1}</span></td>
+              <td>${(item.eucSim*100).toFixed(0)}%</td>
+              <td>${(item.cosSim*100).toFixed(0)}%</td>
+              <td>${(item.hashSim*100).toFixed(0)}%</td>
+              <td><b>${(item.combined*100).toFixed(0)}%</b>
+                <span class="inspect-bar"><span class="inspect-bar-fill" style="width:${item.combined*100}%"></span></span>
+              </td>
+              <td><button class="del-tpl" onclick="window.__detector.deleteTplFromInspect('phase','${item.label}',${item.idx})">🗑</button></td>
+            </tr>`;
+        }
+        html += `</tbody></table>`;
+      }
+
+      // 分流比對
+      if (state.lastChCanvas && Object.keys(TemplateDB.data.ch).length > 0) {
+        const m = await TemplateDB.match('ch', state.lastChCanvas);
+        html += `
+          <div style="margin:14px 0 8px 0;color:#08f;font-weight:bold">📌 分流比對</div>
+          <div class="inspect-query">
+            <canvas width="64" height="64" id="dInspectQueryCh"></canvas>
+            <div>
+              <div>當前分流畫面</div>
+              <div style="margin-top:4px;font-size:11px;color:#888">
+                系統判定：<span style="color:#0f0;font-weight:bold">CH.${m.label}</span>
+                （${(m.similarity*100).toFixed(1)}%）
+              </div>
+            </div>
+          </div>
+          <table class="inspect-table">
+            <thead>
+              <tr>
+                <th>圖</th><th>標籤</th><th>歐氏</th><th>餘弦</th><th>pHash</th>
+                <th>總分</th><th></th>
+              </tr>
+            </thead>
+            <tbody>`;
+        for (const item of m.allMatches) {
+          const tplDataURL = TemplateDB.data.ch[item.label][item.idx];
+          const isWinner = item === m.allMatches[0];
+          const isSuspect = !isWinner && (m.allMatches[0].label !== item.label) && item.combined > 0.7;
+          html += `
+            <tr class="${isWinner ? 'winner' : (isSuspect ? 'suspect' : '')}">
+              <td><img class="tpl-thumb" src="${tplDataURL}"></td>
+              <td><b>CH.${item.label}</b><br><span style="color:#666">#${item.idx+1}</span></td>
+              <td>${(item.eucSim*100).toFixed(0)}%</td>
+              <td>${(item.cosSim*100).toFixed(0)}%</td>
+              <td>${(item.hashSim*100).toFixed(0)}%</td>
+              <td><b>${(item.combined*100).toFixed(0)}%</b>
+                <span class="inspect-bar"><span class="inspect-bar-fill" style="width:${item.combined*100}%"></span></span>
+              </td>
+              <td><button class="del-tpl" onclick="window.__detector.deleteTplFromInspect('ch','${item.label}',${item.idx})">🗑</button></td>
+            </tr>`;
+        }
+        html += `</tbody></table>`;
+      }
+
+      if (!html) {
+        html = '<div style="text-align:center;color:#888;padding:20px">尚無模板可比對<br>請先累積一些模板再使用此功能</div>';
+      } else {
+        html += `<div style="margin-top:10px;font-size:10px;color:#888">
+          🟢 綠色 = 系統選的（最高分） &nbsp;
+          🔴 紅色 = 嫌疑（不同標籤但分數很接近）
+        </div>`;
+      }
+
+      body.innerHTML = html;
+      modal.classList.add('show');
+
+      // 畫上 query 圖
+      if (state.lastBadgeCanvas) {
+        const qC = document.getElementById('dInspectQueryPhase');
+        if (qC) {
+          const ctx = qC.getContext('2d');
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(state.lastBadgeCanvas, 0, 0, 64, 64);
+        }
+      }
+      if (state.lastChCanvas) {
+        const qC = document.getElementById('dInspectQueryCh');
+        if (qC) {
+          const ctx = qC.getContext('2d');
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(state.lastChCanvas, 0, 0, 64, 64);
+        }
+      }
+    },
+
+    closeInspect: () => {
+      document.getElementById('dInspectModal').classList.remove('show');
+    },
+
+    // 從偵錯模態刪模板，並重新整理
+    deleteTplFromInspect: async (category, label, index) => {
+      if (!confirm(`確定要刪除 ${category === 'ch' ? 'CH.'+label : label} 的第 ${index+1} 張模板？`)) return;
+      const ok = TemplateDB.deleteAt(category, label, index);
+      if (ok) {
+        log(`🗑 已刪除 ${category === 'ch' ? 'CH.'+label : label} #${index+1}`, '#f80');
+        updateTplDisplay();
+        // 重新打開偵錯（重新比對）
+        await window.__detector.openInspect();
       }
     },
     showEdit: (map, ch, val, mapRaw) => {
@@ -3552,13 +4212,12 @@ function initChat() {
   loadTesseract(() => {
     waitForApp(() => {
       injectUI();
-      console.log(DEBUG_PREFIX, 'v0.5.3 Beta 已就緒');
+      console.log(DEBUG_PREFIX, 'v0.6.0 Beta 已就緒');
     });
   });
 
 })();
 </script>
-<!-- ═══ 螢幕偵測模組 v0.5.3 結束 ═══ -->
-    
+<!-- ═══ 螢幕偵測模組 v0.6.0 結束 ═══ -->
 </body>
 </html>
