@@ -1394,9 +1394,12 @@ function initChat() {
         }
     });
 }
-</script>
 <!-- ═══════════════════════════════════════════════════════════════════════
-     📷 TOS M FB TIME - 螢幕偵測模組 v0.6.0 Beta
+     📷 TOS M FB TIME - 螢幕偵測模組 v0.6.1 Beta
+
+     【v0.6.1 修正】
+     🐛 徽章編輯器加上「實際擷取預覽」（拖曳時即時更新）
+     🌏 確認窗中文化：CH→分流 / R→階段 / DE→擊殺（顯示而已，傳遞值不變）
 
      【v0.6.0 演算法重大升級】
      🧠 三重相似度演算法：歐氏距離 + 餘弦相似度 + pHash
@@ -1527,7 +1530,7 @@ function initChat() {
       this.save();
     },
 
-    // v0.6.0: 刪除某標籤的某一張模板
+    // v0.6.1: 刪除某標籤的某一張模板
     deleteAt(category, label, index) {
       if (!this.data[category] || !this.data[category][label]) return false;
       if (index < 0 || index >= this.data[category][label].length) return false;
@@ -1770,7 +1773,7 @@ function initChat() {
     lastBadgeCanvas: null,
     lastChCanvas: null,
     muted: false,  // v0.5 新增：靜音狀態
-    trainingMode: false  // v0.6.0 新增：訓練模式（只存模板不送 Firebase）
+    trainingMode: false  // v0.6.1 新增：訓練模式（只存模板不送 Firebase）
   };
 
   function getBadgeRect(statusRegion) {
@@ -2300,7 +2303,7 @@ function initChat() {
     const btn = document.createElement('button');
     btn.id = 'detectBtn';
     btn.className = 'audio-btn';
-    btn.title = '螢幕偵測 v0.6.0';
+    btn.title = '螢幕偵測 v0.6.1';
     btn.innerHTML = '📷';
     btn.onclick = togglePanel;
     audioControls.appendChild(btn);
@@ -2341,7 +2344,7 @@ function initChat() {
       }
       #detectorPanel .panel-ctrl-btn:hover { color: #ddd; border-color: #666; }
       #detectorPanel .panel-ctrl-btn.muted { color: #f33; border-color: #622; }
-      /* v0.6.0: 訓練模式啟用時 */
+      /* v0.6.1: 訓練模式啟用時 */
       #detectorPanel .panel-ctrl-btn.training {
         color: #fa0; border-color: #fa0;
         background: rgba(255, 170, 0, 0.15);
@@ -2552,7 +2555,7 @@ function initChat() {
         border: 1px solid #555; background: #000;
       }
 
-      /* v0.6.0: 模板瀏覽 */
+      /* v0.6.1: 模板瀏覽 */
       #detectorPanel .tpl-browse-grid {
         display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
         gap: 4px; margin-top: 8px;
@@ -2620,7 +2623,7 @@ function initChat() {
         font-weight: bold;
       }
 
-      /* v0.6.0: 精簡擷取預覽 */
+      /* v0.6.1: 精簡擷取預覽 */
       #detectorPanel .mini-preview-grid {
         display: grid; grid-template-columns: 1fr 2fr 1.2fr; gap: 4px;
         align-items: start;
@@ -2751,7 +2754,7 @@ function initChat() {
     panel.className = 'compact';
     panel.innerHTML = `
       <div class="panel-header" id="dPanelHeader">
-        <h3>📷 偵測器 <span class="small">v0.6.0</span></h3>
+        <h3>📷 偵測器 <span class="small">v0.6.1</span></h3>
         <div>
           <button class="panel-ctrl-btn" id="dTrainToggle" title="訓練模式：只存模板不送 Firebase">🎯</button>
           <button class="panel-ctrl-btn" id="dMuteToggle" title="靜音切換">🔔</button>
@@ -2779,7 +2782,7 @@ function initChat() {
               <button class="dbtn gray" id="dMiniInspect" title="檢視當前偵測的詳細比對結果">🔬</button>
             </div>
           </div>
-          <!-- v0.6.0: 擷取預覽 + 手動標記（可收合） -->
+          <!-- v0.6.1: 擷取預覽 + 手動標記（可收合） -->
           <div class="sec" style="padding:6px;border:1px solid #08f;background:rgba(0,136,255,0.05)">
             <div class="mini-tpl-header" id="dMiniPreviewHeader" style="color:#08f">
               <span class="collapse-arrow" id="dMiniPreviewArrow">▼</span>
@@ -2888,6 +2891,14 @@ function initChat() {
                 <div class="handle br"></div>
               </div>
             </div>
+            <!-- v0.6.1: 擷取結果預覽（橘框內的真實擷取） -->
+            <div id="dBadgeCapturePreview" style="display:flex;gap:8px;align-items:center;margin-top:6px;padding:6px;background:#0a0a0a;border:1px solid #08f;border-radius:4px">
+              <canvas id="dBadgeCaptureCanvas" style="width:64px;height:64px;image-rendering:pixelated;border:1px solid #555;background:#000;object-fit:contain"></canvas>
+              <div style="flex:1">
+                <div class="small" style="color:#08f;font-weight:bold">📸 實際擷取（將存為模板的範圍）</div>
+                <div class="small" id="dBadgeCaptureInfo" style="font-family:monospace"></div>
+              </div>
+            </div>
             <div class="small" id="dBadgeInfo" style="margin-top:4px;font-family:monospace"></div>
           </div>
 
@@ -2931,7 +2942,7 @@ function initChat() {
 
             <label class="bold-opt"><input type="checkbox" id="dAutoLearn" checked> 🎓 確認送出時自動加入模板</label>
 
-            <!-- v0.6.0: 瀏覽模板 -->
+            <!-- v0.6.1: 瀏覽模板 -->
             <div style="margin-top:8px;padding-top:8px;border-top:1px dashed #444">
               <div style="margin-bottom:6px"><b>🔍 瀏覽模板</b></div>
               <div class="correction-row">
@@ -3116,11 +3127,11 @@ function initChat() {
     if (totalEl) totalEl.textContent = `(階段 ${phaseTotal} + 分流 ${chTotal}，約 ${kb} KB)`;
     if (miniTotalEl) miniTotalEl.textContent = `${phaseTotal}+${chTotal}`;
 
-    // v0.6.0: 更新瀏覽器的標籤選單
+    // v0.6.1: 更新瀏覽器的標籤選單
     refreshBrowseLabels();
   }
 
-  // v0.6.0: 瀏覽模板相關函式
+  // v0.6.1: 瀏覽模板相關函式
   function refreshBrowseLabels() {
     const catSel = document.getElementById('dBrowseCategory');
     const labelSel = document.getElementById('dBrowseLabel');
@@ -3180,7 +3191,7 @@ function initChat() {
     canvas.getContext('2d').drawImage(state.lastBadgeCanvas, 0, 0, 64, 64);
   }
 
-  // v0.6.0: 更新精簡模式的擷取預覽 3 張小圖
+  // v0.6.1: 更新精簡模式的擷取預覽 3 張小圖
   function updateMiniPreview(mapRegion) {
     // 階段徽章預覽
     const badgeCan = document.getElementById('dMiniPrevBadge');
@@ -3278,6 +3289,31 @@ function initChat() {
     });
 
     updateBadgeInfo();
+    // v0.6.1: 同時更新擷取結果預覽
+    updateBadgeCapturePreview();
+  }
+
+  // v0.6.1: 即時顯示「橘框範圍實際擷取出的圖片」
+  function updateBadgeCapturePreview() {
+    const region = state.regions.status;
+    if (!region) return;
+    const video = document.getElementById('dVideo');
+    if (!video || !video.videoWidth) return;
+    const badge = getBadgeRect(region);
+    const captureCan = document.getElementById('dBadgeCaptureCanvas');
+    const infoEl = document.getElementById('dBadgeCaptureInfo');
+    if (!captureCan) return;
+    // 擷取真實的徽章範圍（跟 captureBadgeCanvas 完全相同的邏輯）
+    captureCan.width = badge.w;
+    captureCan.height = badge.h;
+    const cctx = captureCan.getContext('2d');
+    cctx.imageSmoothingEnabled = false;
+    cctx.drawImage(video,
+      region.x + badge.x, region.y + badge.y, badge.w, badge.h,
+      0, 0, badge.w, badge.h);
+    if (infoEl) {
+      infoEl.textContent = `${badge.w}×${badge.h}px @ video(${region.x + badge.x}, ${region.y + badge.y})`;
+    }
   }
 
   function updateBadgeInfo() {
@@ -3316,7 +3352,7 @@ function initChat() {
     updateMuteUI();
   }
 
-  // v0.6.0: 訓練模式 UI 更新
+  // v0.6.1: 訓練模式 UI 更新
   function updateTrainModeUI() {
     const btn = document.getElementById('dTrainToggle');
     const panel = document.getElementById('detectorPanel');
@@ -3443,6 +3479,7 @@ function initChat() {
         h: Math.round(nh / scale)
       };
       updateBadgeInfo();
+      updateBadgeCapturePreview();  // v0.6.1: 拖曳時即時更新預覽
     });
     window.addEventListener('mouseup', () => {
       if (dragMode) {
@@ -3476,7 +3513,7 @@ function initChat() {
       log(state.muted ? '🔕 已靜音' : '🔔 音效開啟', '#0f0');
     };
 
-    // v0.6.0: 訓練模式切換
+    // v0.6.1: 訓練模式切換
     document.getElementById('dTrainToggle').onclick = () => {
       state.trainingMode = !state.trainingMode;
       localStorage.setItem('tosm_detector_training_mode', state.trainingMode ? '1' : '0');
@@ -3487,7 +3524,7 @@ function initChat() {
         state.trainingMode ? '#fa0' : '#0f0');
     };
 
-    // v0.6.0: 瀏覽模板類別/標籤變更
+    // v0.6.1: 瀏覽模板類別/標籤變更
     const browseCat = document.getElementById('dBrowseCategory');
     const browseLabel = document.getElementById('dBrowseLabel');
     if (browseCat) browseCat.onchange = refreshBrowseLabels;
@@ -3509,7 +3546,7 @@ function initChat() {
       };
     }
 
-    // v0.6.0: 精簡擷取預覽收合
+    // v0.6.1: 精簡擷取預覽收合
     const miniPrevHeader = document.getElementById('dMiniPreviewHeader');
     if (miniPrevHeader) {
       const collapsed = localStorage.getItem('tosm_detector_mini_prev_collapsed') === '1';
@@ -3753,7 +3790,7 @@ function initChat() {
 
     // 更新模板預覽
     showTplPreview();
-    // v0.6.0: 更新精簡模式的擷取預覽
+    // v0.6.1: 更新精簡模式的擷取預覽
     updateMiniPreview();
 
     return state.lastResult;
@@ -3793,7 +3830,7 @@ function initChat() {
     else if (['R1','R2','R3','R4'].includes(to)) { val = to; label = `🔸 進入 ${to}`; }
     else return;
 
-    // v0.6.0: 地圖或分流辨識不出來 → 完全不通知（避免垃圾警示）
+    // v0.6.1: 地圖或分流辨識不出來 → 完全不通知（避免垃圾警示）
     if (!result.mapResult || !result.chResult) {
       if (state.debugMode) {
         log(`⏭️ 略過：${label}（地圖/分流無法辨識）`, '#666');
@@ -3816,12 +3853,20 @@ function initChat() {
 
     log(`${label} | ${result.mapResult} ${result.chResult} (${(overallConf*100)|0}%)`, '#f90');
 
-    // v0.6.0: 訓練模式下「自動送出」= 自動存模板
+    // v0.6.1: 訓練模式下「自動送出」= 自動存模板
     if (autoSubmit && overallConf >= minConf) {
       doSubmit(result.mapResult, result.chResult, val);
       return;
     }
     showConfirmPrompt(result, val, label, overallConf, minConf);
+  }
+
+  // v0.6.1: 顯示用的中文化轉換（只改顯示，輸入給 saveBoss 仍是原格式）
+  function valToDisplay(val) {
+    if (val === 'ON') return 'ON';
+    if (val === 'DE1') return '擊殺';
+    if (/^R\d+(\.\d+)?$/.test(val)) return '階段' + val.substring(1);
+    return val;
   }
 
   function showConfirmPrompt(result, val, label, conf, minConf) {
@@ -3832,11 +3877,14 @@ function initChat() {
       ? '<div style="background:#fa0;color:#000;padding:4px;border-radius:3px;margin-bottom:4px;font-size:10px">🎯 訓練模式：僅存模板，不送 Firebase</div>'
       : '';
     const btnLabel = state.trainingMode ? '💾 存模板' : '✓確認';
+    // v0.6.1: 中文化顯示
+    const displayVal = valToDisplay(val);
+    const displayCh = `分流${result.chResult}`;
     area.innerHTML = `
       <div class="confirm-banner ${cls} ${isLow ? 'low-conf' : ''}">
         ${trainHint}
         ${label}<br>
-        <b>${result.mapResult} ${result.chResult} ${val}</b> (${(conf*100)|0}%)<br>
+        <b>${result.mapResult} ${displayCh} ${displayVal}</b> (${(conf*100)|0}%)<br>
         <button class="dbtn" onclick="window.__detector.confirm('${result.mapResult}','${result.chResult}','${val}')">${btnLabel}</button>
         <button class="dbtn gray" onclick="window.__detector.showEdit('${result.mapResult}','${result.chResult}','${val}','${result.mapRaw}')">✏️</button>
         <button class="dbtn red" onclick="window.__detector.cancel()">✗</button>
@@ -3861,7 +3909,7 @@ function initChat() {
 
   function doSubmit(map, ch, val) {
     try {
-      // v0.6.0: 訓練模式 → 只存模板，不送 Firebase
+      // v0.6.1: 訓練模式 → 只存模板，不送 Firebase
       if (state.trainingMode) {
         let phaseLabel = null;
         if (val === 'ON') phaseLabel = 'ON';
@@ -3986,7 +4034,7 @@ function initChat() {
       log('🗑 已清空所有模板', '#f33');
       updateTplDisplay();
     },
-    // v0.6.0: 刪除單張模板
+    // v0.6.1: 刪除單張模板
     deleteTpl: (category, label, index) => {
       if (!confirm(`確定要刪除 ${category === 'ch' ? 'CH.'+label : label} 的第 ${index+1} 張模板？`)) return;
       const ok = TemplateDB.deleteAt(category, label, index);
@@ -3995,7 +4043,7 @@ function initChat() {
         updateTplDisplay();
       }
     },
-    // v0.6.0: 精簡模式的快速標記
+    // v0.6.1: 精簡模式的快速標記
     quickSavePhase: () => {
       if (!state.lastBadgeCanvas) { log('❌ 尚無徽章圖片（需先擷取）', '#f33'); return; }
       const label = document.getElementById('dQuickPhaseLabel').value;
@@ -4212,12 +4260,12 @@ function initChat() {
   loadTesseract(() => {
     waitForApp(() => {
       injectUI();
-      console.log(DEBUG_PREFIX, 'v0.6.0 Beta 已就緒');
+      console.log(DEBUG_PREFIX, 'v0.6.1 Beta 已就緒');
     });
   });
 
 })();
 </script>
-<!-- ═══ 螢幕偵測模組 v0.6.0 結束 ═══ -->
+<!-- ═══ 螢幕偵測模組 v0.6.1 結束 ═══ -->
 </body>
 </html>
