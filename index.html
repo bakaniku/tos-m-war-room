@@ -1369,6 +1369,10 @@ function handleDelClick(id) {
 }
 function addBoss() {
     const i = document.getElementById('bossInput'), p = i.value.trim().split(/\s+/);
+    // 特殊處理：ADMIN 密碼（兩段格式）
+    if (p.length === 2 && p[0].toUpperCase() === 'ADMIN') {
+        saveBoss(p[0], p[1], 'XX'); i.value = ''; return;
+    }
     if (p.length < 3) return;
     saveBoss(p[0], p[1], p.slice(2).join(' ')); i.value = '';
 }
