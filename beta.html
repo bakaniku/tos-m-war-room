@@ -1396,13 +1396,18 @@ function initChat() {
 }
 </script>
 <!-- ═══════════════════════════════════════════════════════════════════════
-     📷 TOS M FB TIME - 螢幕偵測模組 v0.6.2 Beta
+     📷 TOS M FB TIME - 螢幕偵測模組 v0.6.3 Beta
 
-     【v0.6.2 診斷工具】
+     【v0.6.3 演算法升級】
+     🔧 紅環偵測：改用「最小二乘法擬合圓」（不再用重心）
+     🎯 兩階段擬合：先擬合 → 剔除離群 → 再擬合（提高精度）
+     📐 徽章推導：偏移比例調整為 0.95（徽章在紅環外側）
+
+     【v0.6.3 診斷工具】
      🩺 紅環偵測診斷：驗證能否穩定找到紅環中心+半徑
      📐 推導徽章位置：以紅環為基準自動規範化（驗證階段）
 
-     【v0.6.2 修正】
+     【v0.6.3 修正】
      🐛 徽章編輯器加上「實際擷取預覽」（拖曳時即時更新）
      🌏 確認窗中文化：CH→分流 / R→階段 / DE→擊殺
 
@@ -1532,7 +1537,7 @@ function initChat() {
       this.save();
     },
 
-    // v0.6.2: 刪除某標籤的某一張模板
+    // v0.6.3: 刪除某標籤的某一張模板
     deleteAt(category, label, index) {
       if (!this.data[category] || !this.data[category][label]) return false;
       if (index < 0 || index >= this.data[category][label].length) return false;
@@ -1776,7 +1781,7 @@ function initChat() {
     lastChCanvas: null,
     muted: false,  // v0.5 新增：靜音狀態
     trainingMode: false,  // 訓練模式
-    // v0.6.2 診斷工具狀態
+    // v0.6.3 診斷工具狀態
     diagLoopTimer: null,
     diagHistory: []
   };
@@ -1930,8 +1935,56 @@ function initChat() {
   }
 
   // ═══════════════════════════════════════════════
-  // v0.6.2: 紅環偵測（診斷工具用）
+  // v0.6.3: 紅環偵測（診斷工具用）
+  // v0.6.3: 升級為「最小二乘法擬合圓」+ 重心做初估
   // ═══════════════════════════════════════════════
+
+  // 解 3x3 線性方程組（用 Cramer's rule）
+  // M * x = b，回傳 x = [x0, x1, x2]
+  function solve3x3(M, b) {
+    const det = (m) =>
+        m[0][0] * (m[1][1]*m[2][2] - m[1][2]*m[2][1])
+      - m[0][1] * (m[1][0]*m[2][2] - m[1][2]*m[2][0])
+      + m[0][2] * (m[1][0]*m[2][1] - m[1][1]*m[2][0]);
+    const D = det(M);
+    if (Math.abs(D) < 1e-9) return null;
+    const replaceCol = (col) => M.map((row, i) => row.map((v, j) => j === col ? b[i] : v));
+    return [det(replaceCol(0)) / D, det(replaceCol(1)) / D, det(replaceCol(2)) / D];
+  }
+
+  // 用最小二乘法擬合圓：給點 (xi, yi) 找最佳 (a, b, r)
+  // 推導：A*x + B*y + C = x²+y²，其中 A=2a, B=2b, C=r²-a²-b²
+  function fitCircle(points) {
+    if (points.length < 3) return null;
+    // 建立正規方程式 (X^T X) * [A, B, C] = X^T y
+    let sumX = 0, sumY = 0, sumXX = 0, sumYY = 0, sumXY = 0;
+    let sumZ = 0, sumXZ = 0, sumYZ = 0;
+    const n = points.length;
+    for (const p of points) {
+      const z = p.x * p.x + p.y * p.y;
+      sumX += p.x; sumY += p.y;
+      sumXX += p.x * p.x; sumYY += p.y * p.y;
+      sumXY += p.x * p.y;
+      sumZ += z;
+      sumXZ += p.x * z;
+      sumYZ += p.y * z;
+    }
+    const M = [
+      [sumXX, sumXY, sumX],
+      [sumXY, sumYY, sumY],
+      [sumX,  sumY,  n   ]
+    ];
+    const b = [sumXZ, sumYZ, sumZ];
+    const sol = solve3x3(M, b);
+    if (!sol) return null;
+    const [A, B, C] = sol;
+    const a = A / 2;  // 圓心 x
+    const cy = B / 2; // 圓心 y
+    const r2 = C + a*a + cy*cy;
+    if (r2 <= 0) return null;
+    return { centerX: a, centerY: cy, radius: Math.sqrt(r2) };
+  }
+
   function detectRedRing(region, options = {}) {
     const video = document.getElementById('dVideo');
     if (!video || !video.videoWidth) return null;
@@ -1963,44 +2016,51 @@ function initChat() {
       return { found: false, reason: '紅色像素太少（<20）', redPixels: redPixels.length };
     }
 
-    // 計算紅色像素的重心 → 圓心估計
-    let sumX = 0, sumY = 0;
-    for (const p of redPixels) { sumX += p.x; sumY += p.y; }
-    const centerX = sumX / redPixels.length;
-    const centerY = sumY / redPixels.length;
+    // ═══ v0.6.3: 用最小二乘法擬合圓（不再用重心） ═══
+    const fit = fitCircle(redPixels);
+    if (!fit) {
+      return { found: false, reason: '擬合失敗（線性方程無解）', redPixels: redPixels.length };
+    }
 
-    // 計算到重心的距離 → 估算半徑
-    let sumDist = 0;
-    let distArr = [];
-    for (const p of redPixels) {
+    let { centerX, centerY, radius } = fit;
+
+    // ═══ 第二輪：剔除明顯離群點，重新擬合（提高精度） ═══
+    // 計算每個點到擬合圓的距離（理想為 r）
+    const errors = redPixels.map(p => {
       const dx = p.x - centerX, dy = p.y - centerY;
-      const d = Math.sqrt(dx*dx + dy*dy);
-      sumDist += d;
-      distArr.push(d);
+      return Math.abs(Math.sqrt(dx*dx + dy*dy) - radius);
+    });
+    // 取中位數作為「典型誤差」
+    const sortedErrors = [...errors].sort((a, b) => a - b);
+    const medianErr = sortedErrors[Math.floor(sortedErrors.length / 2)];
+    // 剔除誤差 > 2 倍中位數的點
+    const filtered = redPixels.filter((p, i) => errors[i] <= Math.max(medianErr * 2, 2));
+    if (filtered.length >= 10) {
+      const refit = fitCircle(filtered);
+      if (refit) {
+        centerX = refit.centerX;
+        centerY = refit.centerY;
+        radius = refit.radius;
+      }
     }
-    const meanDist = sumDist / redPixels.length;
 
-    // 用「最常見的距離範圍」當半徑（過濾雜訊）
-    distArr.sort((a, b) => a - b);
-    const median = distArr[Math.floor(distArr.length / 2)];
-    const p75 = distArr[Math.floor(distArr.length * 0.75)];
-    // 半徑取中位數和75百分位的平均（紅環是圓周，距離分布應該集中在某個範圍）
-    const radius = (median + p75) / 2;
-
-    // 計算標準差作為信心度指標
-    let varSum = 0;
-    for (const d of distArr) {
-      varSum += (d - meanDist) * (d - meanDist);
+    // 計算最終擬合誤差（信心度）
+    let totalErr = 0;
+    for (const p of filtered) {
+      const dx = p.x - centerX, dy = p.y - centerY;
+      const e = Math.abs(Math.sqrt(dx*dx + dy*dy) - radius);
+      totalErr += e;
     }
-    const stdDev = Math.sqrt(varSum / distArr.length);
-    // 信心度 = 1 - (標準差 / 平均距離)，越接近 1 越像圓
-    const confidence = Math.max(0, Math.min(1, 1 - (stdDev / meanDist)));
+    const meanErr = totalErr / filtered.length;
+    // 信心度：誤差小於 1 像素 = 100%，誤差超過半徑 50% = 0%
+    const confidence = Math.max(0, Math.min(1, 1 - (meanErr / (radius * 0.5))));
 
     return {
       found: true,
       centerX, centerY, radius,
-      meanDist, stdDev, confidence,
+      meanErr, confidence,
       redPixelCount: redPixels.length,
+      filteredCount: filtered.length,
       redPixels  // 供視覺化用
     };
   }
@@ -2008,10 +2068,11 @@ function initChat() {
   // 從紅環推導徽章區域
   function deriveBadgeFromRing(ring, options = {}) {
     if (!ring || !ring.found) return null;
-    // 徽章在紅環的右上 45°，距離約 0.7r，大小約 0.5r
-    const offsetRatio = options.offsetRatio || 0.55;  // 從中心到徽章中心的距離比例
-    const sizeRatio = options.sizeRatio || 0.55;      // 徽章邊長相對半徑的比例
-    const angleRad = -Math.PI / 4;  // 右上 45°（y 軸朝下，所以是 -45°）
+    // v0.6.3: 徽章在紅環的右上「外側」
+    // 預設：距離 ≈ 半徑（在環邊緣外），大小 ≈ 半徑 × 0.6
+    const offsetRatio = options.offsetRatio !== undefined ? options.offsetRatio : 0.95;
+    const sizeRatio = options.sizeRatio !== undefined ? options.sizeRatio : 0.65;
+    const angleRad = -Math.PI / 4;  // 右上 45°
 
     const dx = ring.radius * offsetRatio * Math.cos(angleRad);
     const dy = ring.radius * offsetRatio * Math.sin(angleRad);
@@ -2410,7 +2471,7 @@ function initChat() {
     const btn = document.createElement('button');
     btn.id = 'detectBtn';
     btn.className = 'audio-btn';
-    btn.title = '螢幕偵測 v0.6.2';
+    btn.title = '螢幕偵測 v0.6.3';
     btn.innerHTML = '📷';
     btn.onclick = togglePanel;
     audioControls.appendChild(btn);
@@ -2451,7 +2512,7 @@ function initChat() {
       }
       #detectorPanel .panel-ctrl-btn:hover { color: #ddd; border-color: #666; }
       #detectorPanel .panel-ctrl-btn.muted { color: #f33; border-color: #622; }
-      /* v0.6.2: 訓練模式啟用時 */
+      /* v0.6.3: 訓練模式啟用時 */
       #detectorPanel .panel-ctrl-btn.training {
         color: #fa0; border-color: #fa0;
         background: rgba(255, 170, 0, 0.15);
@@ -2662,7 +2723,7 @@ function initChat() {
         border: 1px solid #555; background: #000;
       }
 
-      /* v0.6.2: 模板瀏覽 */
+      /* v0.6.3: 模板瀏覽 */
       #detectorPanel .tpl-browse-grid {
         display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
         gap: 4px; margin-top: 8px;
@@ -2730,7 +2791,7 @@ function initChat() {
         font-weight: bold;
       }
 
-      /* v0.6.2: 精簡擷取預覽 */
+      /* v0.6.3: 精簡擷取預覽 */
       #detectorPanel .mini-preview-grid {
         display: grid; grid-template-columns: 1fr 2fr 1.2fr; gap: 4px;
         align-items: start;
@@ -2861,7 +2922,7 @@ function initChat() {
     panel.className = 'compact';
     panel.innerHTML = `
       <div class="panel-header" id="dPanelHeader">
-        <h3>📷 偵測器 <span class="small">v0.6.2</span></h3>
+        <h3>📷 偵測器 <span class="small">v0.6.3</span></h3>
         <div>
           <button class="panel-ctrl-btn" id="dTrainToggle" title="訓練模式：只存模板不送 Firebase">🎯</button>
           <button class="panel-ctrl-btn" id="dMuteToggle" title="靜音切換">🔔</button>
@@ -2889,7 +2950,7 @@ function initChat() {
               <button class="dbtn gray" id="dMiniInspect" title="檢視當前偵測的詳細比對結果">🔬</button>
             </div>
           </div>
-          <!-- v0.6.2: 擷取預覽 + 手動標記（可收合） -->
+          <!-- v0.6.3: 擷取預覽 + 手動標記（可收合） -->
           <div class="sec" style="padding:6px;border:1px solid #08f;background:rgba(0,136,255,0.05)">
             <div class="mini-tpl-header" id="dMiniPreviewHeader" style="color:#08f">
               <span class="collapse-arrow" id="dMiniPreviewArrow">▼</span>
@@ -2998,7 +3059,7 @@ function initChat() {
                 <div class="handle br"></div>
               </div>
             </div>
-            <!-- v0.6.2: 擷取結果預覽（橘框內的真實擷取） -->
+            <!-- v0.6.3: 擷取結果預覽（橘框內的真實擷取） -->
             <div id="dBadgeCapturePreview" style="display:flex;gap:8px;align-items:center;margin-top:6px;padding:6px;background:#0a0a0a;border:1px solid #08f;border-radius:4px">
               <canvas id="dBadgeCaptureCanvas" style="width:64px;height:64px;image-rendering:pixelated;border:1px solid #555;background:#000;object-fit:contain"></canvas>
               <div style="flex:1">
@@ -3009,7 +3070,7 @@ function initChat() {
             <div class="small" id="dBadgeInfo" style="margin-top:4px;font-family:monospace"></div>
           </div>
 
-          <!-- ═══ v0.6.2: 紅環偵測診斷工具 ═══ -->
+          <!-- ═══ v0.6.3: 紅環偵測診斷工具 ═══ -->
           <div class="sec" style="border:1px solid #f33;background:rgba(255,51,51,0.05)">
             <div style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between">
               <b style="color:#f33">🩺 紅環偵測診斷</b>
@@ -3034,8 +3095,8 @@ function initChat() {
               </div>
               <div class="small" style="margin-top:6px;margin-bottom:4px;color:#888">徽章推導參數：</div>
               <div class="threshold-row">
-                <label>偏移比例 <input type="number" id="dDiagOffsetRatio" value="0.55" step="0.05" min="0.3" max="1" style="width:50px"></label>
-                <label>大小比例 <input type="number" id="dDiagSizeRatio" value="0.55" step="0.05" min="0.3" max="1" style="width:50px"></label>
+                <label>偏移比例 <input type="number" id="dDiagOffsetRatio" value="0.95" step="0.05" min="0.3" max="1.5" style="width:50px"></label>
+                <label>大小比例 <input type="number" id="dDiagSizeRatio" value="0.65" step="0.05" min="0.3" max="1" style="width:50px"></label>
               </div>
               <div class="small" style="color:#666;margin-top:4px">
                 試試不同數值觀察「藍框」是否對齊真實徽章
@@ -3106,7 +3167,7 @@ function initChat() {
 
             <label class="bold-opt"><input type="checkbox" id="dAutoLearn" checked> 🎓 確認送出時自動加入模板</label>
 
-            <!-- v0.6.2: 瀏覽模板 -->
+            <!-- v0.6.3: 瀏覽模板 -->
             <div style="margin-top:8px;padding-top:8px;border-top:1px dashed #444">
               <div style="margin-bottom:6px"><b>🔍 瀏覽模板</b></div>
               <div class="correction-row">
@@ -3291,11 +3352,11 @@ function initChat() {
     if (totalEl) totalEl.textContent = `(階段 ${phaseTotal} + 分流 ${chTotal}，約 ${kb} KB)`;
     if (miniTotalEl) miniTotalEl.textContent = `${phaseTotal}+${chTotal}`;
 
-    // v0.6.2: 更新瀏覽器的標籤選單
+    // v0.6.3: 更新瀏覽器的標籤選單
     refreshBrowseLabels();
   }
 
-  // v0.6.2: 瀏覽模板相關函式
+  // v0.6.3: 瀏覽模板相關函式
   function refreshBrowseLabels() {
     const catSel = document.getElementById('dBrowseCategory');
     const labelSel = document.getElementById('dBrowseLabel');
@@ -3355,7 +3416,7 @@ function initChat() {
     canvas.getContext('2d').drawImage(state.lastBadgeCanvas, 0, 0, 64, 64);
   }
 
-  // v0.6.2: 更新精簡模式的擷取預覽 3 張小圖
+  // v0.6.3: 更新精簡模式的擷取預覽 3 張小圖
   function updateMiniPreview(mapRegion) {
     // 階段徽章預覽
     const badgeCan = document.getElementById('dMiniPrevBadge');
@@ -3453,11 +3514,11 @@ function initChat() {
     });
 
     updateBadgeInfo();
-    // v0.6.2: 同時更新擷取結果預覽
+    // v0.6.3: 同時更新擷取結果預覽
     updateBadgeCapturePreview();
   }
 
-  // v0.6.2: 即時顯示「橘框範圍實際擷取出的圖片」
+  // v0.6.3: 即時顯示「橘框範圍實際擷取出的圖片」
   function updateBadgeCapturePreview() {
     const region = state.regions.status;
     if (!region) return;
@@ -3516,7 +3577,7 @@ function initChat() {
     updateMuteUI();
   }
 
-  // v0.6.2: 訓練模式 UI 更新
+  // v0.6.3: 訓練模式 UI 更新
   function updateTrainModeUI() {
     const btn = document.getElementById('dTrainToggle');
     const panel = document.getElementById('detectorPanel');
@@ -3535,7 +3596,7 @@ function initChat() {
   }
 
   // ═══════════════════════════════════════════════
-  // v0.6.2 紅環偵測診斷
+  // v0.6.3 紅環偵測診斷
   // ═══════════════════════════════════════════════
   function runDiagnose() {
     if (!state.regions.status) {
@@ -3555,8 +3616,8 @@ function initChat() {
     // 讀取進階參數
     const redMin = parseInt(document.getElementById('dDiagRedMin')?.value) || 80;
     const redDom = parseInt(document.getElementById('dDiagRedDom')?.value) || 25;
-    const offsetRatio = parseFloat(document.getElementById('dDiagOffsetRatio')?.value) || 0.55;
-    const sizeRatio = parseFloat(document.getElementById('dDiagSizeRatio')?.value) || 0.55;
+    const offsetRatio = parseFloat(document.getElementById('dDiagOffsetRatio')?.value) || 0.95;
+    const sizeRatio = parseFloat(document.getElementById('dDiagSizeRatio')?.value) || 0.65;
 
     // 偵測紅環
     const ring = detectRedRing(region, { redThreshold: redMin, redDominance: redDom });
@@ -3633,11 +3694,11 @@ function initChat() {
       const confColor = ring.confidence > 0.7 ? '#0f0' : ring.confidence > 0.4 ? '#fa0' : '#f33';
       document.getElementById('dDiagResult').innerHTML = `
         <div style="color:#0f0">✅ 找到紅環</div>
-        <div>圓心：(${ring.centerX.toFixed(1)}, ${ring.centerY.toFixed(1)})</div>
-        <div>半徑：${ring.radius.toFixed(1)} px</div>
-        <div>紅色像素：${ring.redPixelCount}</div>
-        <div>距離標準差：${ring.stdDev.toFixed(2)}（越小越像圓）</div>
-        <div>圓形度：<span style="color:${confColor};font-weight:bold">${conf}%</span></div>
+        <div>圓心：(${ring.centerX.toFixed(2)}, ${ring.centerY.toFixed(2)})</div>
+        <div>半徑：${ring.radius.toFixed(2)} px</div>
+        <div>紅色像素：${ring.redPixelCount}（過濾後 ${ring.filteredCount}）</div>
+        <div>擬合平均誤差：${ring.meanErr.toFixed(2)} px（越小越完美）</div>
+        <div>圓擬合度：<span style="color:${confColor};font-weight:bold">${conf}%</span></div>
         ${badge ? `
           <div style="margin-top:6px;color:#0af">📐 推導徽章：</div>
           <div>位置：(${badge.x}, ${badge.y}) ${badge.w}×${badge.h}px</div>
@@ -3812,7 +3873,7 @@ function initChat() {
         h: Math.round(nh / scale)
       };
       updateBadgeInfo();
-      updateBadgeCapturePreview();  // v0.6.2: 拖曳時即時更新預覽
+      updateBadgeCapturePreview();  // v0.6.3: 拖曳時即時更新預覽
     });
     window.addEventListener('mouseup', () => {
       if (dragMode) {
@@ -3846,7 +3907,7 @@ function initChat() {
       log(state.muted ? '🔕 已靜音' : '🔔 音效開啟', '#0f0');
     };
 
-    // v0.6.2: 訓練模式切換
+    // v0.6.3: 訓練模式切換
     document.getElementById('dTrainToggle').onclick = () => {
       state.trainingMode = !state.trainingMode;
       localStorage.setItem('tosm_detector_training_mode', state.trainingMode ? '1' : '0');
@@ -3857,7 +3918,7 @@ function initChat() {
         state.trainingMode ? '#fa0' : '#0f0');
     };
 
-    // v0.6.2: 瀏覽模板類別/標籤變更
+    // v0.6.3: 瀏覽模板類別/標籤變更
     const browseCat = document.getElementById('dBrowseCategory');
     const browseLabel = document.getElementById('dBrowseLabel');
     if (browseCat) browseCat.onchange = refreshBrowseLabels;
@@ -3879,7 +3940,7 @@ function initChat() {
       };
     }
 
-    // v0.6.2: 精簡擷取預覽收合
+    // v0.6.3: 精簡擷取預覽收合
     const miniPrevHeader = document.getElementById('dMiniPreviewHeader');
     if (miniPrevHeader) {
       const collapsed = localStorage.getItem('tosm_detector_mini_prev_collapsed') === '1';
@@ -4123,7 +4184,7 @@ function initChat() {
 
     // 更新模板預覽
     showTplPreview();
-    // v0.6.2: 更新精簡模式的擷取預覽
+    // v0.6.3: 更新精簡模式的擷取預覽
     updateMiniPreview();
 
     return state.lastResult;
@@ -4163,7 +4224,7 @@ function initChat() {
     else if (['R1','R2','R3','R4'].includes(to)) { val = to; label = `🔸 進入 ${to}`; }
     else return;
 
-    // v0.6.2: 地圖或分流辨識不出來 → 完全不通知（避免垃圾警示）
+    // v0.6.3: 地圖或分流辨識不出來 → 完全不通知（避免垃圾警示）
     if (!result.mapResult || !result.chResult) {
       if (state.debugMode) {
         log(`⏭️ 略過：${label}（地圖/分流無法辨識）`, '#666');
@@ -4186,7 +4247,7 @@ function initChat() {
 
     log(`${label} | ${result.mapResult} ${result.chResult} (${(overallConf*100)|0}%)`, '#f90');
 
-    // v0.6.2: 訓練模式下「自動送出」= 自動存模板
+    // v0.6.3: 訓練模式下「自動送出」= 自動存模板
     if (autoSubmit && overallConf >= minConf) {
       doSubmit(result.mapResult, result.chResult, val);
       return;
@@ -4194,7 +4255,7 @@ function initChat() {
     showConfirmPrompt(result, val, label, overallConf, minConf);
   }
 
-  // v0.6.2: 顯示用的中文化轉換（只改顯示，輸入給 saveBoss 仍是原格式）
+  // v0.6.3: 顯示用的中文化轉換（只改顯示，輸入給 saveBoss 仍是原格式）
   function valToDisplay(val) {
     if (val === 'ON') return 'ON';
     if (val === 'DE1') return '擊殺';
@@ -4210,7 +4271,7 @@ function initChat() {
       ? '<div style="background:#fa0;color:#000;padding:4px;border-radius:3px;margin-bottom:4px;font-size:10px">🎯 訓練模式：僅存模板，不送 Firebase</div>'
       : '';
     const btnLabel = state.trainingMode ? '💾 存模板' : '✓確認';
-    // v0.6.2: 中文化顯示
+    // v0.6.3: 中文化顯示
     const displayVal = valToDisplay(val);
     const displayCh = `分流${result.chResult}`;
     area.innerHTML = `
@@ -4242,7 +4303,7 @@ function initChat() {
 
   function doSubmit(map, ch, val) {
     try {
-      // v0.6.2: 訓練模式 → 只存模板，不送 Firebase
+      // v0.6.3: 訓練模式 → 只存模板，不送 Firebase
       if (state.trainingMode) {
         let phaseLabel = null;
         if (val === 'ON') phaseLabel = 'ON';
@@ -4367,7 +4428,7 @@ function initChat() {
       log('🗑 已清空所有模板', '#f33');
       updateTplDisplay();
     },
-    // v0.6.2: 刪除單張模板
+    // v0.6.3: 刪除單張模板
     deleteTpl: (category, label, index) => {
       if (!confirm(`確定要刪除 ${category === 'ch' ? 'CH.'+label : label} 的第 ${index+1} 張模板？`)) return;
       const ok = TemplateDB.deleteAt(category, label, index);
@@ -4376,7 +4437,7 @@ function initChat() {
         updateTplDisplay();
       }
     },
-    // v0.6.2: 精簡模式的快速標記
+    // v0.6.3: 精簡模式的快速標記
     quickSavePhase: () => {
       if (!state.lastBadgeCanvas) { log('❌ 尚無徽章圖片（需先擷取）', '#f33'); return; }
       const label = document.getElementById('dQuickPhaseLabel').value;
@@ -4545,7 +4606,7 @@ function initChat() {
       }
     },
 
-    // v0.6.2 紅環偵測診斷
+    // v0.6.3 紅環偵測診斷
     toggleDiagAdvanced: () => {
       const adv = document.getElementById('dDiagAdvanced');
       adv.style.display = adv.style.display === 'none' ? 'block' : 'none';
@@ -4623,12 +4684,12 @@ function initChat() {
   loadTesseract(() => {
     waitForApp(() => {
       injectUI();
-      console.log(DEBUG_PREFIX, 'v0.6.2 Beta 已就緒');
+      console.log(DEBUG_PREFIX, 'v0.6.3 Beta 已就緒');
     });
   });
 
 })();
 </script>
-<!-- ═══ 螢幕偵測模組 v0.6.2 結束 ═══ -->
+<!-- ═══ 螢幕偵測模組 v0.6.3 結束 ═══ -->
 </body>
 </html>
