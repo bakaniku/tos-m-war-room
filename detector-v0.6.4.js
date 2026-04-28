@@ -1,11 +1,25 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * 📷 TOS M FB TIME - 螢幕偵測模組 v0.6.4 Beta
+ * 📷 TOS M FB TIME - 螢幕偵測模組 v0.7.0 Beta
  * ═══════════════════════════════════════════════════════════════════════
+ *
+ * 【v0.7 核心革新：自動規範化擷取】
+ *
+ * ❌ 舊版痛點：
+ *    - 使用者拖曳框選徽章 → 每個人擷取範圍不同 → 模板無法共享
+ *    - 紅環偵測在不同地圖背景下不穩定（被王身上的紅、地板紅紋干擾）
+ *    - 重新框選後舊模板都失效
+ *
+ * ✅ v0.7 解法：
+ *    1. 校準模式：使用者框「計時圈完整區域」一次
+ *    2. 紅環偵測（RANSAC）找出精確的紅環中心+半徑
+ *    3. 用比例自動算出徽章位置 → 擷取 → 標準化 32×32
+ *    4. 之後不再需要紅環偵測 → 不受地圖背景影響
+ *    5. 所有人用相同比例 → 模板可共享 ✨
  *
  * 用法：
  *   在 beta.html 的 </body> 之前加入：
- *     <script src="detector.js"></script>
+ *     <script src="detector-v0.7.0.js"></script>
  *
  * 依賴：
  *   - 主程式 beta.html 必須提供：saveBoss(map, ch, val), currentRoom, db
@@ -28,6 +42,16 @@
   const TEMPLATE_MIN_SIM = 0.85;   // 相似度 >= 此值直接採信模板
   const TEMPLATE_AMBIGUOUS = 0.70; // 相似度介於兩者之間為不確定
   const MAX_TEMPLATES_PER_LABEL = 30;
+
+  // v0.7: 校準資料 storage key
+  const CALIBRATION_STORAGE_KEY = 'tosm_detector_calibration_v7';
+  // 預設比例（從 1280x696 截圖測量得到）
+  const DEFAULT_RING_RATIOS = {
+    ringCenterRatio: { x: 0.3, y: 0.6 },   // 紅環中心在框內的比例
+    ringRadiusRatio: 0.25,                  // 紅環半徑相對於框寬
+    badgeOffsetRatio: 0.95,                 // 徽章距紅環中心的距離（相對於半徑）
+    badgeSizeRatio: 0.65                    // 徽章邊長相對於半徑
+  };
 
   // ═══════════════════════════════════════════════
   // 模板資料庫
@@ -384,6 +408,8 @@
     lastChCanvas: null,
     muted: false,  // v0.5 新增：靜音狀態
     trainingMode: false,  // 訓練模式
+    // v0.7 新增：校準資料
+    calibration: null,
     // v0.6.4 診斷工具狀態
     diagLoopTimer: null,
     diagHistory: []
@@ -515,6 +541,11 @@
 
   // ═══ 擷取徽章（回傳 canvas 供模板比對/訓練用） ═══
   function captureBadgeCanvas(region) {
+    // v0.7: 如果有校準資料，用校準比例擷取（標準化擷取）
+    if (state.calibration && state.calibration.timing) {
+      return captureBadgeFromCalibration();
+    }
+    // 舊版邏輯（手動拖曳橘框）
     const badge = getBadgeRect(region);
     const canvas = document.createElement('canvas');
     canvas.width = badge.w;
@@ -525,6 +556,346 @@
       0, 0, badge.w, badge.h);
     return canvas;
   }
+
+  // v0.7: 用校準比例擷取徽章區域（已標準化為 32×32）
+  function captureBadgeFromCalibration() {
+    const cal = state.calibration.timing;
+    const region = cal.region;
+
+    // 算出紅環中心（絕對座標）
+    const ringX = region.x + region.w * cal.ringCenterRatio.x;
+    const ringY = region.y + region.h * cal.ringCenterRatio.y;
+    const ringR = region.w * cal.ringRadiusRatio;
+
+    // 算徽章位置（紅環右上 45°）
+    const offset = ringR * cal.badgeOffsetRatio;
+    const angleRad = -Math.PI / 4;
+    const badgeCenterX = ringX + offset * Math.cos(angleRad);
+    const badgeCenterY = ringY + offset * Math.sin(angleRad);
+    const badgeSize = ringR * cal.badgeSizeRatio;
+
+    const x = Math.round(badgeCenterX - badgeSize / 2);
+    const y = Math.round(badgeCenterY - badgeSize / 2);
+    const w = Math.round(badgeSize);
+    const h = Math.round(badgeSize);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const video = document.getElementById('dVideo');
+    canvas.getContext('2d').drawImage(video, x, y, w, h, 0, 0, w, h);
+    return canvas;
+  }
+
+  // v0.7: 載入/儲存校準資料
+  function loadCalibration() {
+    try {
+      const s = localStorage.getItem(CALIBRATION_STORAGE_KEY);
+      if (s) {
+        state.calibration = JSON.parse(s);
+        return true;
+      }
+    } catch (e) { console.warn(DEBUG_PREFIX, '校準資料載入失敗', e); }
+    return false;
+  }
+  function saveCalibration() {
+    if (!state.calibration) return;
+    try {
+      localStorage.setItem(CALIBRATION_STORAGE_KEY, JSON.stringify(state.calibration));
+    } catch (e) { console.warn(DEBUG_PREFIX, '校準資料儲存失敗', e); }
+  }
+  function clearCalibration() {
+    state.calibration = null;
+    localStorage.removeItem(CALIBRATION_STORAGE_KEY);
+  }
+
+  // v0.7: 更新精簡模式的「校準狀態」顯示
+  function updateCalibStatus() {
+    const el = document.getElementById('dCalibStatus');
+    if (!el) return;
+    if (!state.calibration || !state.calibration.timing) {
+      el.style.display = 'none';
+      return;
+    }
+    const t = state.calibration.timing;
+    el.style.display = 'block';
+    if (t.mode === 'auto') {
+      el.innerHTML = `<span style="color:#0f0">✨ 已校準（自動）</span> | 紅環半徑比 ${(t.ringRadiusRatio*100).toFixed(0)}%`;
+    } else {
+      el.innerHTML = `<span style="color:#fa0">⚠️ 已校準（手動）</span> | 使用預設比例`;
+    }
+  }
+
+  // v0.7: 校準流程步驟 1
+  function renderCalibStep1() {
+    const body = document.getElementById('dCalibBody');
+    const hasRegion = state.regions.status;
+    const hasCalibration = state.calibration && state.calibration.timing;
+
+    let currentInfo = '';
+    if (hasCalibration) {
+      const t = state.calibration.timing;
+      currentInfo = `
+        <div class="calib-step" style="border-color:#fa0;background:rgba(255,170,0,0.05)">
+          <h4 style="color:#fa0">🔧 目前校準狀態</h4>
+          <div>模式：<b>${t.mode === 'auto' ? '✨ 自動' : '⚠️ 手動'}</b></div>
+          <div>紅環中心比例：(${(t.ringCenterRatio.x*100).toFixed(1)}%, ${(t.ringCenterRatio.y*100).toFixed(1)}%)</div>
+          <div>紅環半徑比例：${(t.ringRadiusRatio*100).toFixed(1)}%</div>
+          <div>校準時間：${new Date(t.calibratedAt).toLocaleString('zh-TW')}</div>
+          <div class="calib-actions">
+            <button class="dbtn red" onclick="window.__detector.resetCalibration()">🗑 清除校準</button>
+          </div>
+        </div>
+      `;
+    }
+
+    body.innerHTML = `
+      ${currentInfo}
+      <div class="calib-step active">
+        <h4>📐 步驟 1：框選計時圈</h4>
+        <div style="line-height:1.7">
+          請框選遊戲畫面右上方的「<b>計時圈完整區域</b>」<br>
+          ─ 包含 <span style="color:#f33">紅環</span>+<span style="color:#0af">徽章</span>（On / R1 / R2 等文字）<br>
+          ─ 範圍可以稍微大一點（系統會自動偵測精確位置）
+        </div>
+        <div class="calib-actions">
+          ${hasRegion
+            ? `<button class="dbtn" onclick="window.__detector.startCalibFrameSelect()">🎯 開始框選</button>
+               <span style="font-size:11px;color:#888">（之前框過 status，校準會覆蓋它）</span>`
+            : `<span style="color:#fa0">⚠️ 請先開啟擷取，再回來校準</span>`
+          }
+        </div>
+      </div>
+      <div class="calib-step" style="opacity:0.5">
+        <h4>📐 步驟 2：自動偵測紅環</h4>
+        <div>系統會在框內偵測紅環中心和半徑（10 次取樣，取中位數）</div>
+      </div>
+      <div class="calib-step" style="opacity:0.5">
+        <h4>📐 步驟 3：套用比例</h4>
+        <div>用紅環中心+半徑算出徽章位置，之後就用這個比例擷取</div>
+      </div>
+    `;
+  }
+
+  // v0.7: 校準失敗
+  function renderCalibFailure(reason) {
+    const body = document.getElementById('dCalibBody');
+    body.innerHTML = `
+      <div class="calib-step active" style="border-color:#f33">
+        <h4 style="color:#f33">❌ 紅環偵測失敗</h4>
+        <div>原因：${reason}</div>
+        <div style="margin-top:8px;color:#888;font-size:11px">
+          可能的解決方式：<br>
+          1. 確認遊戲畫面中目前有可見的紅環（王重生倒數中）<br>
+          2. 重新框選，包含整個紅環<br>
+          3. 跳過校準，使用預設比例（之後可手動調整）
+        </div>
+        <div class="calib-actions">
+          <button class="dbtn" onclick="window.__detector.restartCalibration()">🔄 重新校準</button>
+          <button class="dbtn gray" onclick="window.__detector.skipCalibration()">⏭️ 跳過（手動模式）</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // v0.7: 校準成功 → 顯示結果
+  function renderCalibAutoResult(region, result) {
+    state._calibTempResult = result;
+    const body = document.getElementById('dCalibBody');
+    const stab = result.stability;
+
+    const cxStable = stab.cxStd < 1 ? '🟢' : stab.cxStd < 2 ? '🟡' : '🔴';
+    const cyStable = stab.cyStd < 1 ? '🟢' : stab.cyStd < 2 ? '🟡' : '🔴';
+    const rStable = stab.rStd < 0.5 ? '🟢' : stab.rStd < 1.5 ? '🟡' : '🔴';
+    const allStable = stab.cxStd < 2 && stab.cyStd < 2 && stab.rStd < 1.5;
+
+    body.innerHTML = `
+      <div class="calib-step active">
+        <h4>✅ 紅環偵測完成</h4>
+        <div class="calib-result-grid">
+          <div>
+            <div style="color:#888;font-size:11px;margin-bottom:4px">框選範圍 + 偵測結果</div>
+            <canvas class="calib-canvas" id="dCalibPreview"></canvas>
+          </div>
+          <div>
+            <div style="color:#888;font-size:11px;margin-bottom:4px">擷取出的徽章區（標準化 32×32）</div>
+            <canvas class="calib-canvas" id="dCalibBadge" style="max-width:128px;width:128px;height:128px"></canvas>
+          </div>
+        </div>
+        <div style="margin-top:10px">
+          <div class="stab-row">${cxStable} 圓心 X 穩定度：std ${stab.cxStd.toFixed(2)}</div>
+          <div class="stab-row">${cyStable} 圓心 Y 穩定度：std ${stab.cyStd.toFixed(2)}</div>
+          <div class="stab-row">${rStable} 半徑穩定度：std ${stab.rStd.toFixed(2)}</div>
+          <div class="stab-row">圓擬合度：${(stab.confidence*100).toFixed(0)}%</div>
+        </div>
+        <div style="margin-top:8px;padding:6px;background:${allStable ? 'rgba(0,255,0,0.1)' : 'rgba(255,170,0,0.1)'};border-radius:4px;font-size:11px">
+          ${allStable
+            ? '<span style="color:#0f0">✅ 校準品質良好！</span>'
+            : '<span style="color:#fa0">⚠️ 偵測有些晃動，建議畫面靜止後重試。也可以直接套用，效果通常還是比手動好。</span>'}
+        </div>
+        <div class="calib-actions">
+          <button class="dbtn" onclick="window.__detector.confirmAutoCalibration()">✅ 套用此校準</button>
+          <button class="dbtn gray" onclick="window.__detector.restartCalibration()">🔄 重新框選</button>
+          <button class="dbtn gray" onclick="window.__detector.skipCalibration()">⏭️ 跳過（手動模式）</button>
+        </div>
+      </div>
+    `;
+
+    // 畫預覽
+    setTimeout(() => {
+      const preview = document.getElementById('dCalibPreview');
+      const video = document.getElementById('dVideo');
+      if (preview && video) {
+        const scale = Math.min(280 / region.w, 280 / region.h, 6);
+        preview.width = region.w * scale;
+        preview.height = region.h * scale;
+        const ctx = preview.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(video, region.x, region.y, region.w, region.h, 0, 0, preview.width, preview.height);
+        // 畫紅環中心（綠點）和圓周（黃線）
+        const cx = result.ringCenterRatio.x * preview.width;
+        const cy = result.ringCenterRatio.y * preview.height;
+        const r = result.ringRadiusRatio * preview.width;
+        ctx.strokeStyle = '#ff0';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = '#0f0';
+        ctx.beginPath();
+        ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+        ctx.fill();
+        // 畫徽章方框（藍色）
+        const offset = r * DEFAULT_RING_RATIOS.badgeOffsetRatio;
+        const angleRad = -Math.PI / 4;
+        const badgeCenterX = cx + offset * Math.cos(angleRad);
+        const badgeCenterY = cy + offset * Math.sin(angleRad);
+        const badgeSize = r * DEFAULT_RING_RATIOS.badgeSizeRatio;
+        ctx.strokeStyle = '#0af';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(
+          badgeCenterX - badgeSize/2,
+          badgeCenterY - badgeSize/2,
+          badgeSize, badgeSize
+        );
+      }
+
+      // 畫徽章預覽（用算出來的比例擷取）
+      const badgeCanvas = document.getElementById('dCalibBadge');
+      if (badgeCanvas && video) {
+        const ringX = region.x + region.w * result.ringCenterRatio.x;
+        const ringY = region.y + region.h * result.ringCenterRatio.y;
+        const ringR = region.w * result.ringRadiusRatio;
+        const offset = ringR * DEFAULT_RING_RATIOS.badgeOffsetRatio;
+        const angleRad = -Math.PI / 4;
+        const bcx = ringX + offset * Math.cos(angleRad);
+        const bcy = ringY + offset * Math.sin(angleRad);
+        const bsize = ringR * DEFAULT_RING_RATIOS.badgeSizeRatio;
+        badgeCanvas.width = 128;
+        badgeCanvas.height = 128;
+        const ctx = badgeCanvas.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(video,
+          bcx - bsize/2, bcy - bsize/2, bsize, bsize,
+          0, 0, 128, 128);
+      }
+    }, 100);
+  }
+
+  // v0.7: 進入校準框選模式
+  function enterCalibFrameMode() {
+    // 跟原有的框選一樣，但把結果存到 _calibTempRegion
+    state._calibrating = true;
+    // 切換到 status 模式（重用既有框選 UI）
+    setMode('status');
+    log('📐 校準中：請在影片上框選計時圈完整區域', '#08f');
+    showCalibInstructions();
+  }
+
+  function showCalibInstructions() {
+    // 顯示一個浮動提示框，告訴使用者怎麼框
+    let hint = document.getElementById('dCalibHint');
+    if (!hint) {
+      hint = document.createElement('div');
+      hint.id = 'dCalibHint';
+      hint.style.cssText = 'position:fixed;top:80px;left:50%;transform:translateX(-50%);background:#08f;color:#fff;padding:8px 16px;border-radius:6px;z-index:10001;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,0.5)';
+      document.body.appendChild(hint);
+    }
+    hint.innerHTML = '📐 校準中：請框選遊戲畫面的<b>計時圈</b>區域 <button onclick="window.__detector.cancelCalibFrame()" style="margin-left:10px;background:none;border:1px solid #fff;color:#fff;padding:2px 8px;border-radius:3px;cursor:pointer">取消</button>';
+    hint.style.display = 'block';
+  }
+
+  function hideCalibInstructions() {
+    const hint = document.getElementById('dCalibHint');
+    if (hint) hint.style.display = 'none';
+  }
+
+  // v0.7: 進行紅環校準（連續抓 N 次取最佳結果）
+  // region: 使用者框選的計時圈範圍
+  async function runRingCalibration(region, options = {}) {
+    const samples = options.samples || 10;
+    const results = [];
+
+    for (let i = 0; i < samples; i++) {
+      const ring = detectRedRing(region, {
+        redThreshold: options.redThreshold || 150,
+        redDominance: options.redDominance || 60
+      });
+      if (ring && ring.found) {
+        results.push(ring);
+      }
+      if (i < samples - 1) await new Promise(r => setTimeout(r, 100));
+    }
+
+    if (results.length === 0) {
+      return { success: false, reason: '無法偵測到紅環（請確認當前畫面有紅環）' };
+    }
+
+    // 取中位數（避免極端值）
+    const sortBy = (key) => results.slice().sort((a, b) => a[key] - b[key]);
+    const median = (arr, key) => arr[Math.floor(arr.length / 2)][key];
+    const cxMed = median(sortBy('centerX'), 'centerX');
+    const cyMed = median(sortBy('centerY'), 'centerY');
+    const rMed = median(sortBy('radius'), 'radius');
+
+    // 計算標準差（評估穩定性）
+    const stdDev = (vals) => {
+      const mean = vals.reduce((s, v) => s + v, 0) / vals.length;
+      return Math.sqrt(vals.reduce((s, v) => s + (v - mean) ** 2, 0) / vals.length);
+    };
+    const cxStd = stdDev(results.map(r => r.centerX));
+    const cyStd = stdDev(results.map(r => r.centerY));
+    const rStd = stdDev(results.map(r => r.radius));
+
+    return {
+      success: true,
+      ringCenterRatio: { x: cxMed / region.w, y: cyMed / region.h },
+      ringRadiusRatio: rMed / region.w,
+      ringCenterAbs: { x: region.x + cxMed, y: region.y + cyMed },
+      ringRadiusAbs: rMed,
+      stability: {
+        cxStd, cyStd, rStd,
+        samples: results.length,
+        confidence: results.reduce((s, r) => s + r.confidence, 0) / results.length
+      }
+    };
+  }
+
+  // v0.7: 套用校準結果（含手動模式 / 自動模式）
+  function applyCalibration(region, ringResult, useDefault = false) {
+    state.calibration = state.calibration || {};
+    state.calibration.timing = {
+      region: { ...region },
+      ringCenterRatio: useDefault ? DEFAULT_RING_RATIOS.ringCenterRatio : ringResult.ringCenterRatio,
+      ringRadiusRatio: useDefault ? DEFAULT_RING_RATIOS.ringRadiusRatio : ringResult.ringRadiusRatio,
+      badgeOffsetRatio: DEFAULT_RING_RATIOS.badgeOffsetRatio,
+      badgeSizeRatio: DEFAULT_RING_RATIOS.badgeSizeRatio,
+      calibratedAt: Date.now(),
+      mode: useDefault ? 'manual' : 'auto'
+    };
+    saveCalibration();
+  }
+
 
   // ═══ 擷取分流區域 ═══
   function captureChCanvas(region) {
@@ -1125,7 +1496,7 @@
     const btn = document.createElement('button');
     btn.id = 'detectBtn';
     btn.className = 'audio-btn';
-    btn.title = '螢幕偵測 v0.6.4';
+    btn.title = '螢幕偵測 v0.7.0';
     btn.innerHTML = '📷';
     btn.onclick = togglePanel;
     audioControls.appendChild(btn);
@@ -1565,8 +1936,65 @@
         background: #333; border-radius: 2px; overflow: hidden;
         vertical-align: middle; margin-left: 4px;
       }
-      #dInspectModal .inspect-bar-fill {
-        height: 100%; background: #0f0;
+      /* v0.7: 校準模態框（複用 inspect 大部分樣式） */
+      #dCalibModal {
+        display: none;
+        position: fixed; inset: 0;
+        background: rgba(0, 0, 0, 0.85);
+        z-index: 10000;
+        justify-content: center;
+        align-items: center;
+      }
+      #dCalibModal.show { display: flex; }
+      #dCalibModal .calib-box {
+        background: #111; border: 2px solid #08f;
+        border-radius: 10px;
+        max-width: 700px; width: 92%;
+        max-height: 90vh;
+        display: flex; flex-direction: column;
+        overflow: hidden;
+      }
+      body.light #dCalibModal .calib-box { background: #fff; border-color: #08f; }
+      #dCalibModal .calib-header {
+        padding: 12px 16px;
+        background: #1a1a1a;
+        border-bottom: 1px solid #333;
+        display: flex; justify-content: space-between; align-items: center;
+        color: #08f; font-size: 14px; font-weight: bold;
+      }
+      body.light #dCalibModal .calib-header { background: #f5f5f2; border-bottom-color: #ddd; }
+      #dCalibModal .calib-body {
+        overflow-y: auto; padding: 16px;
+        font-size: 12px; color: #ccc;
+      }
+      body.light #dCalibModal .calib-body { color: #333; }
+      #dCalibModal .calib-step {
+        background: #0a0a0a; border: 1px solid #333;
+        border-radius: 6px; padding: 12px; margin-bottom: 10px;
+      }
+      body.light #dCalibModal .calib-step { background: #f5f5f2; border-color: #ddd; }
+      #dCalibModal .calib-step.active {
+        border-color: #08f; box-shadow: 0 0 8px rgba(0,136,255,0.3);
+      }
+      #dCalibModal .calib-step h4 {
+        margin: 0 0 8px 0; color: #08f; font-size: 13px;
+      }
+      #dCalibModal .calib-result-grid {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+        margin-top: 8px;
+      }
+      #dCalibModal .calib-canvas {
+        width: 100%; max-width: 280px;
+        border: 1px solid #333; background: #000;
+        image-rendering: pixelated;
+        display: block;
+      }
+      #dCalibModal .stab-row {
+        font-family: monospace; font-size: 11px;
+        margin: 2px 0;
+      }
+      #dCalibModal .calib-actions {
+        display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;
       }
     `;
     document.head.appendChild(style);
@@ -1576,7 +2004,7 @@
     panel.className = 'compact';
     panel.innerHTML = `
       <div class="panel-header" id="dPanelHeader">
-        <h3>📷 偵測器 <span class="small">v0.6.4</span></h3>
+        <h3>📷 偵測器 <span class="small">v0.7.0</span></h3>
         <div>
           <button class="panel-ctrl-btn" id="dTrainToggle" title="訓練模式：只存模板不送 Firebase">🎯</button>
           <button class="panel-ctrl-btn" id="dMuteToggle" title="靜音切換">🔔</button>
@@ -1602,7 +2030,10 @@
               <button class="dbtn" id="dMiniAuto" disabled>🔄 監控</button>
               <button class="dbtn red" id="dMiniStopAuto" disabled>⏸</button>
               <button class="dbtn gray" id="dMiniInspect" title="檢視當前偵測的詳細比對結果">🔬</button>
+              <button class="dbtn blue" id="dMiniCalibrate" title="校準計時圈位置（v0.7 新功能）">✨ 校準</button>
             </div>
+            <!-- v0.7: 校準狀態顯示 -->
+            <div id="dCalibStatus" style="font-size:10px;text-align:center;margin-top:4px;color:#888;display:none"></div>
           </div>
           <!-- v0.6.4: 擷取預覽 + 手動標記（可收合） -->
           <div class="sec" style="padding:6px;border:1px solid #08f;background:rgba(0,136,255,0.05)">
@@ -1902,11 +2333,27 @@
     `;
     document.body.appendChild(inspectModal);
 
+    // v0.7: 注入校準模態框
+    const calibModal = document.createElement('div');
+    calibModal.id = 'dCalibModal';
+    calibModal.innerHTML = `
+      <div class="calib-box">
+        <div class="calib-header">
+          <span>✨ 計時圈校準（v0.7 標準化擷取）</span>
+          <button class="inspect-close" onclick="window.__detector.closeCalibration()">✕</button>
+        </div>
+        <div class="calib-body" id="dCalibBody"></div>
+      </div>
+    `;
+    document.body.appendChild(calibModal);
+
     bindEvents();
     initLearning();
     loadPanelPos();
     loadMuteState();
     loadTrainModeState();
+    loadCalibration();
+    updateCalibStatus();
     updateTplDisplay();
   }
 
@@ -2178,11 +2625,25 @@
     if (!region) return;
     const video = document.getElementById('dVideo');
     if (!video || !video.videoWidth) return;
-    const badge = getBadgeRect(region);
     const captureCan = document.getElementById('dBadgeCaptureCanvas');
     const infoEl = document.getElementById('dBadgeCaptureInfo');
     if (!captureCan) return;
-    // 擷取真實的徽章範圍（跟 captureBadgeCanvas 完全相同的邏輯）
+
+    // v0.7: 有校準資料 → 用校準比例擷取（標準化版）
+    if (state.calibration && state.calibration.timing) {
+      const cap = captureBadgeFromCalibration();
+      captureCan.width = cap.width;
+      captureCan.height = cap.height;
+      captureCan.getContext('2d').drawImage(cap, 0, 0);
+      if (infoEl) {
+        const t = state.calibration.timing;
+        infoEl.innerHTML = `<span style="color:#0f0">✨ 校準擷取</span> ${cap.width}×${cap.height}px｜模式：${t.mode === 'auto' ? '自動' : '手動'}`;
+      }
+      return;
+    }
+
+    // 舊版：手動拖曳橘框
+    const badge = getBadgeRect(region);
     captureCan.width = badge.w;
     captureCan.height = badge.h;
     const cctx = captureCan.getContext('2d');
@@ -2628,6 +3089,8 @@
     document.getElementById('dMiniStopAuto').onclick = stopAuto;
     // v0.6: 偵錯比對按鈕
     document.getElementById('dMiniInspect').onclick = () => window.__detector.openInspect();
+    // v0.7: 校準按鈕
+    document.getElementById('dMiniCalibrate').onclick = () => window.__detector.openCalibration();
     // 點偵錯模態背景關閉
     document.getElementById('dInspectModal').addEventListener('click', e => {
       if (e.target.id === 'dInspectModal') window.__detector.closeInspect();
@@ -2704,6 +3167,24 @@
         h: Math.round(parseInt(drawBox.style.height) * cssScale)
       };
       if (region.w < 5 || region.h < 5) return;
+
+      // v0.7: 如果在校準模式，把這次框選用於校準
+      if (state._calibrating) {
+        state._calibTempRegion = region;
+        state._calibrating = false;
+        hideCalibInstructions();
+        // 把計時圈框也存為 status region（讓擷取系統能用）
+        state.regions.status = region;
+        state.badgeRect = null;
+        drawRegionBox('status', region);
+        localStorage.setItem('tosm_detector_regions_v5', JSON.stringify(state.regions));
+        log(`📐 已選定校準範圍 (${region.w}×${region.h})，開始紅環偵測...`, '#08f');
+        // 重新打開校準模態，自動進入紅環偵測
+        document.getElementById('dCalibModal').classList.add('show');
+        window.__detector.applyAutoCalibration();
+        return;
+      }
+
       state.regions[state.currentMode] = region;
       if (state.currentMode === 'status') {
         state.badgeRect = null;
@@ -3256,6 +3737,89 @@
       document.getElementById('dInspectModal').classList.remove('show');
     },
 
+    // ═══════════════════════════════════════════════
+    // v0.7: 校準工作流程
+    // ═══════════════════════════════════════════════
+    openCalibration: () => {
+      const modal = document.getElementById('dCalibModal');
+      modal.classList.add('show');
+      renderCalibStep1();
+    },
+    closeCalibration: () => {
+      document.getElementById('dCalibModal').classList.remove('show');
+    },
+
+    // 步驟 1：使用者按「開始框選計時圈」
+    startCalibFrameSelect: () => {
+      // 進入「框選計時圈」模式（類似框選 region 但專用）
+      const modal = document.getElementById('dCalibModal');
+      modal.classList.remove('show');
+      // 切到完整模式
+      if (state.panelMode !== 'full') togglePanelMode();
+      // 啟用框選模式（用 timing 模式）
+      enterCalibFrameMode();
+    },
+
+    // 步驟 2：套用紅環校準結果
+    applyAutoCalibration: async () => {
+      const region = state._calibTempRegion;
+      if (!region) return;
+      const body = document.getElementById('dCalibBody');
+      body.innerHTML = '<div style="text-align:center;padding:20px">🔄 正在偵測紅環（10 次取樣中）...</div>';
+
+      const result = await runRingCalibration(region, { samples: 10 });
+      if (!result.success) {
+        renderCalibFailure(result.reason);
+        return;
+      }
+      renderCalibAutoResult(region, result);
+    },
+
+    confirmAutoCalibration: () => {
+      const region = state._calibTempRegion;
+      const result = state._calibTempResult;
+      if (!region || !result) return;
+      applyCalibration(region, result, false);
+      log(`✨ 校準成功！紅環中心 (${(result.ringCenterRatio.x*100).toFixed(1)}%, ${(result.ringCenterRatio.y*100).toFixed(1)}%)，半徑比 ${(result.ringRadiusRatio*100).toFixed(1)}%`, '#0f0');
+      updateCalibStatus();
+      window.__detector.closeCalibration();
+      // 重新渲染預覽
+      if (state.regions.status) renderBadgeEditor();
+    },
+
+    // 步驟 3：跳過校準（手動）
+    skipCalibration: () => {
+      const region = state._calibTempRegion;
+      if (!region) return;
+      applyCalibration(region, null, true);  // 用預設比例
+      log(`⚠️ 已跳過自動校準，使用預設比例（之後可在徽章編輯器手動微調）`, '#fa0');
+      updateCalibStatus();
+      window.__detector.closeCalibration();
+      if (state.regions.status) renderBadgeEditor();
+    },
+
+    // 重設校準
+    resetCalibration: () => {
+      if (!confirm('確定要清除校準資料？這會回到「手動拖曳橘框」模式。')) return;
+      clearCalibration();
+      updateCalibStatus();
+      log('🗑 已清除校準資料', '#fa0');
+      window.__detector.closeCalibration();
+      if (state.regions.status) renderBadgeEditor();
+    },
+
+    // 重新開始校準
+    restartCalibration: () => {
+      renderCalibStep1();
+    },
+
+    // 取消校準框選（從浮動提示按取消）
+    cancelCalibFrame: () => {
+      state._calibrating = false;
+      hideCalibInstructions();
+      log('已取消校準', '#888');
+    },
+
     // 從偵錯模態刪模板，並重新整理
     deleteTplFromInspect: async (category, label, index) => {
       if (!confirm(`確定要刪除 ${category === 'ch' ? 'CH.'+label : label} 的第 ${index+1} 張模板？`)) return;
@@ -3345,7 +3909,7 @@
   loadTesseract(() => {
     waitForApp(() => {
       injectUI();
-      console.log(DEBUG_PREFIX, 'v0.6.4 Beta 已就緒');
+      console.log(DEBUG_PREFIX, 'v0.7.0 Beta 已就緒');
     });
   });
 
