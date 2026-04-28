@@ -745,10 +745,6 @@
     };
   }
 
-      offsetRatio, sizeRatio
-    };
-  }
-
 
   function analyzeStatusMetrics(region) {
     const canvas = document.getElementById('dCanStatus');
