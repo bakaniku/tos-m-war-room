@@ -1,35 +1,33 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * 📷 TOS M FB TIME - 螢幕偵測模組 v0.7.0 Beta
+ * 📷 TOS M FB TIME - 螢幕偵測模組 v0.7.1 (精準優先版)
  * ═══════════════════════════════════════════════════════════════════════
  *
- * 【v0.7 核心革新：自動規範化擷取】
+ * 【v0.7.1 核心改動 — Phase 1 精準優先】
  *
- * ❌ 舊版痛點：
- *    - 使用者拖曳框選徽章 → 每個人擷取範圍不同 → 模板無法共享
- *    - 紅環偵測在不同地圖背景下不穩定（被王身上的紅、地板紅紋干擾）
- *    - 重新框選後舊模板都失效
+ * 從 v0.7.0 的差異:
+ *   1. 特徵組合:丟掉 pHash,改用「Sobel 邊緣 NCC + Zone 二值密度 + 像素 NCC」
+ *      - 邊緣 NCC 對筆劃形狀敏感,能分辨 R1/R2/R3/R4
+ *      - Zone 密度對「字型整體分布」敏感,能分辨 ON/數字
+ *      - 像素 NCC 當輔助驗證
+ *   2. 錨點對齊:每次比對在 ±3px 範圍內找最佳偏移,消除擷取漂移
+ *   3. 採信門檻:0.85 → 0.92(精準優先,寧可拒答)
+ *   4. 拒答機制:三條規則任一不過就回傳 UNKNOWN
+ *      - 最高分 < 0.92(low_confidence)
+ *      - 最高分與不同標籤次高分差距 < 0.05(ambiguous)
+ *      - 同標籤前 3 名平均 < 0.88(inconsistent_within_label)
  *
- * ✅ v0.7 解法：
- *    1. 校準模式：使用者框「計時圈完整區域」一次
- *    2. 紅環偵測（RANSAC）找出精確的紅環中心+半徑
- *    3. 用比例自動算出徽章位置 → 擷取 → 標準化 32×32
- *    4. 之後不再需要紅環偵測 → 不受地圖背景影響
- *    5. 所有人用相同比例 → 模板可共享 ✨
+ * 既有模板格式不變,完全相容(模板仍是 32×32 灰階 PNG dataURL)
  *
- * 用法：
- *   在 beta.html 的 </body> 之前加入：
- *     <script src="detector-v0.7.0.js"></script>
+ * 用法:
+ *   在 beta.html 的 </body> 之前加入:
+ *     <script src="detector-v0.7.1.js"></script>
  *
- * 依賴：
- *   - 主程式 beta.html 必須提供：saveBoss(map, ch, val), currentRoom, db
- *   - 主畫面必須有 #volRange 滑桿（音量跟隨）
- *   - 主畫面必須有 .audio-controls（注入 📷 按鈕的位置）
+ * 依賴:
+ *   - 主程式 beta.html 必須提供:saveBoss(map, ch, val), currentRoom, db
+ *   - 主畫面必須有 #volRange 滑桿
+ *   - 主畫面必須有 .audio-controls
  *
- * 不依賴：
- *   - jQuery
- *   - 任何外部 CSS
- *   - Tesseract（會自動從 CDN 動態載入作為 OCR fallback）
  * ═══════════════════════════════════════════════════════════════════════
  */
 
@@ -39,22 +37,26 @@
   const DEBUG_PREFIX = '[偵測器]';
   const TEMPLATE_SIZE = 32;
   const TEMPLATE_STORAGE_KEY = 'tosm_detector_templates_v5';
-  const TEMPLATE_MIN_SIM = 0.85;   // 相似度 >= 此值直接採信模板
-  const TEMPLATE_AMBIGUOUS = 0.70; // 相似度介於兩者之間為不確定
-  const MAX_TEMPLATES_PER_LABEL = 30;
 
-  // v0.7: 校準資料 storage key
+  // ═══ v0.7.1 精準優先門檻 ═══
+  const TEMPLATE_MIN_SIM = 0.92;       // 提高(原 0.85)
+  const TEMPLATE_AMBIGUOUS = 0.85;     // 提高(原 0.70)
+  const MAX_TEMPLATES_PER_LABEL = 30;
+  const ALIGN_RADIUS = 3;              // 錨點對齊搜尋半徑(±px)
+  const REJECT_TOP1_MIN = 0.92;        // 拒答:最高分必須達此值
+  const REJECT_RIVAL_DIFF = 0.05;      // 拒答:最高分與不同標籤次高分至少差此值
+  const REJECT_LABEL_AVG = 0.88;       // 拒答:同標籤前 3 名平均要達此值
+
   const CALIBRATION_STORAGE_KEY = 'tosm_detector_calibration_v7';
-  // 預設比例（從 1280x696 截圖測量得到）
   const DEFAULT_RING_RATIOS = {
-    ringCenterRatio: { x: 0.3, y: 0.6 },   // 紅環中心在框內的比例
-    ringRadiusRatio: 0.25,                  // 紅環半徑相對於框寬
-    badgeOffsetRatio: 0.95,                 // 徽章距紅環中心的距離（相對於半徑）
-    badgeSizeRatio: 0.65                    // 徽章邊長相對於半徑
+    ringCenterRatio: { x: 0.3, y: 0.6 },
+    ringRadiusRatio: 0.25,
+    badgeOffsetRatio: 0.95,
+    badgeSizeRatio: 0.65
   };
 
   // ═══════════════════════════════════════════════
-  // 模板資料庫
+  // 模板資料庫 (v0.7.1 精準優先版)
   // ═══════════════════════════════════════════════
   const TemplateDB = {
     data: { phase: {}, ch: {} },
@@ -74,12 +76,10 @@
       try {
         localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(this.data));
       } catch(e) {
-        console.error(DEBUG_PREFIX, '模板儲存失敗（容量可能已滿）', e);
+        console.error(DEBUG_PREFIX, '模板儲存失敗(容量可能已滿)', e);
       }
     },
 
-    // v0.6: 將原始圖片正規化並同時計算多種特徵
-    // 回傳：{ pixels (32x32 灰階), pHash (64-bit BigInt), magnitude (用於餘弦相似度) }
     normalize(sourceCanvas) {
       const norm = document.createElement('canvas');
       norm.width = TEMPLATE_SIZE; norm.height = TEMPLATE_SIZE;
@@ -97,44 +97,173 @@
       return norm;
     },
 
-    // v0.6: 從正規化圖片計算多種特徵
+    // ═══ v0.7.1 新版特徵提取 ═══
     extractFeatures(canvas) {
       const ctx = canvas.getContext('2d');
       const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const len = canvas.width * canvas.height;
-      const pixels = new Float32Array(len);
-      let mag = 0;
+      const w = canvas.width, h = canvas.height;
+      const len = w * h;
+      const gray = new Float32Array(len);
       for (let i = 0, j = 0; i < img.data.length; i += 4, j++) {
-        pixels[j] = img.data[i];
-        mag += pixels[j] * pixels[j];
+        gray[j] = img.data[i];
       }
-      // v0.6 新增：pHash（簡化版：基於平均亮度的二值化雜湊）
-      // 計算平均
-      let sum = 0;
-      for (let i = 0; i < len; i++) sum += pixels[i];
-      const avg = sum / len;
-      // 64-bit hash（從 32x32 採樣 8x8 = 64 個位置）
-      const hash = new Uint8Array(64);
-      const step = TEMPLATE_SIZE / 8;
-      for (let y = 0; y < 8; y++) {
-        for (let x = 0; x < 8; x++) {
-          // 取每個 4x4 區塊的平均
-          let regionSum = 0;
-          for (let dy = 0; dy < step; dy++) {
-            for (let dx = 0; dx < step; dx++) {
-              const px = Math.floor(x * step + dx);
-              const py = Math.floor(y * step + dy);
-              regionSum += pixels[py * TEMPLATE_SIZE + px];
-            }
-          }
-          const regionAvg = regionSum / (step * step);
-          hash[y * 8 + x] = regionAvg > avg ? 1 : 0;
-        }
-      }
-      return { pixels, magnitude: Math.sqrt(mag), hash };
+      const binary = this._otsuBinarize(gray);
+      const edge = this._sobelEdge(gray, w, h);
+      const zone = this._zoneFeatures(binary, w, h);
+
+      // 為向下相容,保留 pixels / magnitude / hash 欄位
+      let mag = 0;
+      for (let i = 0; i < len; i++) mag += gray[i] * gray[i];
+
+      return {
+        gray, binary, edge, zone, w, h,
+        pixels: gray,
+        magnitude: Math.sqrt(mag),
+        hash: null  // 不再使用 pHash
+      };
     },
 
-    // 舊 API：保留向下相容，回傳像素陣列
+    // ─── v0.7.1 新增:Otsu 二值化 ───
+    _otsuBinarize(gray) {
+      const n = gray.length;
+      const hist = new Array(256).fill(0);
+      for (let i = 0; i < n; i++) hist[Math.round(gray[i])]++;
+      let sum = 0;
+      for (let i = 0; i < 256; i++) sum += i * hist[i];
+      let sumB = 0, wB = 0, maxVar = 0, th = 127;
+      for (let t = 0; t < 256; t++) {
+        wB += hist[t];
+        if (wB === 0) continue;
+        const wF = n - wB;
+        if (wF === 0) break;
+        sumB += t * hist[t];
+        const mB = sumB / wB;
+        const mF = (sum - sumB) / wF;
+        const v = wB * wF * (mB - mF) * (mB - mF);
+        if (v > maxVar) { maxVar = v; th = t; }
+      }
+      const out = new Uint8Array(n);
+      for (let i = 0; i < n; i++) out[i] = gray[i] > th ? 255 : 0;
+      return out;
+    },
+
+    // ─── v0.7.1 新增:Sobel 邊緣強度 ───
+    _sobelEdge(gray, w, h) {
+      const out = new Float32Array(w * h);
+      for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+          const i = y * w + x;
+          const tl = gray[i - w - 1], t = gray[i - w], tr = gray[i - w + 1];
+          const l  = gray[i - 1],                       r = gray[i + 1];
+          const bl = gray[i + w - 1], b = gray[i + w], br = gray[i + w + 1];
+          const gx = -tl - 2*l - bl + tr + 2*r + br;
+          const gy = -tl - 2*t - tr + bl + 2*b + br;
+          out[i] = Math.sqrt(gx*gx + gy*gy);
+        }
+      }
+      return out;
+    },
+
+    // ─── v0.7.1 新增:Zone 二值密度(8×8 = 64 維)───
+    _zoneFeatures(binary, w, h) {
+      const features = new Float32Array(64);
+      const zoneW = w / 8, zoneH = h / 8;
+      for (let zy = 0; zy < 8; zy++) {
+        for (let zx = 0; zx < 8; zx++) {
+          let blackCount = 0, total = 0;
+          const x0 = Math.floor(zx * zoneW), x1 = Math.floor((zx + 1) * zoneW);
+          const y0 = Math.floor(zy * zoneH), y1 = Math.floor((zy + 1) * zoneH);
+          for (let y = y0; y < y1; y++) {
+            for (let x = x0; x < x1; x++) {
+              if (binary[y * w + x] === 0) blackCount++;
+              total++;
+            }
+          }
+          features[zy * 8 + zx] = total > 0 ? blackCount / total : 0;
+        }
+      }
+      return features;
+    },
+
+    // ─── v0.7.1 新增:NCC ───
+    _ncc(a, b) {
+      const n = a.length;
+      let sumA = 0, sumB = 0;
+      for (let i = 0; i < n; i++) { sumA += a[i]; sumB += b[i]; }
+      const mA = sumA / n, mB = sumB / n;
+      let num = 0, denA = 0, denB = 0;
+      for (let i = 0; i < n; i++) {
+        const da = a[i] - mA, db = b[i] - mB;
+        num += da * db;
+        denA += da * da;
+        denB += db * db;
+      }
+      const den = Math.sqrt(denA * denB);
+      if (den < 1e-9) return 0;
+      return num / den;
+    },
+
+    _nccSim01(a, b) {
+      return Math.max(0, (this._ncc(a, b) + 1) / 2);
+    },
+
+    _cosineSim01(a, b) {
+      let dot = 0, magA = 0, magB = 0;
+      for (let i = 0; i < a.length; i++) {
+        dot += a[i] * b[i];
+        magA += a[i] * a[i];
+        magB += b[i] * b[i];
+      }
+      if (magA === 0 || magB === 0) return 0;
+      return Math.max(0, dot / Math.sqrt(magA * magB));
+    },
+
+    // ─── v0.7.1 新增:像素位移(用於錨點對齊)───
+    _shiftPixels(pixels, w, h, dx, dy) {
+      const out = new Float32Array(pixels.length);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const sx = x - dx, sy = y - dy;
+          if (sx >= 0 && sx < w && sy >= 0 && sy < h) {
+            out[y * w + x] = pixels[sy * w + sx];
+          }
+        }
+      }
+      return out;
+    },
+
+    // ─── v0.7.1 新增:錨點對齊 + 三特徵組合分數 ───
+    _alignAndScore(queryFeat, tplFeat) {
+      const w = queryFeat.w, h = queryFeat.h;
+      let bestNcc = -1;
+      let bestShifted = null;
+      let bestOffset = { dx: 0, dy: 0 };
+      for (let dy = -ALIGN_RADIUS; dy <= ALIGN_RADIUS; dy++) {
+        for (let dx = -ALIGN_RADIUS; dx <= ALIGN_RADIUS; dx++) {
+          const shifted = this._shiftPixels(queryFeat.gray, w, h, dx, dy);
+          const c = this._ncc(shifted, tplFeat.gray);
+          if (c > bestNcc) {
+            bestNcc = c;
+            bestShifted = shifted;
+            bestOffset = { dx, dy };
+          }
+        }
+      }
+      const shiftedEdge = this._sobelEdge(bestShifted, w, h);
+      const shiftedBinary = this._otsuBinarize(bestShifted);
+      const shiftedZone = this._zoneFeatures(shiftedBinary, w, h);
+
+      const simEdge  = this._nccSim01(shiftedEdge,  tplFeat.edge);
+      const simZone  = this._cosineSim01(shiftedZone, tplFeat.zone);
+      const simPixel = Math.max(0, (bestNcc + 1) / 2);
+
+      // 精準優先版權重:邊緣最重要(對筆劃形狀最敏感)
+      const combined = simEdge * 0.5 + simZone * 0.35 + simPixel * 0.15;
+
+      return { combined, simEdge, simZone, simPixel, offset: bestOffset };
+    },
+
+    // ─── 保留舊 API 向下相容 ───
     getPixels(canvas) {
       const ctx = canvas.getContext('2d');
       const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -143,6 +272,43 @@
         pixels[j] = img.data[i];
       }
       return pixels;
+    },
+
+    euclideanSim(a, b) {
+      let sum = 0;
+      const len = a.length;
+      for (let i = 0; i < len; i++) {
+        const diff = a[i] - b[i];
+        sum += diff * diff;
+      }
+      const dist = Math.sqrt(sum);
+      const maxDist = Math.sqrt(len * 255 * 255);
+      return 1 - (dist / maxDist);
+    },
+
+    cosineSim(a, b, magA, magB) {
+      let dot = 0;
+      for (let i = 0; i < a.length; i++) dot += a[i] * b[i];
+      if (magA === 0 || magB === 0) return 0;
+      return dot / (magA * magB);
+    },
+
+    pHashSim(hashA, hashB) {
+      if (!hashA || !hashB) return 0;
+      let diff = 0;
+      for (let i = 0; i < hashA.length; i++) {
+        if (hashA[i] !== hashB[i]) diff++;
+      }
+      return 1 - (diff / hashA.length);
+    },
+
+    euclideanDistance(a, b) {
+      let sum = 0;
+      for (let i = 0; i < a.length; i++) {
+        const diff = a[i] - b[i];
+        sum += diff * diff;
+      }
+      return Math.sqrt(sum);
     },
 
     add(category, label, sourceCanvas) {
@@ -164,12 +330,10 @@
       this.save();
     },
 
-    // v0.6.4: 刪除某標籤的某一張模板
     deleteAt(category, label, index) {
       if (!this.data[category] || !this.data[category][label]) return false;
       if (index < 0 || index >= this.data[category][label].length) return false;
       this.data[category][label].splice(index, 1);
-      // 如果該標籤已無模板，刪除空陣列（讓下拉選單不顯示）
       if (this.data[category][label].length === 0) {
         delete this.data[category][label];
       }
@@ -191,7 +355,6 @@
       });
     },
 
-    // v0.6: 從 dataURL 載入並計算所有特徵
     async dataURLToFeatures(dataURL) {
       return new Promise((resolve, reject) => {
         const img = new Image();
@@ -206,40 +369,7 @@
       });
     },
 
-    // v0.6: 三重相似度指標
-    // 1. 歐氏距離（整體像素差）
-    euclideanSim(a, b) {
-      let sum = 0;
-      const len = a.length;
-      for (let i = 0; i < len; i++) {
-        const diff = a[i] - b[i];
-        sum += diff * diff;
-      }
-      const dist = Math.sqrt(sum);
-      const maxDist = Math.sqrt(len * 255 * 255);
-      return 1 - (dist / maxDist);
-    },
-
-    // 2. 餘弦相似度（向量夾角，不受亮度影響）
-    cosineSim(a, b, magA, magB) {
-      let dot = 0;
-      const len = a.length;
-      for (let i = 0; i < len; i++) {
-        dot += a[i] * b[i];
-      }
-      if (magA === 0 || magB === 0) return 0;
-      return dot / (magA * magB);
-    },
-
-    // 3. pHash Hamming 距離 → 相似度
-    pHashSim(hashA, hashB) {
-      let diff = 0;
-      for (let i = 0; i < hashA.length; i++) {
-        if (hashA[i] !== hashB[i]) diff++;
-      }
-      return 1 - (diff / hashA.length);
-    },
-
+    // ═══ v0.7.1 新版 match:錨點對齊 + 拒答機制 ═══
     async match(category, sourceCanvas) {
       const templates = this.data[category];
       if (!templates || Object.keys(templates).length === 0) return null;
@@ -247,7 +377,7 @@
       const queryFeat = this.extractFeatures(norm);
 
       const results = [];
-      const allMatches = [];  // 用於偵錯：每個模板的詳細比對結果
+      const allMatches = [];
 
       for (const [label, dataURLs] of Object.entries(templates)) {
         let bestSim = -1;
@@ -255,45 +385,69 @@
         for (let idx = 0; idx < dataURLs.length; idx++) {
           const dataURL = dataURLs[idx];
           const tplFeat = await this.dataURLToFeatures(dataURL);
+          const r = this._alignAndScore(queryFeat, tplFeat);
 
-          // 三重相似度
-          const eucSim = this.euclideanSim(queryFeat.pixels, tplFeat.pixels);
-          const cosSim = this.cosineSim(queryFeat.pixels, tplFeat.pixels, queryFeat.magnitude, tplFeat.magnitude);
-          const hashSim = this.pHashSim(queryFeat.hash, tplFeat.hash);
+          // 沿用既有偵錯介面欄位名,但意義已變
+          // eucSim=像素NCC, cosSim=Zone cosine, hashSim=邊緣NCC
+          const matchEntry = {
+            label, idx,
+            eucSim: r.simPixel,
+            cosSim: r.simZone,
+            hashSim: r.simEdge,
+            combined: r.combined,
+            offset: r.offset
+          };
+          allMatches.push(matchEntry);
 
-          // v0.6: 加權平均（pHash 最重要，餘弦次之，歐氏最輕）
-          const combined = hashSim * 0.5 + cosSim * 0.3 + eucSim * 0.2;
-
-          allMatches.push({ label, idx, eucSim, cosSim, hashSim, combined });
-
-          if (combined > bestSim) {
-            bestSim = combined;
-            bestDetail = { idx, eucSim, cosSim, hashSim, combined };
+          if (r.combined > bestSim) {
+            bestSim = r.combined;
+            bestDetail = matchEntry;
           }
         }
         results.push({ label, similarity: bestSim, detail: bestDetail });
       }
 
       results.sort((a, b) => b.similarity - a.similarity);
-      // 偵錯資料：所有模板的比對結果（按 combined 排序）
       allMatches.sort((a, b) => b.combined - a.combined);
 
-      return {
-        label: results[0].label,
-        similarity: results[0].similarity,
-        topN: results.slice(0, 5),
-        // v0.6: 額外提供詳細所有比對結果
-        allMatches: allMatches.slice(0, 10)
-      };
-    },
+      // ═══ 拒答機制 ═══
+      const top1 = results[0];
+      const rival = results.find(r => r.label !== top1.label);
+      let rejection = null;
 
-    euclideanDistance(a, b) {
-      let sum = 0;
-      for (let i = 0; i < a.length; i++) {
-        const diff = a[i] - b[i];
-        sum += diff * diff;
+      if (top1.similarity < REJECT_TOP1_MIN) {
+        rejection = {
+          reason: 'low_confidence',
+          detail: `top1=${top1.similarity.toFixed(3)} < ${REJECT_TOP1_MIN}`
+        };
+      } else if (rival && (top1.similarity - rival.similarity) < REJECT_RIVAL_DIFF) {
+        rejection = {
+          reason: 'ambiguous',
+          detail: `${top1.label}(${top1.similarity.toFixed(3)}) vs ${rival.label}(${rival.similarity.toFixed(3)})`,
+          top1Label: top1.label, top1Sim: top1.similarity,
+          rivalLabel: rival.label, rivalSim: rival.similarity
+        };
+      } else {
+        const sameLabelMatches = allMatches.filter(m => m.label === top1.label).slice(0, 3);
+        if (sameLabelMatches.length >= 2) {
+          const avg = sameLabelMatches.reduce((s, m) => s + m.combined, 0) / sameLabelMatches.length;
+          if (avg < REJECT_LABEL_AVG) {
+            rejection = {
+              reason: 'inconsistent_within_label',
+              detail: `${top1.label} top3 avg=${avg.toFixed(3)} < ${REJECT_LABEL_AVG}`,
+              avgWithinLabel: avg
+            };
+          }
+        }
       }
-      return Math.sqrt(sum);
+
+      return {
+        label: top1.label,
+        similarity: top1.similarity,
+        topN: results.slice(0, 5),
+        allMatches: allMatches.slice(0, 10),
+        rejection
+      };
     },
 
     getStats() {
@@ -335,7 +489,7 @@
         this.save();
         return true;
       } catch(e) {
-        alert('❌ 匯入失敗：' + e.message);
+        alert('❌ 匯入失敗:' + e.message);
         return false;
       }
     }
@@ -406,15 +560,12 @@
     panelPos: { x: null, y: null },
     lastBadgeCanvas: null,
     lastChCanvas: null,
-    muted: false,  // v0.5 新增：靜音狀態
-    trainingMode: false,  // 訓練模式
-    // v0.7 新增：校準資料
+    muted: false,
+    trainingMode: false,
     calibration: null,
-    // v0.6.4 診斷工具狀態
     diagLoopTimer: null,
     diagHistory: []
   };
-
   function getBadgeRect(statusRegion) {
     if (state.badgeRect) return { ...state.badgeRect };
     return {
@@ -539,13 +690,11 @@
     return c;
   }
 
-  // ═══ 擷取徽章（回傳 canvas 供模板比對/訓練用） ═══
+  // ═══ 擷取徽章 ═══
   function captureBadgeCanvas(region) {
-    // v0.7: 如果有校準資料，用校準比例擷取（標準化擷取）
     if (state.calibration && state.calibration.timing) {
       return captureBadgeFromCalibration();
     }
-    // 舊版邏輯（手動拖曳橘框）
     const badge = getBadgeRect(region);
     const canvas = document.createElement('canvas');
     canvas.width = badge.w;
@@ -557,28 +706,21 @@
     return canvas;
   }
 
-  // v0.7: 用校準比例擷取徽章區域（已標準化為 32×32）
   function captureBadgeFromCalibration() {
     const cal = state.calibration.timing;
     const region = cal.region;
-
-    // 算出紅環中心（絕對座標）
     const ringX = region.x + region.w * cal.ringCenterRatio.x;
     const ringY = region.y + region.h * cal.ringCenterRatio.y;
     const ringR = region.w * cal.ringRadiusRatio;
-
-    // 算徽章位置（紅環右上 45°）
     const offset = ringR * cal.badgeOffsetRatio;
     const angleRad = -Math.PI / 4;
     const badgeCenterX = ringX + offset * Math.cos(angleRad);
     const badgeCenterY = ringY + offset * Math.sin(angleRad);
     const badgeSize = ringR * cal.badgeSizeRatio;
-
     const x = Math.round(badgeCenterX - badgeSize / 2);
     const y = Math.round(badgeCenterY - badgeSize / 2);
     const w = Math.round(badgeSize);
     const h = Math.round(badgeSize);
-
     const canvas = document.createElement('canvas');
     canvas.width = w;
     canvas.height = h;
@@ -587,7 +729,6 @@
     return canvas;
   }
 
-  // v0.7: 載入/儲存校準資料
   function loadCalibration() {
     try {
       const s = localStorage.getItem(CALIBRATION_STORAGE_KEY);
@@ -609,7 +750,6 @@
     localStorage.removeItem(CALIBRATION_STORAGE_KEY);
   }
 
-  // v0.7: 更新精簡模式的「校準狀態」顯示
   function updateCalibStatus() {
     const el = document.getElementById('dCalibStatus');
     if (!el) return;
@@ -620,13 +760,12 @@
     const t = state.calibration.timing;
     el.style.display = 'block';
     if (t.mode === 'auto') {
-      el.innerHTML = `<span style="color:#0f0">✨ 已校準（自動）</span> | 紅環半徑比 ${(t.ringRadiusRatio*100).toFixed(0)}%`;
+      el.innerHTML = `<span style="color:#0f0">✨ 已校準(自動)</span> | 紅環半徑比 ${(t.ringRadiusRatio*100).toFixed(0)}%`;
     } else {
-      el.innerHTML = `<span style="color:#fa0">⚠️ 已校準（手動）</span> | 使用預設比例`;
+      el.innerHTML = `<span style="color:#fa0">⚠️ 已校準(手動)</span> | 使用預設比例`;
     }
   }
 
-  // v0.7: 校準流程步驟 1
   function renderCalibStep1() {
     const body = document.getElementById('dCalibBody');
     const hasRegion = state.regions.status;
@@ -638,10 +777,10 @@
       currentInfo = `
         <div class="calib-step" style="border-color:#fa0;background:rgba(255,170,0,0.05)">
           <h4 style="color:#fa0">🔧 目前校準狀態</h4>
-          <div>模式：<b>${t.mode === 'auto' ? '✨ 自動' : '⚠️ 手動'}</b></div>
-          <div>紅環中心比例：(${(t.ringCenterRatio.x*100).toFixed(1)}%, ${(t.ringCenterRatio.y*100).toFixed(1)}%)</div>
-          <div>紅環半徑比例：${(t.ringRadiusRatio*100).toFixed(1)}%</div>
-          <div>校準時間：${new Date(t.calibratedAt).toLocaleString('zh-TW')}</div>
+          <div>模式:<b>${t.mode === 'auto' ? '✨ 自動' : '⚠️ 手動'}</b></div>
+          <div>紅環中心比例:(${(t.ringCenterRatio.x*100).toFixed(1)}%, ${(t.ringCenterRatio.y*100).toFixed(1)}%)</div>
+          <div>紅環半徑比例:${(t.ringRadiusRatio*100).toFixed(1)}%</div>
+          <div>校準時間:${new Date(t.calibratedAt).toLocaleString('zh-TW')}</div>
           <div class="calib-actions">
             <button class="dbtn red" onclick="window.__detector.resetCalibration()">🗑 清除校準</button>
           </div>
@@ -652,53 +791,51 @@
     body.innerHTML = `
       ${currentInfo}
       <div class="calib-step active">
-        <h4>📐 步驟 1：框選計時圈</h4>
+        <h4>📐 步驟 1:框選計時圈</h4>
         <div style="line-height:1.7">
           請框選遊戲畫面右上方的「<b>計時圈完整區域</b>」<br>
-          ─ 包含 <span style="color:#f33">紅環</span>+<span style="color:#0af">徽章</span>（On / R1 / R2 等文字）<br>
-          ─ 範圍可以稍微大一點（系統會自動偵測精確位置）
+          ─ 包含 <span style="color:#f33">紅環</span>+<span style="color:#0af">徽章</span>(On / R1 / R2 等文字)<br>
+          ─ 範圍可以稍微大一點(系統會自動偵測精確位置)
         </div>
         <div class="calib-actions">
           ${hasRegion
             ? `<button class="dbtn" onclick="window.__detector.startCalibFrameSelect()">🎯 開始框選</button>
-               <span style="font-size:11px;color:#888">（之前框過 status，校準會覆蓋它）</span>`
-            : `<span style="color:#fa0">⚠️ 請先開啟擷取，再回來校準</span>`
+               <span style="font-size:11px;color:#888">(之前框過 status,校準會覆蓋它)</span>`
+            : `<span style="color:#fa0">⚠️ 請先開啟擷取,再回來校準</span>`
           }
         </div>
       </div>
       <div class="calib-step" style="opacity:0.5">
-        <h4>📐 步驟 2：自動偵測紅環</h4>
-        <div>系統會在框內偵測紅環中心和半徑（10 次取樣，取中位數）</div>
+        <h4>📐 步驟 2:自動偵測紅環</h4>
+        <div>系統會在框內偵測紅環中心和半徑(10 次取樣,取中位數)</div>
       </div>
       <div class="calib-step" style="opacity:0.5">
-        <h4>📐 步驟 3：套用比例</h4>
-        <div>用紅環中心+半徑算出徽章位置，之後就用這個比例擷取</div>
+        <h4>📐 步驟 3:套用比例</h4>
+        <div>用紅環中心+半徑算出徽章位置,之後就用這個比例擷取</div>
       </div>
     `;
   }
 
-  // v0.7: 校準失敗
   function renderCalibFailure(reason) {
     const body = document.getElementById('dCalibBody');
     body.innerHTML = `
       <div class="calib-step active" style="border-color:#f33">
         <h4 style="color:#f33">❌ 紅環偵測失敗</h4>
-        <div>原因：${reason}</div>
+        <div>原因:${reason}</div>
         <div style="margin-top:8px;color:#888;font-size:11px">
-          可能的解決方式：<br>
-          1. 確認遊戲畫面中目前有可見的紅環（王重生倒數中）<br>
-          2. 重新框選，包含整個紅環<br>
-          3. 跳過校準，使用預設比例（之後可手動調整）
+          可能的解決方式:<br>
+          1. 確認遊戲畫面中目前有可見的紅環(王重生倒數中)<br>
+          2. 重新框選,包含整個紅環<br>
+          3. 跳過校準,使用預設比例(之後可手動調整)
         </div>
         <div class="calib-actions">
           <button class="dbtn" onclick="window.__detector.restartCalibration()">🔄 重新校準</button>
-          <button class="dbtn gray" onclick="window.__detector.skipCalibration()">⏭️ 跳過（手動模式）</button>
+          <button class="dbtn gray" onclick="window.__detector.skipCalibration()">⏭️ 跳過(手動模式)</button>
         </div>
       </div>
     `;
   }
 
-  // v0.7: 校準成功 → 顯示結果
   function renderCalibAutoResult(region, result) {
     state._calibTempResult = result;
     const body = document.getElementById('dCalibBody');
@@ -718,30 +855,29 @@
             <canvas class="calib-canvas" id="dCalibPreview"></canvas>
           </div>
           <div>
-            <div style="color:#888;font-size:11px;margin-bottom:4px">擷取出的徽章區（標準化 32×32）</div>
+            <div style="color:#888;font-size:11px;margin-bottom:4px">擷取出的徽章區(標準化 32×32)</div>
             <canvas class="calib-canvas" id="dCalibBadge" style="max-width:128px;width:128px;height:128px"></canvas>
           </div>
         </div>
         <div style="margin-top:10px">
-          <div class="stab-row">${cxStable} 圓心 X 穩定度：std ${stab.cxStd.toFixed(2)}</div>
-          <div class="stab-row">${cyStable} 圓心 Y 穩定度：std ${stab.cyStd.toFixed(2)}</div>
-          <div class="stab-row">${rStable} 半徑穩定度：std ${stab.rStd.toFixed(2)}</div>
-          <div class="stab-row">圓擬合度：${(stab.confidence*100).toFixed(0)}%</div>
+          <div class="stab-row">${cxStable} 圓心 X 穩定度:std ${stab.cxStd.toFixed(2)}</div>
+          <div class="stab-row">${cyStable} 圓心 Y 穩定度:std ${stab.cyStd.toFixed(2)}</div>
+          <div class="stab-row">${rStable} 半徑穩定度:std ${stab.rStd.toFixed(2)}</div>
+          <div class="stab-row">圓擬合度:${(stab.confidence*100).toFixed(0)}%</div>
         </div>
         <div style="margin-top:8px;padding:6px;background:${allStable ? 'rgba(0,255,0,0.1)' : 'rgba(255,170,0,0.1)'};border-radius:4px;font-size:11px">
           ${allStable
-            ? '<span style="color:#0f0">✅ 校準品質良好！</span>'
-            : '<span style="color:#fa0">⚠️ 偵測有些晃動，建議畫面靜止後重試。也可以直接套用，效果通常還是比手動好。</span>'}
+            ? '<span style="color:#0f0">✅ 校準品質良好!</span>'
+            : '<span style="color:#fa0">⚠️ 偵測有些晃動,建議畫面靜止後重試。也可以直接套用,效果通常還是比手動好。</span>'}
         </div>
         <div class="calib-actions">
           <button class="dbtn" onclick="window.__detector.confirmAutoCalibration()">✅ 套用此校準</button>
           <button class="dbtn gray" onclick="window.__detector.restartCalibration()">🔄 重新框選</button>
-          <button class="dbtn gray" onclick="window.__detector.skipCalibration()">⏭️ 跳過（手動模式）</button>
+          <button class="dbtn gray" onclick="window.__detector.skipCalibration()">⏭️ 跳過(手動模式)</button>
         </div>
       </div>
     `;
 
-    // 畫預覽
     setTimeout(() => {
       const preview = document.getElementById('dCalibPreview');
       const video = document.getElementById('dVideo');
@@ -752,7 +888,6 @@
         const ctx = preview.getContext('2d');
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(video, region.x, region.y, region.w, region.h, 0, 0, preview.width, preview.height);
-        // 畫紅環中心（綠點）和圓周（黃線）
         const cx = result.ringCenterRatio.x * preview.width;
         const cy = result.ringCenterRatio.y * preview.height;
         const r = result.ringRadiusRatio * preview.width;
@@ -765,7 +900,6 @@
         ctx.beginPath();
         ctx.arc(cx, cy, 4, 0, Math.PI * 2);
         ctx.fill();
-        // 畫徽章方框（藍色）
         const offset = r * DEFAULT_RING_RATIOS.badgeOffsetRatio;
         const angleRad = -Math.PI / 4;
         const badgeCenterX = cx + offset * Math.cos(angleRad);
@@ -780,7 +914,6 @@
         );
       }
 
-      // 畫徽章預覽（用算出來的比例擷取）
       const badgeCanvas = document.getElementById('dCalibBadge');
       if (badgeCanvas && video) {
         const ringX = region.x + region.w * result.ringCenterRatio.x;
@@ -802,18 +935,21 @@
     }, 100);
   }
 
-  // v0.7: 進入校準框選模式
   function enterCalibFrameMode() {
-    // 跟原有的框選一樣，但把結果存到 _calibTempRegion
     state._calibrating = true;
-    // 切換到 status 模式（重用既有框選 UI）
     setMode('status');
-    log('📐 校準中：請在影片上框選計時圈完整區域', '#08f');
+    log('📐 校準中:請在影片上框選計時圈完整區域', '#08f');
     showCalibInstructions();
   }
 
+  function setMode(mode) {
+    state.currentMode = mode;
+    document.querySelectorAll('#detectorPanel .mode-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.mode === mode);
+    });
+  }
+
   function showCalibInstructions() {
-    // 顯示一個浮動提示框，告訴使用者怎麼框
     let hint = document.getElementById('dCalibHint');
     if (!hint) {
       hint = document.createElement('div');
@@ -821,7 +957,7 @@
       hint.style.cssText = 'position:fixed;top:80px;left:50%;transform:translateX(-50%);background:#08f;color:#fff;padding:8px 16px;border-radius:6px;z-index:10001;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,0.5)';
       document.body.appendChild(hint);
     }
-    hint.innerHTML = '📐 校準中：請框選遊戲畫面的<b>計時圈</b>區域 <button onclick="window.__detector.cancelCalibFrame()" style="margin-left:10px;background:none;border:1px solid #fff;color:#fff;padding:2px 8px;border-radius:3px;cursor:pointer">取消</button>';
+    hint.innerHTML = '📐 校準中:請框選遊戲畫面的<b>計時圈</b>區域 <button onclick="window.__detector.cancelCalibFrame()" style="margin-left:10px;background:none;border:1px solid #fff;color:#fff;padding:2px 8px;border-radius:3px;cursor:pointer">取消</button>';
     hint.style.display = 'block';
   }
 
@@ -830,8 +966,6 @@
     if (hint) hint.style.display = 'none';
   }
 
-  // v0.7: 進行紅環校準（連續抓 N 次取最佳結果）
-  // region: 使用者框選的計時圈範圍
   async function runRingCalibration(region, options = {}) {
     const samples = options.samples || 10;
     const results = [];
@@ -848,17 +982,15 @@
     }
 
     if (results.length === 0) {
-      return { success: false, reason: '無法偵測到紅環（請確認當前畫面有紅環）' };
+      return { success: false, reason: '無法偵測到紅環(請確認當前畫面有紅環)' };
     }
 
-    // 取中位數（避免極端值）
     const sortBy = (key) => results.slice().sort((a, b) => a[key] - b[key]);
     const median = (arr, key) => arr[Math.floor(arr.length / 2)][key];
     const cxMed = median(sortBy('centerX'), 'centerX');
     const cyMed = median(sortBy('centerY'), 'centerY');
     const rMed = median(sortBy('radius'), 'radius');
 
-    // 計算標準差（評估穩定性）
     const stdDev = (vals) => {
       const mean = vals.reduce((s, v) => s + v, 0) / vals.length;
       return Math.sqrt(vals.reduce((s, v) => s + (v - mean) ** 2, 0) / vals.length);
@@ -881,7 +1013,6 @@
     };
   }
 
-  // v0.7: 套用校準結果（含手動模式 / 自動模式）
   function applyCalibration(region, ringResult, useDefault = false) {
     state.calibration = state.calibration || {};
     state.calibration.timing = {
@@ -896,8 +1027,6 @@
     saveCalibration();
   }
 
-
-  // ═══ 擷取分流區域 ═══
   function captureChCanvas(region) {
     const canvas = document.createElement('canvas');
     canvas.width = region.w;
@@ -909,23 +1038,21 @@
   }
 
   // ═══════════════════════════════════════════════
-  // v0.6.4: 紅環偵測（RANSAC + 嚴格篩選對抗背景雜訊）
+  // 紅環偵測(RANSAC)
   // ═══════════════════════════════════════════════
 
-  // 三點求圓
   function circleFrom3Points(p1, p2, p3) {
     const ax = p1.x, ay = p1.y;
     const bx = p2.x, by = p2.y;
     const cx = p3.x, cy = p3.y;
     const d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
-    if (Math.abs(d) < 1e-9) return null;
+    if (Math.abs(d) < 1e-3) return null;
     const ux = ((ax*ax + ay*ay) * (by - cy) + (bx*bx + by*by) * (cy - ay) + (cx*cx + cy*cy) * (ay - by)) / d;
     const uy = ((ax*ax + ay*ay) * (cx - bx) + (bx*bx + by*by) * (ax - cx) + (cx*cx + cy*cy) * (bx - ax)) / d;
     const r = Math.sqrt((ax - ux) ** 2 + (ay - uy) ** 2);
     return { centerX: ux, centerY: uy, radius: r };
   }
 
-  // 解 3x3 線性方程組
   function solve3x3(M, b) {
     const det = (m) =>
         m[0][0] * (m[1][1]*m[2][2] - m[1][2]*m[2][1])
@@ -962,7 +1089,6 @@
     return { centerX: a, centerY: cy, radius: Math.sqrt(r2) };
   }
 
-  // RANSAC 找最佳圓（對抗雜訊）
   function ransacCircle(points, options = {}) {
     const iterations = options.iterations || 200;
     const tolerance = options.tolerance || 2;
@@ -983,7 +1109,6 @@
 
       const p1 = points[i1], p2 = points[i2], p3 = points[i3];
 
-      // 排除靠太近的點
       const d12 = Math.sqrt((p1.x-p2.x)**2 + (p1.y-p2.y)**2);
       const d13 = Math.sqrt((p1.x-p3.x)**2 + (p1.y-p3.y)**2);
       const d23 = Math.sqrt((p2.x-p3.x)**2 + (p2.y-p3.y)**2);
@@ -1011,7 +1136,6 @@
 
     if (!bestCircle || bestInliers.length < 10) return null;
 
-    // 用最佳 inliers 做最小二乘擬合
     const refined = fitCircle(bestInliers);
     return {
       ...(refined || bestCircle),
@@ -1035,7 +1159,6 @@
     const redDominance = options.redDominance || 60;
     const useRansac = options.useRansac !== false;
 
-    // 收集紅色像素
     const redPixels = [];
     for (let y = 0; y < region.h; y++) {
       for (let x = 0; x < region.w; x++) {
@@ -1048,20 +1171,19 @@
     }
 
     if (redPixels.length < 20) {
-      return { found: false, reason: '紅色像素太少（<20）。試試降低紅色門檻', redPixels: redPixels.length };
+      return { found: false, reason: '紅色像素太少(<20)。試試降低紅色門檻', redPixels: redPixels.length };
     }
 
-    // 用 RANSAC 找紅環
     let circle, inliers = redPixels;
     if (useRansac) {
       const ransac = ransacCircle(redPixels, {
         iterations: 200,
         tolerance: 2,
         minRadius: Math.min(region.w, region.h) * 0.15,
-        maxRadius: Math.min(region.w, region.h) * 0.6
+        maxRadius: Math.min(region.w, region.h) * 0.45
       });
       if (!ransac) {
-        return { found: false, reason: 'RANSAC 找不到合適的圓（紅環可能被雜訊淹沒）', redPixels: redPixels.length };
+        return { found: false, reason: 'RANSAC 找不到合適的圓(紅環可能被雜訊淹沒)', redPixels: redPixels.length };
       }
       circle = { centerX: ransac.centerX, centerY: ransac.centerY, radius: ransac.radius };
       inliers = ransac.inliers;
@@ -1115,7 +1237,6 @@
       offsetRatio, sizeRatio
     };
   }
-
 
   function analyzeStatusMetrics(region) {
     const canvas = document.getElementById('dCanStatus');
@@ -1236,14 +1357,12 @@
     const avgConf = votes[bestText] ? votes[bestText].totalConf / votes[bestText].count : 0;
     return { text: bestText, confidence: avgConf };
   }
-
-  // ═══ 核心：階段偵測（模板比對為主，OCR 為 fallback）═══
+  // ═══ v0.7.1 階段偵測:模板比對為主,加入拒答機制 ═══
   async function detectPhase(region) {
     const metrics = analyzeStatusMetrics(region);
     const badgeCanvas = captureBadgeCanvas(region);
     state.lastBadgeCanvas = badgeCanvas;
 
-    // 先試模板比對
     const templateMatch = await TemplateDB.match('phase', badgeCanvas);
 
     if (state.debugMode) {
@@ -1253,8 +1372,9 @@
       });
     }
 
-    // 【情境 1】模板匹配超高信心
-    if (templateMatch && templateMatch.similarity >= TEMPLATE_MIN_SIM) {
+    // 【情境 1】模板匹配超高信心 + 沒有拒答
+    if (templateMatch && templateMatch.similarity >= TEMPLATE_MIN_SIM
+        && !templateMatch.rejection) {
       return {
         phase: templateMatch.label,
         confidence: templateMatch.similarity,
@@ -1264,7 +1384,22 @@
       };
     }
 
-    // 【情境 2】模板不夠用 / 信心不足 → 用 OCR 當 fallback
+    // 【新增情境】明確拒答 → 直接回 UNKNOWN,不做 OCR fallback
+    // 因為 OCR 在低信心情境下也不可靠,硬上會把不確定變成確定錯
+    if (templateMatch && templateMatch.rejection) {
+      if (state.debugMode) {
+        console.log(DEBUG_PREFIX, '階段拒答:', templateMatch.rejection);
+      }
+      return {
+        phase: 'UNKNOWN',
+        confidence: 0,
+        metrics,
+        source: 'rejected:' + templateMatch.rejection.reason,
+        templateMatch
+      };
+    }
+
+    // 【情境 2】無模板 → OCR fallback
     const ocr = await ocrBadgeFallback(badgeCanvas);
     const ocrText = ocr.text.toUpperCase();
     let ocrPhase = null;
@@ -1288,7 +1423,7 @@
       };
     }
 
-    // 【情境 4】模板不確定，但 OCR 有結果
+    // 【情境 4】模板不確定,但 OCR 有結果
     if (ocrPhase && ocr.confidence >= 0.3) {
       return {
         phase: ocrPhase,
@@ -1300,7 +1435,7 @@
       };
     }
 
-    // 【情境 5】模板有一定信心（雖未達 0.85）
+    // 【情境 5】模板有一定信心(雖未達 0.92,但達 0.85)
     if (templateMatch && templateMatch.similarity >= TEMPLATE_AMBIGUOUS) {
       return {
         phase: templateMatch.label,
@@ -1355,15 +1490,13 @@
     return results[0];
   }
 
-  // ═══ 分流偵測：模板比對 + OCR fallback ═══
+  // ═══ v0.7.1 分流偵測:加入拒答機制 ═══
   async function detectCh(region) {
     const chCanvas = captureChCanvas(region);
     state.lastChCanvas = chCanvas;
 
-    // 先試模板比對
     const templateMatch = await TemplateDB.match('ch', chCanvas);
 
-    // 更新除錯 canvas
     const debugCh = document.getElementById('dCanCh');
     if (debugCh) {
       debugCh.width = chCanvas.width;
@@ -1371,7 +1504,9 @@
       debugCh.getContext('2d').drawImage(chCanvas, 0, 0);
     }
 
-    if (templateMatch && templateMatch.similarity >= TEMPLATE_MIN_SIM) {
+    // 高信心 + 未拒答
+    if (templateMatch && templateMatch.similarity >= TEMPLATE_MIN_SIM
+        && !templateMatch.rejection) {
       return {
         ch: templateMatch.label,
         confidence: templateMatch.similarity,
@@ -1381,7 +1516,21 @@
       };
     }
 
-    // Fallback 到 OCR
+    // 明確拒答 → ch=null,不做 OCR
+    if (templateMatch && templateMatch.rejection) {
+      if (state.debugMode) {
+        console.log(DEBUG_PREFIX, '分流拒答:', templateMatch.rejection);
+      }
+      return {
+        ch: null,
+        confidence: 0,
+        source: 'rejected:' + templateMatch.rejection.reason,
+        templateMatch,
+        raw: ''
+      };
+    }
+
+    // OCR fallback
     const ocr = await ocrMultiPass(region, null, 'eng', 'CH.0123456789 ');
     const m = ocr.text.match(/(\d+)/);
     const ch = m ? m[1] : null;
@@ -1456,21 +1605,18 @@
     if (/^\d+$/.test(ocrRaw)) return;
     const safeKey = ocrRaw.replace(/[.#$[\]/]/g, '_');
     db.ref(`shared/mapDictionary/${safeKey}`).set(correctCode)
-      .then(() => log(`🎓 已貢獻：「${ocrRaw}」= ${correctCode}`, '#ff0'))
-      .catch(e => log('❌ 貢獻失敗：' + e.message, '#f33'));
+      .then(() => log(`🎓 已貢獻:「${ocrRaw}」= ${correctCode}`, '#ff0'))
+      .catch(e => log('❌ 貢獻失敗:' + e.message, '#f33'));
   }
 
-  // ═══ 音量取得：從主畫面的 volRange 讀取 ═══
   function getMainVolume() {
     if (state.muted) return 0;
-    // TOS M FB TIME 主畫面的音量滑桿：id="volRange" class="vol-range" range 0~1
     const slider = document.querySelector('#volRange, input.vol-range');
     if (slider) {
       const val = parseFloat(slider.value);
-      // 若 max 大於 10 視為 0-100 範圍，否則視為 0-1 範圍
       return parseFloat(slider.max) > 10 ? val / 100 : val;
     }
-    return 0.5;  // 找不到就預設 50%
+    return 0.5;
   }
 
   function beep(freq) {
@@ -1487,7 +1633,6 @@
       setTimeout(() => { osc.stop(); ctx.close(); }, 150);
     } catch (e) {}
   }
-
   function injectUI() {
     const audioControls = document.querySelector('.audio-controls');
     if (!audioControls) { setTimeout(injectUI, 500); return; }
@@ -1496,7 +1641,7 @@
     const btn = document.createElement('button');
     btn.id = 'detectBtn';
     btn.className = 'audio-btn';
-    btn.title = '螢幕偵測 v0.7.0';
+    btn.title = '螢幕偵測 v0.7.1';
     btn.innerHTML = '📷';
     btn.onclick = togglePanel;
     audioControls.appendChild(btn);
@@ -1537,7 +1682,6 @@
       }
       #detectorPanel .panel-ctrl-btn:hover { color: #ddd; border-color: #666; }
       #detectorPanel .panel-ctrl-btn.muted { color: #f33; border-color: #622; }
-      /* v0.6.4: 訓練模式啟用時 */
       #detectorPanel .panel-ctrl-btn.training {
         color: #fa0; border-color: #fa0;
         background: rgba(255, 170, 0, 0.15);
@@ -1547,7 +1691,6 @@
         color: #c87c00; border-color: #c87c00;
         background: rgba(200, 124, 0, 0.15);
       }
-      /* 訓練模式時面板邊框變橘色 */
       #detectorPanel.training-mode { border-color: #fa0; box-shadow: 0 0 15px rgba(255, 170, 0, 0.3); }
       body.light #detectorPanel.training-mode { border-color: #c87c00; }
       body.light #detectorPanel .panel-ctrl-btn { border-color: #ccc; color: #666; }
@@ -1699,7 +1842,6 @@
       #dBadgeEditor {
         position: relative; background: #000; border: 1px solid #333;
         margin-top: 6px;
-        /* 關鍵：拿掉 overflow:hidden 讓 handle 不被切掉，讓 padding 保留 handle 空間 */
         padding: 8px;
         display: flex; align-items: center; justify-content: center;
         min-height: 160px;
@@ -1713,7 +1855,6 @@
         position: absolute; width: 10px; height: 10px;
         background: #f80; border: 1px solid #fff;
       }
-      /* handle 往內縮 2px（不會被切掉且仍可辨識） */
       #dBadgeEditBox .handle.tl { top: -5px; left: -5px; cursor: nw-resize; }
       #dBadgeEditBox .handle.tr { top: -5px; right: -5px; cursor: ne-resize; }
       #dBadgeEditBox .handle.bl { bottom: -5px; left: -5px; cursor: sw-resize; }
@@ -1724,7 +1865,6 @@
         text-shadow: 1px 1px 2px #000;
       }
 
-      /* 模板管理 */
       #detectorPanel .tpl-stats {
         display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
         gap: 4px; margin: 6px 0;
@@ -1748,7 +1888,6 @@
         border: 1px solid #555; background: #000;
       }
 
-      /* v0.6.4: 模板瀏覽 */
       #detectorPanel .tpl-browse-grid {
         display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
         gap: 4px; margin-top: 8px;
@@ -1816,7 +1955,6 @@
         font-weight: bold;
       }
 
-      /* v0.6.4: 精簡擷取預覽 */
       #detectorPanel .mini-preview-grid {
         display: grid; grid-template-columns: 1fr 2fr 1.2fr; gap: 4px;
         align-items: start;
@@ -1848,7 +1986,6 @@
         max-height: 0; opacity: 0; margin-top: 0 !important;
       }
 
-      /* v0.6: 偵錯比對模態框 */
       #dInspectModal {
         display: none;
         position: fixed; inset: 0;
@@ -1936,7 +2073,6 @@
         background: #333; border-radius: 2px; overflow: hidden;
         vertical-align: middle; margin-left: 4px;
       }
-      /* v0.7: 校準模態框（複用 inspect 大部分樣式） */
       #dCalibModal {
         display: none;
         position: fixed; inset: 0;
@@ -1998,15 +2134,14 @@
       }
     `;
     document.head.appendChild(style);
-
     const panel = document.createElement('div');
     panel.id = 'detectorPanel';
     panel.className = 'compact';
     panel.innerHTML = `
       <div class="panel-header" id="dPanelHeader">
-        <h3>📷 偵測器 <span class="small">v0.7.0</span></h3>
+        <h3>📷 偵測器 <span class="small">v0.7.1</span></h3>
         <div>
-          <button class="panel-ctrl-btn" id="dTrainToggle" title="訓練模式：只存模板不送 Firebase">🎯</button>
+          <button class="panel-ctrl-btn" id="dTrainToggle" title="訓練模式:只存模板不送 Firebase">🎯</button>
           <button class="panel-ctrl-btn" id="dMuteToggle" title="靜音切換">🔔</button>
           <button class="panel-ctrl-btn" id="dToggleMode" title="切換精簡/完整">⚙️</button>
           <button class="panel-ctrl-btn" onclick="window.__detector.close()">✕</button>
@@ -2030,12 +2165,10 @@
               <button class="dbtn" id="dMiniAuto" disabled>🔄 監控</button>
               <button class="dbtn red" id="dMiniStopAuto" disabled>⏸</button>
               <button class="dbtn gray" id="dMiniInspect" title="檢視當前偵測的詳細比對結果">🔬</button>
-              <button class="dbtn blue" id="dMiniCalibrate" title="校準計時圈位置（v0.7 新功能）">✨ 校準</button>
+              <button class="dbtn blue" id="dMiniCalibrate" title="校準計時圈位置">✨ 校準</button>
             </div>
-            <!-- v0.7: 校準狀態顯示 -->
             <div id="dCalibStatus" style="font-size:10px;text-align:center;margin-top:4px;color:#888;display:none"></div>
           </div>
-          <!-- v0.6.4: 擷取預覽 + 手動標記（可收合） -->
           <div class="sec" style="padding:6px;border:1px solid #08f;background:rgba(0,136,255,0.05)">
             <div class="mini-tpl-header" id="dMiniPreviewHeader" style="color:#08f">
               <span class="collapse-arrow" id="dMiniPreviewArrow">▼</span>
@@ -2043,7 +2176,6 @@
               <span class="small" id="dMiniPreviewStatus" style="margin-left:auto;color:#888">閒置</span>
             </div>
             <div id="dMiniPreviewBody" style="margin-top:6px">
-              <!-- 3 張小圖 -->
               <div class="mini-preview-grid">
                 <div class="mini-preview-cell">
                   <div class="small">階段</div>
@@ -2058,7 +2190,6 @@
                   <canvas id="dMiniPrevCh"></canvas>
                 </div>
               </div>
-              <!-- 手動標記 -->
               <div style="margin-top:8px;padding-top:6px;border-top:1px dashed #333">
                 <div class="small" style="color:#08f;margin-bottom:4px">✏️ 手動標記此次擷取</div>
                 <div style="display:flex;gap:4px;align-items:center;margin-bottom:4px">
@@ -2082,7 +2213,6 @@
             </div>
           </div>
 
-          <!-- v0.5.1 新增：精簡模式的模板庫（可收合） -->
           <div class="sec learn" style="padding:6px">
             <div class="mini-tpl-header" id="dMiniTplHeader">
               <span class="collapse-arrow" id="dMiniTplArrow">▼</span>
@@ -2090,9 +2220,9 @@
               <span class="small" id="dMiniTplTotal" style="margin-left:auto"></span>
             </div>
             <div id="dMiniTplBody" style="margin-top:6px">
-              <div class="small" style="color:#fa0">階段：</div>
+              <div class="small" style="color:#fa0">階段:</div>
               <div class="tpl-stats-mini" id="dMiniTplPhase"></div>
-              <div class="small" style="color:#fa0;margin-top:4px">分流：</div>
+              <div class="small" style="color:#fa0;margin-top:4px">分流:</div>
               <div class="tpl-stats-mini" id="dMiniTplCh"></div>
             </div>
           </div>
@@ -2112,7 +2242,7 @@
             <button class="mode-btn" data-mode="map">🟢 地圖名</button>
             <button class="mode-btn" data-mode="ch">🟡 分流</button>
             <button class="mode-btn" data-mode="none">✋ 停</button>
-            <div class="tip-box">💡 狀態圖示框整個圓圈（含右上徽章）</div>
+            <div class="tip-box">💡 狀態圖示框整個圓圈(含右上徽章)</div>
             <div class="zoom-row">
               <span class="small">🔍</span>
               <input type="range" id="dZoom" min="0.5" max="4" step="0.1" value="1">
@@ -2134,7 +2264,7 @@
             <div style="margin-bottom:6px"><b>🎯 徽章範圍微調</b>
               <button class="dbtn gray" onclick="window.__detector.resetBadge()" style="padding:2px 6px;font-size:10px;float:right">重設</button>
             </div>
-            <div class="small">拖曳橘框調整位置，拖曳四角調整大小</div>
+            <div class="small">拖曳橘框調整位置,拖曳四角調整大小</div>
             <div id="dBadgeEditor">
               <canvas id="dBadgeEditCanvas"></canvas>
               <div id="dBadgeEditBox">
@@ -2144,25 +2274,23 @@
                 <div class="handle br"></div>
               </div>
             </div>
-            <!-- v0.6.4: 擷取結果預覽（橘框內的真實擷取） -->
             <div id="dBadgeCapturePreview" style="display:flex;gap:8px;align-items:center;margin-top:6px;padding:6px;background:#0a0a0a;border:1px solid #08f;border-radius:4px">
               <canvas id="dBadgeCaptureCanvas" style="width:64px;height:64px;image-rendering:pixelated;border:1px solid #555;background:#000;object-fit:contain"></canvas>
               <div style="flex:1">
-                <div class="small" style="color:#08f;font-weight:bold">📸 實際擷取（將存為模板的範圍）</div>
+                <div class="small" style="color:#08f;font-weight:bold">📸 實際擷取(將存為模板的範圍)</div>
                 <div class="small" id="dBadgeCaptureInfo" style="font-family:monospace"></div>
               </div>
             </div>
             <div class="small" id="dBadgeInfo" style="margin-top:4px;font-family:monospace"></div>
           </div>
 
-          <!-- ═══ v0.6.4: 紅環偵測診斷工具 ═══ -->
           <div class="sec" style="border:1px solid #f33;background:rgba(255,51,51,0.05)">
             <div style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between">
               <b style="color:#f33">🩺 紅環偵測診斷</b>
               <span class="small">驗證自動規範化可行性</span>
             </div>
             <div class="small" style="margin-bottom:6px;color:#aaa">
-              診斷紅環中心+半徑能否穩定偵測。如果可以，未來可以「自動對齊擷取」<br>
+              診斷紅環中心+半徑能否穩定偵測。如果可以,未來可以「自動對齊擷取」<br>
               讓所有人的模板可共享、不依賴框選範圍。
             </div>
             <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap">
@@ -2171,14 +2299,13 @@
               <button class="dbtn gray" onclick="window.__detector.toggleDiagAdvanced()" style="padding:4px 8px;font-size:11px">⚙️ 進階</button>
             </div>
 
-            <!-- 進階參數 -->
             <div id="dDiagAdvanced" style="display:none;background:#0a0a0a;border:1px solid #333;border-radius:4px;padding:6px;margin-bottom:8px">
-              <div class="small" style="margin-bottom:4px;color:#888">紅色像素判定門檻：</div>
+              <div class="small" style="margin-bottom:4px;color:#888">紅色像素判定門檻:</div>
               <div class="threshold-row">
                 <label>R 最低 <input type="number" id="dDiagRedMin" value="150" min="0" max="255" style="width:50px"></label>
                 <label>R 比 G/B 高 <input type="number" id="dDiagRedDom" value="60" min="0" max="200" style="width:40px"></label>
               </div>
-              <div class="small" style="margin-top:6px;margin-bottom:4px;color:#888">徽章推導參數：</div>
+              <div class="small" style="margin-top:6px;margin-bottom:4px;color:#888">徽章推導參數:</div>
               <div class="threshold-row">
                 <label>偏移比例 <input type="number" id="dDiagOffsetRatio" value="0.95" step="0.05" min="0.3" max="1.5" style="width:50px"></label>
                 <label>大小比例 <input type="number" id="dDiagSizeRatio" value="0.65" step="0.05" min="0.3" max="1" style="width:50px"></label>
@@ -2188,7 +2315,6 @@
               </div>
             </div>
 
-            <!-- 視覺化區 -->
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
               <div>
                 <div class="small" style="text-align:center;color:#888;margin-bottom:2px">原始畫面</div>
@@ -2200,19 +2326,16 @@
               </div>
             </div>
 
-            <!-- 結果文字 -->
             <div id="dDiagResult" style="font-family:monospace;font-size:11px;line-height:1.6;background:#0a0a0a;padding:6px;border-radius:4px;border:1px solid #333;min-height:50px">
-              （尚未診斷）
+              (尚未診斷)
             </div>
 
-            <!-- 連續測試的穩定度報告 -->
             <div id="dDiagStability" style="margin-top:6px;display:none">
-              <div class="small" style="color:#0f0;margin-bottom:2px">📊 穩定度（最近 30 次）</div>
+              <div class="small" style="color:#0f0;margin-bottom:2px">📊 穩定度(最近 30 次)</div>
               <div id="dDiagStabilityResult" style="font-family:monospace;font-size:10px;background:#0a0a0a;padding:4px;border-radius:3px;border:1px solid #222"></div>
             </div>
           </div>
 
-          <!-- ═══ 模板管理（v0.5 新增） ═══ -->
           <div class="sec learn">
             <div style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between">
               <b>🧠 模板庫 <span class="small" id="dTplTotal"></span></b>
@@ -2223,15 +2346,15 @@
                 <button class="dbtn red" onclick="window.__detector.clearTpl()" style="padding:2px 6px;font-size:10px">🗑</button>
               </div>
             </div>
-            <div class="small" style="color:#fa0">階段模板：</div>
+            <div class="small" style="color:#fa0">階段模板:</div>
             <div class="tpl-stats" id="dTplPhase"></div>
-            <div class="small" style="color:#fa0;margin-top:4px">分流模板：</div>
+            <div class="small" style="color:#fa0;margin-top:4px">分流模板:</div>
             <div class="tpl-stats" id="dTplCh"></div>
 
             <div class="tpl-preview" id="dTplPreview" style="display:none">
               <canvas id="dTplCanvas"></canvas>
               <div style="flex:1">
-                <div class="small">當前偵測到的圖片，可標記為模板：</div>
+                <div class="small">當前偵測到的圖片,可標記為模板:</div>
                 <div class="correction-row" style="margin-top:4px">
                   <select id="dTplCategory" style="width:70px">
                     <option value="phase">階段</option>
@@ -2252,7 +2375,6 @@
 
             <label class="bold-opt"><input type="checkbox" id="dAutoLearn" checked> 🎓 確認送出時自動加入模板</label>
 
-            <!-- v0.6.4: 瀏覽模板 -->
             <div style="margin-top:8px;padding-top:8px;border-top:1px dashed #444">
               <div style="margin-bottom:6px"><b>🔍 瀏覽模板</b></div>
               <div class="correction-row">
@@ -2294,7 +2416,7 @@
               <div class="result-card"><div class="small">分流</div><div class="v" id="dValCh">—</div><div class="conf-bar"><div class="conf-fill" id="dConfCh"></div></div><canvas id="dCanCh"></canvas></div>
             </div>
             <div id="dDebugBox" class="debug-box" style="display:none">
-              <div class="small" style="color:#ff0">🔧 綠=紅環，藍=白字，橘=徽章區</div>
+              <div class="small" style="color:#ff0">🔧 綠=紅環,藍=白字,橘=徽章區</div>
               <canvas id="dDebugCanvas"></canvas>
             </div>
           </div>
@@ -2319,7 +2441,6 @@
     `;
     document.body.appendChild(panel);
 
-    // v0.6: 注入偵錯模態框
     const inspectModal = document.createElement('div');
     inspectModal.id = 'dInspectModal';
     inspectModal.innerHTML = `
@@ -2333,13 +2454,12 @@
     `;
     document.body.appendChild(inspectModal);
 
-    // v0.7: 注入校準模態框
     const calibModal = document.createElement('div');
     calibModal.id = 'dCalibModal';
     calibModal.innerHTML = `
       <div class="calib-box">
         <div class="calib-header">
-          <span>✨ 計時圈校準（v0.7 標準化擷取）</span>
+          <span>✨ 計時圈校準</span>
           <button class="inspect-close" onclick="window.__detector.closeCalibration()">✕</button>
         </div>
         <div class="calib-body" id="dCalibBody"></div>
@@ -2356,7 +2476,6 @@
     updateCalibStatus();
     updateTplDisplay();
   }
-
   function log(msg, color = '#888') {
     const t = new Date().toLocaleTimeString('zh-TW', { hour12: false });
     const el = document.getElementById('dLog');
@@ -2379,14 +2498,13 @@
     const total = Object.keys(state.mapDictionary).length;
     const builtin = Object.keys(BUILTIN_MAP_DICTIONARY).length;
     const custom = total - builtin;
-    el.innerHTML = `📚 共 <b style="color:#0f0">${total}</b> 筆（內建 ${builtin} + 貢獻 ${custom}）`;
+    el.innerHTML = `📚 共 <b style="color:#0f0">${total}</b> 筆(內建 ${builtin} + 貢獻 ${custom})`;
   }
 
   function updateTplDisplay() {
     const stats = TemplateDB.getStats();
     const phaseLabels = ['R1','R2','R3','R4','ON','WAITING'];
 
-    // 階段顯示（完整模式）
     const pEl = document.getElementById('dTplPhase');
     if (pEl) {
       pEl.innerHTML = phaseLabels.map(label => {
@@ -2399,7 +2517,6 @@
       }).join('');
     }
 
-    // 分流顯示（完整模式）
     const cEl = document.getElementById('dTplCh');
     if (cEl) {
       const chLabels = Object.keys(stats.ch).sort((a,b)=>+a-+b);
@@ -2416,7 +2533,6 @@
       }
     }
 
-    // 精簡模式
     const miniP = document.getElementById('dMiniTplPhase');
     if (miniP) {
       miniP.innerHTML = phaseLabels.map(label => {
@@ -2444,20 +2560,17 @@
       }
     }
 
-    // 總計
     const totalEl = document.getElementById('dTplTotal');
     const miniTotalEl = document.getElementById('dMiniTplTotal');
     const phaseTotal = Object.values(stats.phase).reduce((s, n) => s + n, 0);
     const chTotal = Object.values(stats.ch).reduce((s, n) => s + n, 0);
     const kb = (stats.totalSize / 1024).toFixed(1);
-    if (totalEl) totalEl.textContent = `(階段 ${phaseTotal} + 分流 ${chTotal}，約 ${kb} KB)`;
+    if (totalEl) totalEl.textContent = `(階段 ${phaseTotal} + 分流 ${chTotal},約 ${kb} KB)`;
     if (miniTotalEl) miniTotalEl.textContent = `${phaseTotal}+${chTotal}`;
 
-    // v0.6.4: 更新瀏覽器的標籤選單
     refreshBrowseLabels();
   }
 
-  // v0.6.4: 瀏覽模板相關函式
   function refreshBrowseLabels() {
     const catSel = document.getElementById('dBrowseCategory');
     const labelSel = document.getElementById('dBrowseLabel');
@@ -2472,7 +2585,6 @@
     labelSel.innerHTML = labels.length
       ? labels.map(l => `<option value="${l}">${cat === 'ch' ? 'CH.'+l : l}</option>`).join('')
       : '<option value="">(無)</option>';
-    // 保留選擇
     if (labels.includes(currentLabel)) labelSel.value = currentLabel;
     renderBrowseGrid();
   }
@@ -2517,9 +2629,7 @@
     canvas.getContext('2d').drawImage(state.lastBadgeCanvas, 0, 0, 64, 64);
   }
 
-  // v0.6.4: 更新精簡模式的擷取預覽 3 張小圖
   function updateMiniPreview(mapRegion) {
-    // 階段徽章預覽
     const badgeCan = document.getElementById('dMiniPrevBadge');
     if (badgeCan && state.lastBadgeCanvas) {
       badgeCan.width = state.lastBadgeCanvas.width;
@@ -2528,7 +2638,6 @@
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(state.lastBadgeCanvas, 0, 0);
     }
-    // 地圖預覽（直接從 video 擷取）
     const mapCan = document.getElementById('dMiniPrevMap');
     if (mapCan && state.regions.map) {
       const r = state.regions.map;
@@ -2539,7 +2648,6 @@
         mapCan.getContext('2d').drawImage(video, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
       }
     }
-    // 分流預覽
     const chCan = document.getElementById('dMiniPrevCh');
     if (chCan && state.lastChCanvas) {
       chCan.width = state.lastChCanvas.width;
@@ -2583,7 +2691,6 @@
     const video = document.getElementById('dVideo');
     const region = state.regions.status;
     const editor = document.getElementById('dBadgeEditor');
-    // editor 現在有 padding:8px，扣掉
     const maxContainerWidth = editor.clientWidth - 16 || 420;
     const maxContainerHeight = 280;
     const maxScaleByWidth = Math.floor(maxContainerWidth / region.w);
@@ -2597,7 +2704,6 @@
     const badge = getBadgeRect(region);
     const editBox = document.getElementById('dBadgeEditBox');
 
-    // ═══ 關鍵修正：等瀏覽器 layout 完再取 canvas 實際位置 ═══
     requestAnimationFrame(() => {
       const canvasOffsetX = canvas.offsetLeft;
       const canvasOffsetY = canvas.offsetTop;
@@ -2615,11 +2721,9 @@
     });
 
     updateBadgeInfo();
-    // v0.6.4: 同時更新擷取結果預覽
     updateBadgeCapturePreview();
   }
 
-  // v0.6.4: 即時顯示「橘框範圍實際擷取出的圖片」
   function updateBadgeCapturePreview() {
     const region = state.regions.status;
     if (!region) return;
@@ -2629,7 +2733,6 @@
     const infoEl = document.getElementById('dBadgeCaptureInfo');
     if (!captureCan) return;
 
-    // v0.7: 有校準資料 → 用校準比例擷取（標準化版）
     if (state.calibration && state.calibration.timing) {
       const cap = captureBadgeFromCalibration();
       captureCan.width = cap.width;
@@ -2637,12 +2740,11 @@
       captureCan.getContext('2d').drawImage(cap, 0, 0);
       if (infoEl) {
         const t = state.calibration.timing;
-        infoEl.innerHTML = `<span style="color:#0f0">✨ 校準擷取</span> ${cap.width}×${cap.height}px｜模式：${t.mode === 'auto' ? '自動' : '手動'}`;
+        infoEl.innerHTML = `<span style="color:#0f0">✨ 校準擷取</span> ${cap.width}×${cap.height}px｜模式:${t.mode === 'auto' ? '自動' : '手動'}`;
       }
       return;
     }
 
-    // 舊版：手動拖曳橘框
     const badge = getBadgeRect(region);
     captureCan.width = badge.w;
     captureCan.height = badge.h;
@@ -2661,7 +2763,7 @@
     if (!region) return;
     const badge = getBadgeRect(region);
     const el = document.getElementById('dBadgeInfo');
-    if (el) el.textContent = `徽章：(${badge.x}, ${badge.y}) ${badge.w}×${badge.h} / 圖示 ${region.w}×${region.h}`;
+    if (el) el.textContent = `徽章:(${badge.x}, ${badge.y}) ${badge.w}×${badge.h} / 圖示 ${region.w}×${region.h}`;
   }
 
   function switchPanelMode(mode) {
@@ -2682,7 +2784,7 @@
     const btn = document.getElementById('dMuteToggle');
     if (!btn) return;
     btn.textContent = state.muted ? '🔕' : '🔔';
-    btn.title = state.muted ? '已靜音（點擊取消）' : '開啟中（點擊靜音）';
+    btn.title = state.muted ? '已靜音(點擊取消)' : '開啟中(點擊靜音)';
     btn.classList.toggle('muted', state.muted);
   }
 
@@ -2692,7 +2794,6 @@
     updateMuteUI();
   }
 
-  // v0.6.4: 訓練模式 UI 更新
   function updateTrainModeUI() {
     const btn = document.getElementById('dTrainToggle');
     const panel = document.getElementById('detectorPanel');
@@ -2700,8 +2801,8 @@
     btn.classList.toggle('training', state.trainingMode);
     panel.classList.toggle('training-mode', state.trainingMode);
     btn.title = state.trainingMode
-      ? '訓練模式中（點擊切回一般模式）'
-      : '點擊進入訓練模式（只存模板不送 Firebase）';
+      ? '訓練模式中(點擊切回一般模式)'
+      : '點擊進入訓練模式(只存模板不送 Firebase)';
   }
 
   function loadTrainModeState() {
@@ -2710,9 +2811,6 @@
     updateTrainModeUI();
   }
 
-  // ═══════════════════════════════════════════════
-  // v0.6.4 紅環偵測診斷
-  // ═══════════════════════════════════════════════
   function runDiagnose() {
     if (!state.regions.status) {
       document.getElementById('dDiagResult').innerHTML =
@@ -2727,17 +2825,13 @@
     }
 
     const region = state.regions.status;
-
-    // 讀取進階參數
     const redMin = parseInt(document.getElementById('dDiagRedMin')?.value) || 150;
     const redDom = parseInt(document.getElementById('dDiagRedDom')?.value) || 60;
     const offsetRatio = parseFloat(document.getElementById('dDiagOffsetRatio')?.value) || 0.95;
     const sizeRatio = parseFloat(document.getElementById('dDiagSizeRatio')?.value) || 0.65;
 
-    // 偵測紅環
     const ring = detectRedRing(region, { redThreshold: redMin, redDominance: redDom });
 
-    // 顯示原始圖
     const origCan = document.getElementById('dDiagOriginal');
     const annoCan = document.getElementById('dDiagAnnotated');
     const displayScale = 4;
@@ -2752,10 +2846,8 @@
     oCtx.drawImage(video, region.x, region.y, region.w, region.h, 0, 0, origCan.width, origCan.height);
     aCtx.drawImage(video, region.x, region.y, region.w, region.h, 0, 0, annoCan.width, annoCan.height);
 
-    // 在標註圖上：紅色像素塗綠
     if (ring && ring.found) {
       const annoData = aCtx.getImageData(0, 0, annoCan.width, annoCan.height);
-      // v0.6.4: 雜訊紅色像素塗灰，inlier（真正在圓周上）塗綠
       const inlierSet = new Set(ring.inliers ? ring.inliers.map(p => `${p.x},${p.y}`) : []);
       for (const p of ring.redPixels) {
         const isInlier = inlierSet.has(`${p.x},${p.y}`);
@@ -2777,23 +2869,19 @@
       }
       aCtx.putImageData(annoData, 0, 0);
 
-      // 畫圓心（紅點）
       aCtx.fillStyle = '#f00';
       aCtx.beginPath();
       aCtx.arc(ring.centerX * displayScale, ring.centerY * displayScale, 5, 0, Math.PI * 2);
       aCtx.fill();
 
-      // 畫圓周（黃線）
       aCtx.strokeStyle = '#ff0';
       aCtx.lineWidth = 2;
       aCtx.beginPath();
       aCtx.arc(ring.centerX * displayScale, ring.centerY * displayScale, ring.radius * displayScale, 0, Math.PI * 2);
       aCtx.stroke();
 
-      // 推導徽章區域
       const badge = deriveBadgeFromRing(ring, { offsetRatio, sizeRatio });
       if (badge) {
-        // 畫徽章方框（藍色）
         aCtx.strokeStyle = '#0af';
         aCtx.lineWidth = 3;
         aCtx.strokeRect(
@@ -2802,32 +2890,29 @@
           badge.w * displayScale,
           badge.h * displayScale
         );
-        // 畫徽章中心（藍點）
         aCtx.fillStyle = '#0af';
         aCtx.beginPath();
         aCtx.arc(badge.centerX * displayScale, badge.centerY * displayScale, 4, 0, Math.PI * 2);
         aCtx.fill();
       }
 
-      // 文字結果
       const conf = (ring.confidence * 100).toFixed(0);
       const confColor = ring.confidence > 0.7 ? '#0f0' : ring.confidence > 0.4 ? '#fa0' : '#f33';
       const inlierRatio = ((ring.filteredCount / ring.redPixelCount) * 100).toFixed(0);
       document.getElementById('dDiagResult').innerHTML = `
         <div style="color:#0f0">✅ 找到紅環</div>
-        <div>圓心：(${ring.centerX.toFixed(2)}, ${ring.centerY.toFixed(2)})</div>
-        <div>半徑：${ring.radius.toFixed(2)} px</div>
-        <div>紅色像素：${ring.redPixelCount}（其中 <b style="color:#0f0">${ring.filteredCount}</b> 在圓周上＝${inlierRatio}%）</div>
-        <div>擬合平均誤差：${ring.meanErr.toFixed(2)} px</div>
-        <div>圓擬合度：<span style="color:${confColor};font-weight:bold">${conf}%</span></div>
+        <div>圓心:(${ring.centerX.toFixed(2)}, ${ring.centerY.toFixed(2)})</div>
+        <div>半徑:${ring.radius.toFixed(2)} px</div>
+        <div>紅色像素:${ring.redPixelCount}(其中 <b style="color:#0f0">${ring.filteredCount}</b> 在圓周上=${inlierRatio}%)</div>
+        <div>擬合平均誤差:${ring.meanErr.toFixed(2)} px</div>
+        <div>圓擬合度:<span style="color:${confColor};font-weight:bold">${conf}%</span></div>
         ${badge ? `
-          <div style="margin-top:6px;color:#0af">📐 推導徽章：</div>
-          <div>位置：(${badge.x}, ${badge.y}) ${badge.w}×${badge.h}px</div>
+          <div style="margin-top:6px;color:#0af">📐 推導徽章:</div>
+          <div>位置:(${badge.x}, ${badge.y}) ${badge.w}×${badge.h}px</div>
         ` : ''}
-        <div class="small" style="margin-top:6px;color:#666">🟢綠=紅環點 / ⚫灰=被排除的雜訊（王身上的紅、背景）</div>
+        <div class="small" style="margin-top:6px;color:#666">🟢綠=紅環點 / ⚫灰=被排除的雜訊(王身上的紅、背景)</div>
       `;
 
-      // 紀錄歷史
       state.diagHistory.push({
         time: Date.now(),
         cx: ring.centerX, cy: ring.centerY,
@@ -2840,9 +2925,9 @@
     } else {
       document.getElementById('dDiagResult').innerHTML = `
         <div style="color:#f33">❌ 未找到紅環</div>
-        <div>原因：${ring ? ring.reason : '未知'}</div>
-        <div>紅色像素：${ring ? ring.redPixels : 0}</div>
-        <div style="color:#888;margin-top:4px">建議：拉低「R 最低」門檻試試（進階參數）</div>
+        <div>原因:${ring ? ring.reason : '未知'}</div>
+        <div>紅色像素:${ring ? ring.redPixels : 0}</div>
+        <div style="color:#888;margin-top:4px">建議:拉低「R 最低」門檻試試(進階參數)</div>
       `;
     }
   }
@@ -2866,25 +2951,23 @@
     const rs = stat(rArr);
     const confs = stat(confArr);
 
-    // 評估穩定度
     const cxStable = cxs.std < 1 ? '🟢' : cxs.std < 3 ? '🟡' : '🔴';
     const cyStable = cys.std < 1 ? '🟢' : cys.std < 3 ? '🟡' : '🔴';
     const rStable = rs.std < 1 ? '🟢' : rs.std < 2 ? '🟡' : '🔴';
 
     el.innerHTML = `
-      <div>樣本：${state.diagHistory.length} 次</div>
-      <div>${cxStable} 圓心 X：平均 ${cxs.mean.toFixed(1)} ± ${cxs.std.toFixed(2)}（範圍 ${cxs.min.toFixed(1)}~${cxs.max.toFixed(1)}）</div>
-      <div>${cyStable} 圓心 Y：平均 ${cys.mean.toFixed(1)} ± ${cys.std.toFixed(2)}（範圍 ${cys.min.toFixed(1)}~${cys.max.toFixed(1)}）</div>
-      <div>${rStable} 半徑：  平均 ${rs.mean.toFixed(1)} ± ${rs.std.toFixed(2)}（範圍 ${rs.min.toFixed(1)}~${rs.max.toFixed(1)}）</div>
-      <div>圓形度：平均 ${(confs.mean*100).toFixed(0)}%</div>
+      <div>樣本:${state.diagHistory.length} 次</div>
+      <div>${cxStable} 圓心 X:平均 ${cxs.mean.toFixed(1)} ± ${cxs.std.toFixed(2)}(範圍 ${cxs.min.toFixed(1)}~${cxs.max.toFixed(1)})</div>
+      <div>${cyStable} 圓心 Y:平均 ${cys.mean.toFixed(1)} ± ${cys.std.toFixed(2)}(範圍 ${cys.min.toFixed(1)}~${cys.max.toFixed(1)})</div>
+      <div>${rStable} 半徑:  平均 ${rs.mean.toFixed(1)} ± ${rs.std.toFixed(2)}(範圍 ${rs.min.toFixed(1)}~${rs.max.toFixed(1)})</div>
+      <div>圓形度:平均 ${(confs.mean*100).toFixed(0)}%</div>
       <div style="margin-top:4px;color:${cxs.std < 2 && cys.std < 2 && rs.std < 2 ? '#0f0' : '#fa0'}">
         ${cxs.std < 2 && cys.std < 2 && rs.std < 2
-          ? '✅ 穩定！可進行下一步（自動規範化）'
-          : '⚠️ 不夠穩定，需調整參數或換思路'}
+          ? '✅ 穩定!可進行下一步(自動規範化)'
+          : '⚠️ 不夠穩定,需調整參數或換思路'}
       </div>
     `;
   }
-
 
   function enableWindowDrag() {
     const panel = document.getElementById('detectorPanel');
@@ -2995,7 +3078,7 @@
         h: Math.round(nh / scale)
       };
       updateBadgeInfo();
-      updateBadgeCapturePreview();  // v0.6.4: 拖曳時即時更新預覽
+      updateBadgeCapturePreview();
     });
     window.addEventListener('mouseup', () => {
       if (dragMode) {
@@ -3007,838 +3090,883 @@
       }
     });
   }
-
   function bindEvents() {
-    const video = document.getElementById('dVideo');
-    const preview = document.getElementById('dPreview');
-    const drawBox = document.getElementById('dDrawBox');
-    const scroll = document.getElementById('dPreviewScroll');
+    const $ = id => document.getElementById(id);
 
     enableWindowDrag();
     enableBadgeDrag();
 
-    document.getElementById('dToggleMode').onclick = () => {
+    $('dToggleMode').onclick = () => {
       switchPanelMode(state.panelMode === 'compact' ? 'full' : 'compact');
     };
 
-    // 靜音切換
-    document.getElementById('dMuteToggle').onclick = () => {
+    $('dMuteToggle').onclick = () => {
       state.muted = !state.muted;
       localStorage.setItem('tosm_detector_muted', state.muted ? '1' : '0');
       updateMuteUI();
-      log(state.muted ? '🔕 已靜音' : '🔔 音效開啟', '#0f0');
+      log(state.muted ? '🔕 已靜音' : '🔔 已解除靜音', '#fa0');
     };
 
-    // v0.6.4: 訓練模式切換
-    document.getElementById('dTrainToggle').onclick = () => {
+    $('dTrainToggle').onclick = () => {
       state.trainingMode = !state.trainingMode;
       localStorage.setItem('tosm_detector_training_mode', state.trainingMode ? '1' : '0');
       updateTrainModeUI();
-      log(state.trainingMode
-        ? '🎯 已進入訓練模式（只存模板，不送 Firebase）'
-        : '🔴 已切回一般模式（確認後會送 Firebase）',
-        state.trainingMode ? '#fa0' : '#0f0');
+      log(state.trainingMode ? '🎯 進入訓練模式(只存模板,不送 Firebase)' : '✅ 退出訓練模式', '#fa0');
     };
 
-    // v0.6.4: 瀏覽模板類別/標籤變更
-    const browseCat = document.getElementById('dBrowseCategory');
-    const browseLabel = document.getElementById('dBrowseLabel');
-    if (browseCat) browseCat.onchange = refreshBrowseLabels;
-    if (browseLabel) browseLabel.onchange = renderBrowseGrid;
+    $('dBrowseCategory').onchange = refreshBrowseLabels;
+    $('dBrowseLabel').onchange = renderBrowseGrid;
 
-    // v0.5.1: 精簡模板庫收合
-    const miniTplHeader = document.getElementById('dMiniTplHeader');
-    if (miniTplHeader) {
-      // 載入收合狀態
-      const collapsed = localStorage.getItem('tosm_detector_mini_tpl_collapsed') === '1';
-      if (collapsed) {
-        miniTplHeader.classList.add('collapsed');
-        document.getElementById('dMiniTplBody').classList.add('collapsed');
-      }
-      miniTplHeader.onclick = () => {
-        const isCol = miniTplHeader.classList.toggle('collapsed');
-        document.getElementById('dMiniTplBody').classList.toggle('collapsed', isCol);
-        localStorage.setItem('tosm_detector_mini_tpl_collapsed', isCol ? '1' : '0');
-      };
+    const miniTplHeader = $('dMiniTplHeader');
+    const miniTplBody = $('dMiniTplBody');
+    const tplCollapsed = localStorage.getItem('tosm_detector_mini_tpl_collapsed') === '1';
+    if (tplCollapsed) {
+      miniTplHeader.classList.add('collapsed');
+      miniTplBody.classList.add('collapsed');
     }
+    miniTplHeader.onclick = () => {
+      const collapsed = miniTplHeader.classList.toggle('collapsed');
+      miniTplBody.classList.toggle('collapsed', collapsed);
+      localStorage.setItem('tosm_detector_mini_tpl_collapsed', collapsed ? '1' : '0');
+    };
 
-    // v0.6.4: 精簡擷取預覽收合
-    const miniPrevHeader = document.getElementById('dMiniPreviewHeader');
-    if (miniPrevHeader) {
-      const collapsed = localStorage.getItem('tosm_detector_mini_prev_collapsed') === '1';
-      if (collapsed) {
-        miniPrevHeader.classList.add('collapsed');
-        document.getElementById('dMiniPreviewBody').classList.add('collapsed');
-      }
-      miniPrevHeader.onclick = () => {
-        const isCol = miniPrevHeader.classList.toggle('collapsed');
-        document.getElementById('dMiniPreviewBody').classList.toggle('collapsed', isCol);
-        localStorage.setItem('tosm_detector_mini_prev_collapsed', isCol ? '1' : '0');
-      };
+    const miniPrevHeader = $('dMiniPreviewHeader');
+    const miniPrevBody = $('dMiniPreviewBody');
+    const prevCollapsed = localStorage.getItem('tosm_detector_mini_prev_collapsed') === '1';
+    if (prevCollapsed) {
+      miniPrevHeader.classList.add('collapsed');
+      miniPrevBody.classList.add('collapsed');
     }
+    miniPrevHeader.onclick = () => {
+      const collapsed = miniPrevHeader.classList.toggle('collapsed');
+      miniPrevBody.classList.toggle('collapsed', collapsed);
+      localStorage.setItem('tosm_detector_mini_prev_collapsed', collapsed ? '1' : '0');
+    };
 
-    document.getElementById('dStart').onclick = startCapture;
-    document.getElementById('dStop').onclick = stopCapture;
-    document.getElementById('dTest').onclick = () => detectOnce(false);
-    document.getElementById('dAuto').onclick = startAuto;
-    document.getElementById('dStopAuto').onclick = stopAuto;
-    document.getElementById('dForceSubmit').onclick = forceSubmit;
-    document.getElementById('dMiniStart').onclick = startCapture;
-    document.getElementById('dMiniStop').onclick = stopCapture;
-    document.getElementById('dMiniAuto').onclick = startAuto;
-    document.getElementById('dMiniStopAuto').onclick = stopAuto;
-    // v0.6: 偵錯比對按鈕
-    document.getElementById('dMiniInspect').onclick = () => window.__detector.openInspect();
-    // v0.7: 校準按鈕
-    document.getElementById('dMiniCalibrate').onclick = () => window.__detector.openCalibration();
-    // 點偵錯模態背景關閉
-    document.getElementById('dInspectModal').addEventListener('click', e => {
+    $('dStart').onclick = startCapture;
+    $('dStop').onclick = stopCapture;
+    $('dTest').onclick = detectOnce;
+    $('dAuto').onclick = startAuto;
+    $('dStopAuto').onclick = stopAuto;
+    $('dForceSubmit').onclick = forceSubmit;
+
+    $('dMiniStart').onclick = startCapture;
+    $('dMiniStop').onclick = stopCapture;
+    $('dMiniAuto').onclick = startAuto;
+    $('dMiniStopAuto').onclick = stopAuto;
+
+    $('dMiniInspect').onclick = () => window.__detector.openInspect();
+    $('dMiniCalibrate').onclick = () => window.__detector.openCalibration();
+
+    $('dInspectModal').onclick = (e) => {
       if (e.target.id === 'dInspectModal') window.__detector.closeInspect();
-    });
+    };
+    $('dCalibModal').onclick = (e) => {
+      if (e.target.id === 'dCalibModal') window.__detector.closeCalibration();
+    };
 
-    // 模板匯入
-    document.getElementById('dTplImport').onchange = async (e) => {
+    $('dTplImport').onchange = async (e) => {
       const file = e.target.files[0];
-      if (!file) return;
-      const ok = await TemplateDB.import(file);
-      if (ok) {
-        log('📥 模板匯入成功', '#0f0');
+      if (file && await TemplateDB.import(file)) {
+        log('📥 模板已匯入', '#0f0');
         updateTplDisplay();
       }
       e.target.value = '';
     };
 
-    document.getElementById('dDebugMode').onchange = (e) => {
+    $('dDebugMode').onchange = (e) => {
       state.debugMode = e.target.checked;
-      document.getElementById('dDebugBox').style.display = state.debugMode ? 'block' : 'none';
+      $('dDebugBox').style.display = state.debugMode ? 'block' : 'none';
     };
 
-    const zoomSlider = document.getElementById('dZoom');
-    zoomSlider.oninput = () => {
-      state.zoom = parseFloat(zoomSlider.value);
+    $('dZoom').oninput = (e) => {
+      state.zoom = parseFloat(e.target.value);
       applyZoom();
     };
-    scroll.addEventListener('wheel', e => {
-      if (!state.stream) return;
+    $('dPreviewScroll').addEventListener('wheel', (e) => {
+      if (!e.ctrlKey) return;
       e.preventDefault();
-      const delta = e.deltaY < 0 ? 0.1 : -0.1;
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
       state.zoom = Math.max(0.5, Math.min(4, state.zoom + delta));
-      zoomSlider.value = state.zoom;
+      $('dZoom').value = state.zoom;
       applyZoom();
-    }, { passive: false });
-
-    document.querySelectorAll('#detectorPanel .mode-btn').forEach(btn => {
-      btn.onclick = () => {
-        document.querySelectorAll('#detectorPanel .mode-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        state.currentMode = btn.dataset.mode;
-      };
     });
 
-    let dragging = false, sx = 0, sy = 0;
+    document.querySelectorAll('#detectorPanel .mode-btn').forEach(b => {
+      b.onclick = () => setMode(b.dataset.mode);
+    });
+
+    const preview = $('dPreview');
+    let drawing = false, startPt = null;
+    const drawBox = $('dDrawBox');
+    drawBox.style.cssText = 'position:absolute;border:2px dashed #fff;background:rgba(255,255,255,0.1);pointer-events:none;z-index:5';
+
     preview.addEventListener('mousedown', e => {
-      if (!state.stream || state.currentMode === 'none') return;
-      dragging = true;
-      const rect = preview.getBoundingClientRect();
-      sx = e.clientX - rect.left;
-      sy = e.clientY - rect.top;
-      drawBox.style.cssText = `left:${sx}px;top:${sy}px;width:0;height:0;display:block;position:absolute;border:2px dashed #fff;background:rgba(255,255,255,0.2);pointer-events:none`;
+      if (state.currentMode === 'none') return;
+      const video = $('dVideo');
+      if (!video.videoWidth) return;
+      const rect = video.getBoundingClientRect();
+      startPt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      drawing = true;
+      drawBox.style.display = 'block';
+      drawBox.style.left = startPt.x + 'px';
+      drawBox.style.top = startPt.y + 'px';
+      drawBox.style.width = '0';
+      drawBox.style.height = '0';
       e.preventDefault();
     });
     preview.addEventListener('mousemove', e => {
-      if (!dragging) return;
-      const rect = preview.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      drawBox.style.left = Math.min(x, sx) + 'px';
-      drawBox.style.top = Math.min(y, sy) + 'px';
-      drawBox.style.width = Math.abs(x - sx) + 'px';
-      drawBox.style.height = Math.abs(y - sy) + 'px';
+      if (!drawing) return;
+      const video = $('dVideo');
+      const rect = video.getBoundingClientRect();
+      const cur = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      const x = Math.min(startPt.x, cur.x), y = Math.min(startPt.y, cur.y);
+      const w = Math.abs(cur.x - startPt.x), h = Math.abs(cur.y - startPt.y);
+      drawBox.style.left = x + 'px';
+      drawBox.style.top = y + 'px';
+      drawBox.style.width = w + 'px';
+      drawBox.style.height = h + 'px';
     });
-    preview.addEventListener('mouseup', () => {
-      if (!dragging) return;
-      dragging = false;
+    preview.addEventListener('mouseup', e => {
+      if (!drawing) return;
+      drawing = false;
       drawBox.style.display = 'none';
-      const cssScale = video.videoWidth / video.clientWidth;
+      const video = $('dVideo');
+      if (!video.videoWidth) return;
+      const rect = video.getBoundingClientRect();
+      const endPt = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      const cssScale = video.clientWidth / video.videoWidth;
       const region = {
-        x: Math.round(parseInt(drawBox.style.left) * cssScale),
-        y: Math.round(parseInt(drawBox.style.top) * cssScale),
-        w: Math.round(parseInt(drawBox.style.width) * cssScale),
-        h: Math.round(parseInt(drawBox.style.height) * cssScale)
+        x: Math.round(Math.min(startPt.x, endPt.x) / cssScale),
+        y: Math.round(Math.min(startPt.y, endPt.y) / cssScale),
+        w: Math.round(Math.abs(endPt.x - startPt.x) / cssScale),
+        h: Math.round(Math.abs(endPt.y - startPt.y) / cssScale)
       };
-      if (region.w < 5 || region.h < 5) return;
+      if (region.w < 10 || region.h < 10) return;
 
-      // v0.7: 如果在校準模式，把這次框選用於校準
       if (state._calibrating) {
-        state._calibTempRegion = region;
         state._calibrating = false;
         hideCalibInstructions();
-        // 把計時圈框也存為 status region（讓擷取系統能用）
         state.regions.status = region;
-        state.badgeRect = null;
         drawRegionBox('status', region);
         localStorage.setItem('tosm_detector_regions_v5', JSON.stringify(state.regions));
-        log(`📐 已選定校準範圍 (${region.w}×${region.h})，開始紅環偵測...`, '#08f');
-        // 重新打開校準模態，自動進入紅環偵測
-        document.getElementById('dCalibModal').classList.add('show');
-        window.__detector.applyAutoCalibration();
+        log('📐 已框選計時圈,正在偵測紅環...', '#08f');
+        $('dCalibBody').innerHTML = `
+          <div class="calib-step active">
+            <h4>📐 步驟 2:正在自動偵測紅環</h4>
+            <div style="text-align:center;padding:20px">
+              <div style="font-size:24px">⏳</div>
+              <div style="margin-top:8px">取樣 10 次中,請稍候...</div>
+            </div>
+          </div>
+        `;
+        $('dCalibModal').classList.add('show');
+        runRingCalibration(region).then(result => {
+          if (result.success) {
+            renderCalibAutoResult(region, result);
+          } else {
+            renderCalibFailure(result.reason);
+          }
+        });
         return;
       }
 
       state.regions[state.currentMode] = region;
+      drawRegionBox(state.currentMode, region);
+      const labelMap = { status: '🔴 狀態圖示', map: '🟢 地圖名', ch: '🟡 分流' };
+      log(`已框選 ${labelMap[state.currentMode]}: ${region.w}×${region.h}px`, '#0f0');
+      localStorage.setItem('tosm_detector_regions_v5', JSON.stringify(state.regions));
       if (state.currentMode === 'status') {
         state.badgeRect = null;
         localStorage.removeItem('tosm_detector_badge_rect_v46');
+        renderBadgeEditor();
       }
-      drawRegionBox(state.currentMode, region);
-      localStorage.setItem('tosm_detector_regions_v5', JSON.stringify(state.regions));
-      log(`✅ ${state.currentMode} 區域 (${region.w}×${region.h})`, '#0f0');
-      if (state.currentMode === 'status') setTimeout(renderBadgeEditor, 50);
     });
   }
 
   function loadRegions() {
     const s = localStorage.getItem('tosm_detector_regions_v5')
-          || localStorage.getItem('tosm_detector_regions_v46')
-          || localStorage.getItem('tosm_detector_regions_v45');
+           || localStorage.getItem('tosm_detector_regions_v46')
+           || localStorage.getItem('tosm_detector_regions_v45');
     if (s) {
-      try { Object.assign(state.regions, JSON.parse(s)); } catch(e) {}
-      for (const k of ['status', 'map', 'ch']) {
-        if (state.regions[k]) drawRegionBox(k, state.regions[k]);
-      }
-      log('已載入區域設定', '#3f3');
+      try {
+        const r = JSON.parse(s);
+        state.regions = { status: r.status || null, map: r.map || null, ch: r.ch || null };
+        for (const k of ['status', 'map', 'ch']) {
+          if (state.regions[k]) drawRegionBox(k, state.regions[k]);
+        }
+      } catch (e) {}
     }
-    const b = localStorage.getItem('tosm_detector_badge_rect_v46');
-    if (b) {
-      try { state.badgeRect = JSON.parse(b); } catch(e) {}
+    const br = localStorage.getItem('tosm_detector_badge_rect_v46');
+    if (br) {
+      try { state.badgeRect = JSON.parse(br); } catch (e) {}
     }
-    if (state.regions.status) setTimeout(renderBadgeEditor, 100);
   }
 
   async function startCapture() {
     try {
-      state.stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: 15 }, audio: false
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: 15 }
       });
+      state.stream = stream;
       const video = document.getElementById('dVideo');
-      video.srcObject = state.stream;
+      video.srcObject = stream;
       await video.play();
-      state.stream.getVideoTracks()[0].onended = stopCapture;
+      stream.getVideoTracks()[0].onended = stopCapture;
+      log(`📺 擷取啟動 (${video.videoWidth}×${video.videoHeight})`, '#0f0');
       updateCaptureUIState(true);
-      video.addEventListener('loadedmetadata', () => {
-        state.zoom = 1.0;
+      setTimeout(() => {
         applyZoom();
-        setTimeout(loadRegions, 100);
-      }, { once: true });
-      log('🎬 擷取已啟動', '#0f0');
+        loadRegions();
+        if (state.regions.status && state.panelMode === 'full') renderBadgeEditor();
+      }, 200);
     } catch (e) {
-      log('❌ 啟動失敗: ' + e.message, '#f33');
+      log('❌ 擷取失敗:' + e.message, '#f33');
     }
   }
+
   function stopCapture() {
-    if (state.stream) state.stream.getTracks().forEach(t => t.stop());
-    state.stream = null;
-    stopAuto();
+    if (state.autoTimer) stopAuto();
+    if (state.stream) {
+      state.stream.getTracks().forEach(t => t.stop());
+      state.stream = null;
+    }
+    log('⏹ 擷取停止', '#888');
     updateCaptureUIState(false);
   }
-  function updateCaptureUIState(isCapturing) {
-    const statusText = isCapturing ? '✅ 擷取中' : '未啟動';
-    document.getElementById('dStatus').textContent = statusText;
-    document.getElementById('dCompactStatus').textContent = statusText;
-    document.getElementById('dStart').disabled = isCapturing;
-    document.getElementById('dStop').disabled = !isCapturing;
-    document.getElementById('dTest').disabled = !isCapturing;
-    document.getElementById('dAuto').disabled = !isCapturing;
-    document.getElementById('dForceSubmit').disabled = !isCapturing;
-    document.getElementById('dMiniStart').disabled = isCapturing;
-    document.getElementById('dMiniStop').disabled = !isCapturing;
-    document.getElementById('dMiniAuto').disabled = !isCapturing;
+
+  function updateCaptureUIState(active) {
+    const ids = ['dStart','dStop','dTest','dAuto','dStopAuto','dForceSubmit',
+                 'dMiniStart','dMiniStop','dMiniAuto','dMiniStopAuto'];
+    const setDis = (id, dis) => { const el = document.getElementById(id); if (el) el.disabled = dis; };
+    setDis('dStart', active);
+    setDis('dStop', !active);
+    setDis('dTest', !active);
+    setDis('dAuto', !active);
+    setDis('dStopAuto', true);
+    setDis('dForceSubmit', !active);
+    setDis('dMiniStart', active);
+    setDis('dMiniStop', !active);
+    setDis('dMiniAuto', !active);
+    setDis('dMiniStopAuto', true);
+    document.getElementById('dStatus').textContent = active ? '✅ 擷取中' : '未啟動';
+    const cs = document.getElementById('dCompactStatus');
+    if (cs) {
+      cs.textContent = active ? '✅ 擷取中' : '未啟動';
+      cs.style.color = active ? '#0f0' : '#888';
+    }
   }
 
   function updateConfBar(id, conf) {
-    const bar = document.getElementById(id);
-    if (!bar) return;
-    bar.style.width = (conf * 100) + '%';
-    bar.style.background = conf > 0.8 ? '#0f0' : conf > 0.5 ? '#fa0' : '#f33';
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.width = (conf * 100) + '%';
+    if (conf >= 0.7) el.style.background = '#0f0';
+    else if (conf >= 0.5) el.style.background = '#fa0';
+    else el.style.background = '#f33';
   }
-  function phaseBadge(phase) { return phase === 'WAITING' ? '等待' : (phase || '?'); }
+
+  function phaseBadge(phase) {
+    const map = {
+      'ON': '🔴 ON',
+      'R1': 'R1', 'R2': 'R2', 'R3': 'R3', 'R4': 'R4',
+      'WAITING': '等待中',
+      'UNKNOWN': '❓'
+    };
+    return map[phase] || phase || '—';
+  }
+
   function phaseColor(phase) {
-    const m = { 'ON': '#f33', 'R1': '#fa3', 'R2': '#f83', 'R3': '#f63', 'R4': '#f33', 'WAITING': '#777' };
-    return m[phase] || '#999';
+    if (phase === 'ON') return '#f33';
+    if (['R1','R2','R3','R4'].includes(phase)) return '#fa0';
+    if (phase === 'WAITING') return '#888';
+    return '#666';
   }
 
-  async function detectOnce(silent = false) {
-    let phase = null, phaseConf = 0, phaseMetrics = {}, phaseSource = '';
-    let mapResult = null, mapConf = 0, mapRaw = '', mapMatchedName = '';
-    let chResult = null, chConf = 0, chRaw = '', chSource = '';
-
-    if (state.regions.status) {
-      try {
-        const r = await detectPhase(state.regions.status);
-        phase = r.phase; phaseConf = r.confidence;
-        phaseMetrics = r.metrics; phaseSource = r.source;
-        const el = document.getElementById('dValStatus');
-        if (el) el.innerHTML = `<span style="color:${phaseColor(phase)}">${phaseBadge(phase)}</span>`;
-        const mini = document.getElementById('dMiniStatus');
-        if (mini) { mini.textContent = phaseBadge(phase); mini.style.color = phaseColor(phase); }
-        updateConfBar('dConfStatus', phaseConf);
-        updateConfBar('dMiniConfStatus', phaseConf);
-        const mEl = document.getElementById('dMetrics');
-        if (mEl) {
-          const srcIcon = { 'template': '🧠', 'template+ocr': '🧠+', 'ocr': '🔤', 'template-low': '🧠?', 'fallback': '❓' };
-          mEl.innerHTML = `來源:${srcIcon[phaseSource]||'?'}<br>信心:${(phaseConf*100).toFixed(0)}%<br>紅環:${(phaseMetrics.redRatio*100).toFixed(0)}%`;
-        }
-      } catch (e) { if (!silent) log('狀態失敗：' + e.message, '#f33'); }
+  async function detectOnce() {
+    if (!state.regions.status) {
+      log('⚠️ 請先框選狀態圖示', '#f33');
+      return null;
     }
 
+    const monStatus = document.getElementById('dMonitorStatus');
+    if (monStatus && state.autoTimer) {
+      monStatus.classList.add('active');
+      monStatus.textContent = '👁 偵測中';
+    }
+
+    const phaseResult = await detectPhase(state.regions.status);
+
+    document.getElementById('dValStatus').textContent = phaseBadge(phaseResult.phase);
+    document.getElementById('dValStatus').style.color = phaseColor(phaseResult.phase);
+    updateConfBar('dConfStatus', phaseResult.confidence);
+    document.getElementById('dMiniStatus').textContent = phaseBadge(phaseResult.phase);
+    document.getElementById('dMiniStatus').style.color = phaseColor(phaseResult.phase);
+    updateConfBar('dMiniConfStatus', phaseResult.confidence);
+
+    const m = phaseResult.metrics;
+    document.getElementById('dMetrics').innerHTML =
+      `紅:${(m.redRatio*100).toFixed(1)}% 白:${(m.whiteRatio*100).toFixed(1)}% 徽白:${(m.badgeWhiteRatio*100).toFixed(1)}%<br>` +
+      `源:${phaseResult.source}` +
+      (phaseResult.templateMatch ? ` | 模板:${phaseResult.templateMatch.label}@${(phaseResult.templateMatch.similarity*100).toFixed(0)}%` : '');
+
+    let mapResult = null;
     if (state.regions.map) {
-      try {
-        const ocr = await ocrMultiPass(state.regions.map, document.getElementById('dCanMap'), 'chi_tra');
-        mapRaw = ocr.text;
-        const match = matchMapName(mapRaw);
-        mapResult = match.matched; mapConf = match.confidence * ocr.confidence;
-        mapMatchedName = match.matchedName || '';
-        const el = document.getElementById('dValMap');
-        if (el) el.innerHTML = mapResult
-          ? `<span style="color:#0f0">${mapResult}</span>${mapMatchedName ? `<br><span class="small">${mapMatchedName}</span>` : ''}<br><span class="small">${mapRaw||'?'}</span>`
-          : `<span style="color:#f33">?</span><br><span class="small">${mapRaw||'無'}</span>`;
-        const mini = document.getElementById('dMiniMap');
-        if (mini) { mini.textContent = mapResult || '?'; mini.style.color = mapResult ? '#0f0' : '#f33'; }
-        updateConfBar('dConfMap', mapConf);
-        updateConfBar('dMiniConfMap', mapConf);
-      } catch (e) { if (!silent) log('地圖失敗', '#f33'); }
+      const mapCanvas = document.getElementById('dCanMap');
+      const ocr = await ocrMultiPass(state.regions.map, mapCanvas, 'chi_tra+eng', null, '7');
+      mapResult = matchMapName(ocr.text);
+      document.getElementById('dValMap').textContent = mapResult.matched
+        ? `🟢 ${mapResult.matched}` + (mapResult.matchedName ? `\n${mapResult.matchedName.slice(0,8)}` : '')
+        : `❌ ${ocr.text.slice(0,10) || '無'}`;
+      updateConfBar('dConfMap', mapResult.confidence);
+      document.getElementById('dMiniMap').textContent = mapResult.matched || '—';
+      updateConfBar('dMiniConfMap', mapResult.confidence);
     }
 
+    let chResult = null;
     if (state.regions.ch) {
-      try {
-        const r = await detectCh(state.regions.ch);
-        chResult = r.ch; chConf = r.confidence; chSource = r.source; chRaw = r.raw || '';
-        const el = document.getElementById('dValCh');
-        if (el) { el.textContent = chResult || '?'; el.style.color = chResult ? '#0f0' : '#f33'; }
-        const mini = document.getElementById('dMiniCh');
-        if (mini) { mini.textContent = chResult || '?'; mini.style.color = chResult ? '#0f0' : '#f33'; }
-        updateConfBar('dConfCh', chConf);
-        updateConfBar('dMiniConfCh', chConf);
-      } catch (e) {}
+      chResult = await detectCh(state.regions.ch);
+      document.getElementById('dValCh').textContent = chResult.ch ? `CH.${chResult.ch}` : '—';
+      updateConfBar('dConfCh', chResult.confidence);
+      document.getElementById('dMiniCh').textContent = chResult.ch ? `CH.${chResult.ch}` : '—';
+      updateConfBar('dMiniConfCh', chResult.confidence);
     }
 
-    state.lastResult = { phase, phaseConf, phaseMetrics, phaseSource, mapResult, mapConf, mapRaw, mapMatchedName, chResult, chConf, chRaw, chSource };
-
-    // 更新模板預覽
+    state.lastResult = { phase: phaseResult, map: mapResult, ch: chResult };
     showTplPreview();
-    // v0.6.4: 更新精簡模式的擷取預覽
     updateMiniPreview();
+
+    if (monStatus && state.autoTimer) {
+      setTimeout(() => {
+        monStatus.classList.remove('active');
+        monStatus.textContent = '🔄 監控中';
+      }, 200);
+    }
 
     return state.lastResult;
   }
 
   async function forceSubmit() {
-    const result = await detectOnce(false);
-    if (!result.phase || result.phase === 'UNKNOWN') { log('❌ 無法辨識', '#f33'); return; }
-    if (!result.mapResult || !result.chResult) { log('❌ 地圖/分流無法辨識', '#f33'); return; }
-    let val = null;
-    if (result.phase === 'ON') val = 'ON';
-    else if (result.phase === 'WAITING') val = 'DE1';
-    else if (['R1','R2','R3','R4'].includes(result.phase)) val = result.phase;
-    if (!val) return;
-    doSubmit(result.mapResult, result.chResult, val);
+    if (!state.lastResult) {
+      log('⚠️ 尚無偵測結果,請先點測試讀取', '#f33');
+      return;
+    }
+    const r = state.lastResult;
+    const map = r.map?.matched;
+    const ch = r.ch?.ch;
+    if (!map || !ch) {
+      log('⚠️ 缺少地圖或分流,無法送出', '#f33');
+      return;
+    }
+    if (!r.phase || r.phase.phase === 'UNKNOWN') {
+      log('⚠️ 階段未知,請手動指定', '#f33');
+      showCorrectionPrompt(map, ch, r.phase);
+      return;
+    }
+    let val;
+    const p = r.phase.phase;
+    if (p === 'ON') val = 'on';
+    else if (p === 'R1') val = -1;
+    else if (p === 'R2') val = -2;
+    else if (p === 'R3') val = -3;
+    else if (p === 'R4') val = -4;
+    else if (p === 'WAITING') val = 'waiting';
+    else val = -1;
+    showConfirmPrompt(map, ch, val, p, true);
   }
 
   async function monitorTick() {
-    const result = await detectOnce(true);
+    const result = await detectOnce();
+    if (!result) return;
     if (!result.phase) return;
-    if (result.phase === 'UNKNOWN') { state.stableCount = 0; return; }
-    if (result.phase === state.lastPhase) {
-      state.stableCount++;
-    } else {
-      if (state.stableCount >= 2 && state.lastPhase !== null) {
-        handlePhaseChange(state.lastPhase, result.phase, result);
-      }
-      state.lastPhase = result.phase;
+    if (result.phase.phase === 'UNKNOWN') {
       state.stableCount = 0;
-    }
-  }
-
-  function handlePhaseChange(from, to, result) {
-    let val = null, label = '';
-    if (to === 'ON') { val = 'ON'; label = '⚔️ 王已重生'; }
-    else if (to === 'WAITING') { val = 'DE1'; label = '💀 王已擊殺'; }
-    else if (['R1','R2','R3','R4'].includes(to)) { val = to; label = `🔸 進入 ${to}`; }
-    else return;
-
-    // v0.6.4: 地圖或分流辨識不出來 → 完全不通知（避免垃圾警示）
-    if (!result.mapResult || !result.chResult) {
-      if (state.debugMode) {
-        log(`⏭️ 略過：${label}（地圖/分流無法辨識）`, '#666');
-      }
       return;
     }
+    handlePhaseChange(result);
+  }
 
-    const cooldownSec = parseInt(document.getElementById('dCooldown').value) || 0;
-    if (cooldownSec > 0
-        && result.mapResult === state.lastSubmitted.map
-        && result.chResult === state.lastSubmitted.ch
-        && val === state.lastSubmitted.val) {
-      const elapsed = (Date.now() - state.lastSubmitted.time) / 1000;
-      if (elapsed < cooldownSec) return;
-    }
+  function handlePhaseChange(result) {
+    const map = result.map?.matched;
+    const ch = result.ch?.ch;
+    const phase = result.phase.phase;
+
+    if (!map || !ch || !phase) return;
 
     const minConf = parseFloat(document.getElementById('dMinConf').value) || 0.5;
-    const autoSubmit = document.getElementById('dAutoSubmit').checked;
-    const overallConf = Math.min(result.phaseConf, result.mapConf || 0, result.chConf || 0);
-
-    log(`${label} | ${result.mapResult} ${result.chResult} (${(overallConf*100)|0}%)`, '#f90');
-
-    // v0.6.4: 訓練模式下「自動送出」= 自動存模板
-    if (autoSubmit && overallConf >= minConf) {
-      doSubmit(result.mapResult, result.chResult, val);
+    if (result.phase.confidence < minConf) {
+      state.stableCount = 0;
+      state.lastPhase = null;
       return;
     }
-    showConfirmPrompt(result, val, label, overallConf, minConf);
+
+    if (phase === state.lastPhase) {
+      state.stableCount++;
+    } else {
+      state.lastPhase = phase;
+      state.stableCount = 1;
+      return;
+    }
+
+    if (state.stableCount < 2) return;
+
+    const cooldownSec = parseInt(document.getElementById('dCooldown').value) || 30;
+    const now = Date.now();
+    const last = state.lastSubmitted;
+    if (last.map === map && last.ch === ch
+        && (now - last.time) < cooldownSec * 1000) {
+      return;
+    }
+
+    let val;
+    if (phase === 'ON') val = 'on';
+    else if (phase === 'R1') val = -1;
+    else if (phase === 'R2') val = -2;
+    else if (phase === 'R3') val = -3;
+    else if (phase === 'R4') val = -4;
+    else if (phase === 'WAITING') return;
+    else return;
+
+    const onlyChange = document.getElementById('dOnlyChange').checked;
+    if (onlyChange && last.map === map && last.ch === ch && last.val === val) {
+      return;
+    }
+
+    const autoSubmit = document.getElementById('dAutoSubmit').checked;
+    if (autoSubmit) {
+      doSubmit(map, ch, val, phase);
+    } else {
+      showConfirmPrompt(map, ch, val, phase);
+    }
   }
 
-  // v0.6.4: 顯示用的中文化轉換（只改顯示，輸入給 saveBoss 仍是原格式）
   function valToDisplay(val) {
-    if (val === 'ON') return 'ON';
-    if (val === 'DE1') return '擊殺';
-    if (/^R\d+(\.\d+)?$/.test(val)) return '階段' + val.substring(1);
-    return val;
+    if (val === 'on') return '🔴 ON';
+    if (val === 'waiting') return '⏳ 等待中';
+    if (val === -1) return 'R1';
+    if (val === -2) return 'R2';
+    if (val === -3) return 'R3';
+    if (val === -4) return 'R4';
+    return String(val);
   }
 
-  function showConfirmPrompt(result, val, label, conf, minConf) {
-    const isLow = conf < minConf;
-    const cls = val === 'ON' ? 'on' : val === 'DE1' ? 'waiting' : '';
+  function showConfirmPrompt(map, ch, val, phase, force = false) {
     const area = document.getElementById('dConfirmArea');
-    const trainHint = state.trainingMode
-      ? '<div style="background:#fa0;color:#000;padding:4px;border-radius:3px;margin-bottom:4px;font-size:10px">🎯 訓練模式：僅存模板，不送 Firebase</div>'
-      : '';
-    const btnLabel = state.trainingMode ? '💾 存模板' : '✓確認';
-    // v0.6.4: 中文化顯示
-    const displayVal = valToDisplay(val);
-    const displayCh = `分流${result.chResult}`;
+    if (!area) return;
+    const valDisplay = valToDisplay(val);
+    const isOn = val === 'on';
+    const cls = isOn ? 'on' : (force ? 'low-conf' : '');
     area.innerHTML = `
-      <div class="confirm-banner ${cls} ${isLow ? 'low-conf' : ''}">
-        ${trainHint}
-        ${label}<br>
-        <b>${result.mapResult} ${displayCh} ${displayVal}</b> (${(conf*100)|0}%)<br>
-        <button class="dbtn" onclick="window.__detector.confirm('${result.mapResult}','${result.chResult}','${val}')">${btnLabel}</button>
-        <button class="dbtn gray" onclick="window.__detector.showEdit('${result.mapResult}','${result.chResult}','${val}','${result.mapRaw}')">✏️</button>
-        <button class="dbtn red" onclick="window.__detector.cancel()">✗</button>
+      <div class="confirm-banner ${cls}">
+        ⚠️ 確認送出?<br>
+        地圖 <b>${map}</b> / CH.<b>${ch}</b> / <b>${valDisplay}</b>
+        <div style="margin-top:6px">
+          <button class="dbtn" onclick="window.__detector.confirm('${map}','${ch}','${val}','${phase}')">✅ 確認</button>
+          <button class="dbtn red" onclick="window.__detector.cancel()">❌ 取消</button>
+          <button class="dbtn gray" onclick="window.__detector.showEdit('${map}','${ch}','${val}','${phase}')">✏️ 修改</button>
+        </div>
       </div>
     `;
-    beep(val === 'ON' ? 880 : val === 'DE1' ? 440 : 660);
+    beep(880);
   }
-  function showCorrectionPrompt(result, val, label) {
+
+  function showCorrectionPrompt(map, ch, phaseResult) {
     const area = document.getElementById('dConfirmArea');
+    if (!area) return;
     area.innerHTML = `
       <div class="confirm-banner low-conf">
-        ${label} ⚠️ 無法辨識<br>
-        <div class="correction-row">
-          <input type="text" id="dFixMap" placeholder="地圖" value="${result.mapResult||''}" style="width:60px">
-          <input type="text" id="dFixCh" placeholder="CH" value="${result.chResult||''}" style="width:40px">
-          <button class="dbtn" onclick="window.__detector.confirmManual('${val}','${result.mapRaw}')">送</button>
+        ⚠️ 階段無法判定,請手動選擇<br>
+        地圖 <b>${map}</b> / CH.<b>${ch}</b>
+        <div style="margin-top:6px;display:flex;gap:4px;flex-wrap:wrap">
+          <button class="dbtn" onclick="window.__detector.confirmManual('${map}','${ch}','on','ON')">🔴 ON</button>
+          <button class="dbtn" onclick="window.__detector.confirmManual('${map}','${ch}','-1','R1')">R1</button>
+          <button class="dbtn" onclick="window.__detector.confirmManual('${map}','${ch}','-2','R2')">R2</button>
+          <button class="dbtn" onclick="window.__detector.confirmManual('${map}','${ch}','-3','R3')">R3</button>
+          <button class="dbtn" onclick="window.__detector.confirmManual('${map}','${ch}','-4','R4')">R4</button>
           <button class="dbtn red" onclick="window.__detector.cancel()">取消</button>
         </div>
       </div>
     `;
   }
 
-  function doSubmit(map, ch, val) {
-    try {
-      // v0.6.4: 訓練模式 → 只存模板，不送 Firebase
-      if (state.trainingMode) {
-        let phaseLabel = null;
-        if (val === 'ON') phaseLabel = 'ON';
-        else if (val === 'DE1') phaseLabel = 'WAITING';
-        else if (['R1','R2','R3','R4'].includes(val)) phaseLabel = val;
-
-        let added = 0;
-        if (phaseLabel && state.lastBadgeCanvas) {
-          if (TemplateDB.add('phase', phaseLabel, state.lastBadgeCanvas)) added++;
-        }
-        if (ch && state.lastChCanvas) {
-          if (TemplateDB.add('ch', ch, state.lastChCanvas)) added++;
-        }
-
-        if (added > 0) {
-          log(`🎯 [訓練] 已加入 ${added} 個模板：${phaseLabel || '?'} / CH.${ch || '?'}`, '#fa0');
-        } else {
-          log(`🎯 [訓練] 模板已存在，略過`, '#888');
-        }
-        state.lastSubmitted = { map, ch, val, time: Date.now() };
-        document.getElementById('dConfirmArea').innerHTML = '';
-        updateTplDisplay();
-        return;
-      }
-
-      // 一般模式：正常送 Firebase
-      if (typeof saveBoss !== 'function') { log('❌ saveBoss 不存在', '#f33'); return; }
-      saveBoss(map, ch, val);
-      state.lastSubmitted = { map, ch, val, time: Date.now() };
-      log(`📤 已送出：${map} ${ch} ${val}`, '#0f0');
-      document.getElementById('dConfirmArea').innerHTML = '';
-
-      // 自動學習
+  function doSubmit(map, ch, val, phase) {
+    if (state.trainingMode) {
+      log(`🎯 訓練模式:${map}/CH.${ch}/${valToDisplay(val)}(未送 Firebase)`, '#fa0');
       const autoLearn = document.getElementById('dAutoLearn')?.checked;
-      if (autoLearn && state.lastBadgeCanvas) {
-        let phaseLabel = null;
-        if (val === 'ON') phaseLabel = 'ON';
-        else if (val === 'DE1') phaseLabel = 'WAITING';
-        else if (['R1','R2','R3','R4'].includes(val)) phaseLabel = val;
-        if (phaseLabel) {
-          const added = TemplateDB.add('phase', phaseLabel, state.lastBadgeCanvas);
-          if (added) log(`🧠 已自動學習階段模板 ${phaseLabel}`, '#fa0');
-        }
+      if (autoLearn && state.lastBadgeCanvas && phase) {
+        const added = TemplateDB.add('phase', phase, state.lastBadgeCanvas);
+        if (added) log(`🎓 已加入階段模板:${phase}`, '#fa0');
       }
       if (autoLearn && state.lastChCanvas && ch) {
         const added = TemplateDB.add('ch', ch, state.lastChCanvas);
-        if (added) log(`🧠 已自動學習 CH.${ch} 模板`, '#fa0');
+        if (added) log(`🎓 已加入分流模板:CH.${ch}`, '#fa0');
       }
       updateTplDisplay();
-    } catch (e) { log('❌ 失敗：' + e.message, '#f33'); }
+      state.lastSubmitted = { map, ch, val, time: Date.now() };
+      document.getElementById('dConfirmArea').innerHTML = '';
+      return;
+    }
+
+    try {
+      saveBoss(map, ch, val);
+      log(`✅ 送出 ${map}/CH.${ch}/${valToDisplay(val)}`, '#0f0');
+      state.lastSubmitted = { map, ch, val, time: Date.now() };
+      beep(1320);
+
+      const autoLearn = document.getElementById('dAutoLearn')?.checked;
+      if (autoLearn && state.lastBadgeCanvas && phase) {
+        const added = TemplateDB.add('phase', phase, state.lastBadgeCanvas);
+        if (added) log(`🎓 已加入階段模板:${phase}`, '#fa0');
+      }
+      if (autoLearn && state.lastChCanvas && ch) {
+        const added = TemplateDB.add('ch', ch, state.lastChCanvas);
+        if (added) log(`🎓 已加入分流模板:CH.${ch}`, '#fa0');
+      }
+      updateTplDisplay();
+    } catch (e) {
+      log('❌ 送出失敗:' + e.message, '#f33');
+    }
+    document.getElementById('dConfirmArea').innerHTML = '';
   }
 
   function startAuto() {
-    const ms = +document.getElementById('dInterval').value || 1500;
-    state.lastPhase = null; state.stableCount = 0;
-    clearInterval(state.autoTimer);
-    state.autoTimer = setInterval(monitorTick, ms);
+    if (state.autoTimer) return;
+    const interval = parseInt(document.getElementById('dInterval').value) || 1500;
+    state.autoTimer = setInterval(monitorTick, interval);
+    log('🔄 自動監控已啟動', '#0f0');
     document.getElementById('dAuto').disabled = true;
     document.getElementById('dStopAuto').disabled = false;
     document.getElementById('dMiniAuto').disabled = true;
     document.getElementById('dMiniStopAuto').disabled = false;
-    const ms_el = document.getElementById('dMonitorStatus');
-    if (ms_el) { ms_el.textContent = '監控中'; ms_el.className = 'monitor-status active'; }
-    const prevStatus = document.getElementById('dMiniPreviewStatus');
-    if (prevStatus) { prevStatus.textContent = '監控中'; prevStatus.style.color = '#0f0'; }
-    log(`▶️ 監控啟動`, '#0f0');
+    const monStatus = document.getElementById('dMonitorStatus');
+    if (monStatus) {
+      monStatus.classList.add('active');
+      monStatus.textContent = '🔄 監控中';
+    }
+    monitorTick();
   }
+
   function stopAuto() {
-    clearInterval(state.autoTimer);
-    state.autoTimer = null;
+    if (state.autoTimer) {
+      clearInterval(state.autoTimer);
+      state.autoTimer = null;
+    }
+    log('⏸ 自動監控已停止', '#888');
     document.getElementById('dAuto').disabled = false;
     document.getElementById('dStopAuto').disabled = true;
-    document.getElementById('dMiniAuto').disabled = !state.stream;
+    document.getElementById('dMiniAuto').disabled = false;
     document.getElementById('dMiniStopAuto').disabled = true;
-    const ms_el = document.getElementById('dMonitorStatus');
-    if (ms_el) { ms_el.textContent = '閒置'; ms_el.className = 'monitor-status'; }
-    const prevStatus = document.getElementById('dMiniPreviewStatus');
-    if (prevStatus) { prevStatus.textContent = '閒置'; prevStatus.style.color = '#888'; }
+    const monStatus = document.getElementById('dMonitorStatus');
+    if (monStatus) {
+      monStatus.classList.remove('active');
+      monStatus.textContent = '閒置';
+    }
+    state.lastPhase = null;
+    state.stableCount = 0;
   }
 
   function togglePanel() {
-    document.getElementById('detectorPanel').classList.toggle('open');
+    const panel = document.getElementById('detectorPanel');
+    if (panel.classList.contains('open')) {
+      panel.classList.remove('open');
+    } else {
+      panel.classList.add('open');
+    }
   }
 
+  // ═══════════════════════════════════════════════
+  // window.__detector 全域 API
+  // ═══════════════════════════════════════════════
   window.__detector = {
     close: () => document.getElementById('detectorPanel').classList.remove('open'),
-    confirm: (map, ch, val) => doSubmit(map, ch, val),
-    cancel: () => { document.getElementById('dConfirmArea').innerHTML = ''; },
+
+    confirm: (map, ch, val, phase) => {
+      const v = (val === 'on' || val === 'waiting') ? val : parseInt(val);
+      doSubmit(map, ch, v, phase);
+    },
+
+    cancel: () => {
+      document.getElementById('dConfirmArea').innerHTML = '';
+      log('❌ 已取消', '#888');
+    },
+
+    confirmManual: (map, ch, val, phase) => {
+      const v = (val === 'on' || val === 'waiting') ? val : parseInt(val);
+      doSubmit(map, ch, v, phase);
+    },
+
+    showEdit: (map, ch, val, phase) => {
+      const area = document.getElementById('dConfirmArea');
+      area.innerHTML = `
+        <div class="confirm-banner">
+          ✏️ 修改後送出
+          <div class="correction-row">
+            <input type="text" id="dEditMap" value="${map}" style="width:60px">
+            <input type="text" id="dEditCh" value="${ch}" style="width:50px">
+            <select id="dEditVal">
+              <option value="on" ${val==='on'?'selected':''}>ON</option>
+              <option value="-1" ${val==='-1'||val==-1?'selected':''}>R1</option>
+              <option value="-2" ${val==='-2'||val==-2?'selected':''}>R2</option>
+              <option value="-3" ${val==='-3'||val==-3?'selected':''}>R3</option>
+              <option value="-4" ${val==='-4'||val==-4?'selected':''}>R4</option>
+            </select>
+            <button class="dbtn" onclick="window.__detector.confirmEdit()">✅</button>
+          </div>
+        </div>
+      `;
+    },
+
+    confirmEdit: () => {
+      const map = document.getElementById('dEditMap').value.trim();
+      const ch = document.getElementById('dEditCh').value.trim();
+      const valRaw = document.getElementById('dEditVal').value;
+      const val = valRaw === 'on' ? 'on' : parseInt(valRaw);
+      const phaseMap = { 'on': 'ON', '-1': 'R1', '-2': 'R2', '-3': 'R3', '-4': 'R4' };
+      const phase = phaseMap[valRaw];
+
+      if (state.lastResult?.map?.raw && state.lastResult.map.raw !== map
+          && document.getElementById('dContribute').checked) {
+        contributeMapAlias(state.lastResult.map.raw, map);
+      }
+      doSubmit(map, ch, val, phase);
+    },
+
+    submitCorrection: () => {
+      const raw = document.getElementById('dCorrectRaw').value.trim();
+      const code = document.getElementById('dCorrectCode').value.trim();
+      if (!raw || !code) { alert('請填寫兩個欄位'); return; }
+      contributeMapAlias(raw, code);
+      document.getElementById('dCorrectRaw').value = '';
+      document.getElementById('dCorrectCode').value = '';
+    },
+
     resetZoom: () => {
       state.zoom = 1.0;
-      document.getElementById('dZoom').value = 1.0;
+      document.getElementById('dZoom').value = 1;
       applyZoom();
     },
+
     resetBadge: () => {
       state.badgeRect = null;
       localStorage.removeItem('tosm_detector_badge_rect_v46');
-      if (state.regions.status) renderBadgeEditor();
-      log('🎯 徽章範圍已重設', '#f80');
+      renderBadgeEditor();
+      log('🎯 徽章範圍已重設為預設', '#888');
     },
+
     addTpl: () => {
-      if (!state.lastBadgeCanvas) { log('❌ 沒有當前圖片', '#f33'); return; }
-      const category = document.getElementById('dTplCategory').value;
+      if (!state.lastBadgeCanvas) return;
+      const cat = document.getElementById('dTplCategory').value;
       const label = document.getElementById('dTplLabel').value;
-      const canvas = category === 'phase' ? state.lastBadgeCanvas : state.lastChCanvas;
-      if (!canvas) { log('❌ 沒有對應的圖片', '#f33'); return; }
-      const added = TemplateDB.add(category, label, canvas);
-      if (added) {
-        log(`📌 已儲存模板：${category}=${label}`, '#0f0');
-        updateTplDisplay();
-      } else {
-        log('⚠️ 此模板已存在，略過', '#fa0');
-      }
-    },
-    exportTpl: () => {
-      TemplateDB.export();
-      log('📤 已匯出模板檔', '#0f0');
-    },
-    clearTpl: () => {
-      if (!confirm('確定要清空所有模板？此動作無法復原')) return;
-      TemplateDB.data = { phase: {}, ch: {} };
-      TemplateDB.save();
-      log('🗑 已清空所有模板', '#f33');
+      const canvas = (cat === 'ch' && state.lastChCanvas) ? state.lastChCanvas : state.lastBadgeCanvas;
+      const added = TemplateDB.add(cat, label, canvas);
+      log(added ? `📌 已加入模板:${label}` : '⚠️ 模板已存在', added ? '#0f0' : '#fa0');
       updateTplDisplay();
     },
-    // v0.6.4: 刪除單張模板
-    deleteTpl: (category, label, index) => {
-      if (!confirm(`確定要刪除 ${category === 'ch' ? 'CH.'+label : label} 的第 ${index+1} 張模板？`)) return;
-      const ok = TemplateDB.deleteAt(category, label, index);
-      if (ok) {
-        log(`🗑 已刪除 ${category === 'ch' ? 'CH.'+label : label} #${index+1}`, '#f80');
-        updateTplDisplay();
-      }
-    },
-    // v0.6.4: 精簡模式的快速標記
-    quickSavePhase: () => {
-      if (!state.lastBadgeCanvas) { log('❌ 尚無徽章圖片（需先擷取）', '#f33'); return; }
-      const label = document.getElementById('dQuickPhaseLabel').value;
-      const added = TemplateDB.add('phase', label, state.lastBadgeCanvas);
-      if (added) {
-        log(`📌 已儲存階段模板：${label}`, '#0f0');
-        updateTplDisplay();
-      } else {
-        log('⚠️ 此模板已存在', '#fa0');
-      }
-    },
-    quickSaveCh: () => {
-      if (!state.lastChCanvas) { log('❌ 尚無分流圖片（需先擷取）', '#f33'); return; }
-      const label = document.getElementById('dQuickChLabel').value.trim();
-      if (!label || !/^\d+$/.test(label)) { log('❌ 請輸入 CH 數字', '#f33'); return; }
-      const added = TemplateDB.add('ch', label, state.lastChCanvas);
-      if (added) {
-        log(`📌 已儲存分流模板：CH.${label}`, '#0f0');
-        updateTplDisplay();
-      } else {
-        log('⚠️ 此模板已存在', '#fa0');
-      }
-    },
 
-    // v0.6: 偵錯比對
-    openInspect: async () => {
-      if (!state.lastBadgeCanvas && !state.lastChCanvas) {
-        log('❌ 尚未擷取任何畫面', '#f33');
+    quickSavePhase: () => {
+      if (!state.lastBadgeCanvas) {
+        log('⚠️ 沒有可標記的擷取', '#f33');
         return;
       }
+      const label = document.getElementById('dQuickPhaseLabel').value;
+      const added = TemplateDB.add('phase', label, state.lastBadgeCanvas);
+      log(added ? `💾 階段模板 ${label} 已存入` : '⚠️ 此模板已存在', added ? '#0f0' : '#fa0');
+      updateTplDisplay();
+    },
+
+    quickSaveCh: () => {
+      if (!state.lastChCanvas) {
+        log('⚠️ 沒有可標記的擷取', '#f33');
+        return;
+      }
+      const label = document.getElementById('dQuickChLabel').value.trim();
+      if (!label) {
+        log('⚠️ 請輸入 CH 數字', '#f33');
+        return;
+      }
+      const added = TemplateDB.add('ch', label, state.lastChCanvas);
+      log(added ? `💾 分流模板 CH.${label} 已存入` : '⚠️ 此模板已存在', added ? '#0f0' : '#fa0');
+      updateTplDisplay();
+    },
+
+    exportTpl: () => TemplateDB.export(),
+
+    clearTpl: () => {
+      if (confirm('確定清空所有模板?(此動作無法復原)')) {
+        TemplateDB.data = { phase: {}, ch: {} };
+        TemplateDB.save();
+        updateTplDisplay();
+        log('🗑 已清空模板', '#fa0');
+      }
+    },
+
+    deleteTpl: (cat, label, idx) => {
+      if (confirm(`刪除「${label} #${idx+1}」?`)) {
+        TemplateDB.deleteAt(cat, label, idx);
+        updateTplDisplay();
+        log(`🗑 已刪除 ${label} #${idx+1}`, '#888');
+      }
+    },
+
+    deleteTplFromInspect: (cat, label, idx) => {
+      if (confirm(`刪除「${label} #${idx+1}」?`)) {
+        TemplateDB.deleteAt(cat, label, idx);
+        updateTplDisplay();
+        log(`🗑 已刪除 ${label} #${idx+1}`, '#888');
+        window.__detector.openInspect();
+      }
+    },
+
+    openInspect: async () => {
       const modal = document.getElementById('dInspectModal');
       const body = document.getElementById('dInspectBody');
+      if (!state.lastBadgeCanvas) {
+        body.innerHTML = '<div style="color:#fa0;text-align:center;padding:20px">⚠️ 尚無偵測結果,請先「測試讀取」</div>';
+        modal.classList.add('show');
+        return;
+      }
 
-      let html = '';
+      body.innerHTML = '<div style="text-align:center;padding:20px">⏳ 計算比對結果中...</div>';
+      modal.classList.add('show');
 
-      // 階段比對
-      if (state.lastBadgeCanvas && Object.keys(TemplateDB.data.phase).length > 0) {
-        const m = await TemplateDB.match('phase', state.lastBadgeCanvas);
-        const queryDataURL = TemplateDB.normalize(state.lastBadgeCanvas).toDataURL('image/png');
-        html += `
-          <div style="margin-bottom:8px;color:#08f;font-weight:bold">📌 階段比對</div>
-          <div class="inspect-query">
-            <canvas width="64" height="64" id="dInspectQueryPhase"></canvas>
-            <div>
-              <div>當前畫面（已正規化為 32×32 灰階）</div>
-              <div style="margin-top:4px;font-size:11px;color:#888">
-                系統判定：<span style="color:#0f0;font-weight:bold">${m.label}</span>
-                （信心度 ${(m.similarity*100).toFixed(1)}%）
+      // 重新比對一次以取得 allMatches 資料
+      const phaseMatch = await TemplateDB.match('phase', state.lastBadgeCanvas);
+      const chMatch = state.lastChCanvas ? await TemplateDB.match('ch', state.lastChCanvas) : null;
+
+      const renderTable = (title, queryCanvas, match, cat) => {
+        if (!match || !match.allMatches || match.allMatches.length === 0) {
+          return `<div style="margin:10px 0;color:#888">${title}:無模板可比對</div>`;
+        }
+        const queryCanvasId = `dInspectQuery_${cat}`;
+        const top1Label = match.label;
+        let html = `
+          <div style="margin-top:14px;padding-top:10px;border-top:1px solid #333">
+            <div style="font-weight:bold;color:#08f;margin-bottom:6px">${title}</div>
+            <div class="inspect-query">
+              <canvas id="${queryCanvasId}"></canvas>
+              <div>
+                <div>當前擷取(已標準化 32×32)</div>
+                <div style="color:#0f0">最終判定:<b>${match.label}</b> @ ${(match.similarity*100).toFixed(1)}%</div>
+                ${match.rejection ? `<div style="color:#f33;margin-top:4px">⛔ 拒答:${match.rejection.reason}<br><span style="font-size:10px">${match.rejection.detail}</span></div>` : ''}
               </div>
             </div>
-          </div>
-          <table class="inspect-table">
-            <thead>
+            <table class="inspect-table">
               <tr>
-                <th>圖</th><th>標籤</th><th>歐氏</th><th>餘弦</th><th>pHash</th>
-                <th>總分</th><th></th>
+                <th>排名</th><th>標籤</th><th>模板</th>
+                <th title="像素 NCC">像素</th>
+                <th title="Zone 密度 cosine">Zone</th>
+                <th title="邊緣 NCC">邊緣</th>
+                <th>綜合</th><th></th>
               </tr>
-            </thead>
-            <tbody>`;
-        for (const item of m.allMatches) {
-          const tplDataURL = TemplateDB.data.phase[item.label][item.idx];
-          const isWinner = item === m.allMatches[0];
-          const isSuspect = !isWinner && (m.allMatches[0].label !== item.label) && item.combined > 0.7;
+        `;
+        match.allMatches.slice(0, 8).forEach((m, i) => {
+          const isWinner = i === 0 && !match.rejection;
+          const isSuspect = m.label !== top1Label && i < 3;
+          const cls = isWinner ? 'winner' : (isSuspect ? 'suspect' : '');
+          const tplURL = TemplateDB.data[cat]?.[m.label]?.[m.idx] || '';
           html += `
-            <tr class="${isWinner ? 'winner' : (isSuspect ? 'suspect' : '')}">
-              <td><img class="tpl-thumb" src="${tplDataURL}"></td>
-              <td><b>${item.label}</b><br><span style="color:#666">#${item.idx+1}</span></td>
-              <td>${(item.eucSim*100).toFixed(0)}%</td>
-              <td>${(item.cosSim*100).toFixed(0)}%</td>
-              <td>${(item.hashSim*100).toFixed(0)}%</td>
-              <td><b>${(item.combined*100).toFixed(0)}%</b>
-                <span class="inspect-bar"><span class="inspect-bar-fill" style="width:${item.combined*100}%"></span></span>
+            <tr class="${cls}">
+              <td>${i+1}</td>
+              <td><b>${m.label}</b></td>
+              <td><img class="tpl-thumb" src="${tplURL}"></td>
+              <td>${(m.eucSim*100).toFixed(0)}%</td>
+              <td>${(m.cosSim*100).toFixed(0)}%</td>
+              <td>${(m.hashSim*100).toFixed(0)}%</td>
+              <td><b style="color:${isWinner?'#0f0':'#aaa'}">${(m.combined*100).toFixed(1)}%</b>
+                <span class="inspect-bar"><span style="display:block;height:100%;width:${m.combined*100}%;background:${isWinner?'#0f0':'#08f'}"></span></span>
               </td>
-              <td><button class="del-tpl" onclick="window.__detector.deleteTplFromInspect('phase','${item.label}',${item.idx})">🗑</button></td>
-            </tr>`;
-        }
-        html += `</tbody></table>`;
-      }
+              <td><button class="del-tpl" onclick="window.__detector.deleteTplFromInspect('${cat}','${m.label}',${m.idx})">🗑</button></td>
+            </tr>
+          `;
+        });
+        html += '</table>';
+        return html;
+      };
 
-      // 分流比對
-      if (state.lastChCanvas && Object.keys(TemplateDB.data.ch).length > 0) {
-        const m = await TemplateDB.match('ch', state.lastChCanvas);
-        html += `
-          <div style="margin:14px 0 8px 0;color:#08f;font-weight:bold">📌 分流比對</div>
-          <div class="inspect-query">
-            <canvas width="64" height="64" id="dInspectQueryCh"></canvas>
-            <div>
-              <div>當前分流畫面</div>
-              <div style="margin-top:4px;font-size:11px;color:#888">
-                系統判定：<span style="color:#0f0;font-weight:bold">CH.${m.label}</span>
-                （${(m.similarity*100).toFixed(1)}%）
-              </div>
-            </div>
-          </div>
-          <table class="inspect-table">
-            <thead>
-              <tr>
-                <th>圖</th><th>標籤</th><th>歐氏</th><th>餘弦</th><th>pHash</th>
-                <th>總分</th><th></th>
-              </tr>
-            </thead>
-            <tbody>`;
-        for (const item of m.allMatches) {
-          const tplDataURL = TemplateDB.data.ch[item.label][item.idx];
-          const isWinner = item === m.allMatches[0];
-          const isSuspect = !isWinner && (m.allMatches[0].label !== item.label) && item.combined > 0.7;
-          html += `
-            <tr class="${isWinner ? 'winner' : (isSuspect ? 'suspect' : '')}">
-              <td><img class="tpl-thumb" src="${tplDataURL}"></td>
-              <td><b>CH.${item.label}</b><br><span style="color:#666">#${item.idx+1}</span></td>
-              <td>${(item.eucSim*100).toFixed(0)}%</td>
-              <td>${(item.cosSim*100).toFixed(0)}%</td>
-              <td>${(item.hashSim*100).toFixed(0)}%</td>
-              <td><b>${(item.combined*100).toFixed(0)}%</b>
-                <span class="inspect-bar"><span class="inspect-bar-fill" style="width:${item.combined*100}%"></span></span>
-              </td>
-              <td><button class="del-tpl" onclick="window.__detector.deleteTplFromInspect('ch','${item.label}',${item.idx})">🗑</button></td>
-            </tr>`;
-        }
-        html += `</tbody></table>`;
-      }
-
-      if (!html) {
-        html = '<div style="text-align:center;color:#888;padding:20px">尚無模板可比對<br>請先累積一些模板再使用此功能</div>';
-      } else {
-        html += `<div style="margin-top:10px;font-size:10px;color:#888">
-          🟢 綠色 = 系統選的（最高分） &nbsp;
-          🔴 紅色 = 嫌疑（不同標籤但分數很接近）
-        </div>`;
-      }
-
+      let html = renderTable('📷 階段比對', state.lastBadgeCanvas, phaseMatch, 'phase');
+      if (chMatch) html += renderTable('🔢 分流比對', state.lastChCanvas, chMatch, 'ch');
       body.innerHTML = html;
-      modal.classList.add('show');
 
-      // 畫上 query 圖
-      if (state.lastBadgeCanvas) {
-        const qC = document.getElementById('dInspectQueryPhase');
-        if (qC) {
-          const ctx = qC.getContext('2d');
-          ctx.imageSmoothingEnabled = false;
-          ctx.drawImage(state.lastBadgeCanvas, 0, 0, 64, 64);
-        }
-      }
-      if (state.lastChCanvas) {
-        const qC = document.getElementById('dInspectQueryCh');
-        if (qC) {
-          const ctx = qC.getContext('2d');
-          ctx.imageSmoothingEnabled = false;
-          ctx.drawImage(state.lastChCanvas, 0, 0, 64, 64);
-        }
-      }
+      const drawTo = (id, src) => {
+        const c = document.getElementById(id);
+        if (!c || !src) return;
+        c.width = 64; c.height = 64;
+        const ctx = c.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+        const norm = TemplateDB.normalize(src);
+        ctx.drawImage(norm, 0, 0, 64, 64);
+      };
+      drawTo('dInspectQuery_phase', state.lastBadgeCanvas);
+      if (chMatch) drawTo('dInspectQuery_ch', state.lastChCanvas);
     },
 
-    closeInspect: () => {
-      document.getElementById('dInspectModal').classList.remove('show');
-    },
+    closeInspect: () => document.getElementById('dInspectModal').classList.remove('show'),
 
-    // ═══════════════════════════════════════════════
-    // v0.7: 校準工作流程
-    // ═══════════════════════════════════════════════
     openCalibration: () => {
-      const modal = document.getElementById('dCalibModal');
-      modal.classList.add('show');
       renderCalibStep1();
+      document.getElementById('dCalibModal').classList.add('show');
     },
+
     closeCalibration: () => {
       document.getElementById('dCalibModal').classList.remove('show');
+      if (state._calibrating) {
+        state._calibrating = false;
+        hideCalibInstructions();
+      }
     },
 
-    // 步驟 1：使用者按「開始框選計時圈」
     startCalibFrameSelect: () => {
-      // 進入「框選計時圈」模式（類似框選 region 但專用）
-      const modal = document.getElementById('dCalibModal');
-      modal.classList.remove('show');
-      // 切到完整模式
-      if (state.panelMode !== 'full') togglePanelMode();
-      // 啟用框選模式（用 timing 模式）
+      document.getElementById('dCalibModal').classList.remove('show');
       enterCalibFrameMode();
     },
 
-    // 步驟 2：套用紅環校準結果
-    applyAutoCalibration: async () => {
-      const region = state._calibTempRegion;
-      if (!region) return;
-      const body = document.getElementById('dCalibBody');
-      body.innerHTML = '<div style="text-align:center;padding:20px">🔄 正在偵測紅環（10 次取樣中）...</div>';
-
-      const result = await runRingCalibration(region, { samples: 10 });
-      if (!result.success) {
-        renderCalibFailure(result.reason);
-        return;
-      }
-      renderCalibAutoResult(region, result);
-    },
-
-    confirmAutoCalibration: () => {
-      const region = state._calibTempRegion;
-      const result = state._calibTempResult;
-      if (!region || !result) return;
-      applyCalibration(region, result, false);
-      log(`✨ 校準成功！紅環中心 (${(result.ringCenterRatio.x*100).toFixed(1)}%, ${(result.ringCenterRatio.y*100).toFixed(1)}%)，半徑比 ${(result.ringRadiusRatio*100).toFixed(1)}%`, '#0f0');
-      updateCalibStatus();
-      window.__detector.closeCalibration();
-      // 重新渲染預覽
-      if (state.regions.status) renderBadgeEditor();
-    },
-
-    // 步驟 3：跳過校準（手動）
-    skipCalibration: () => {
-      const region = state._calibTempRegion;
-      if (!region) return;
-      applyCalibration(region, null, true);  // 用預設比例
-      log(`⚠️ 已跳過自動校準，使用預設比例（之後可在徽章編輯器手動微調）`, '#fa0');
-      updateCalibStatus();
-      window.__detector.closeCalibration();
-      if (state.regions.status) renderBadgeEditor();
-    },
-
-    // 重設校準
-    resetCalibration: () => {
-      if (!confirm('確定要清除校準資料？這會回到「手動拖曳橘框」模式。')) return;
-      clearCalibration();
-      updateCalibStatus();
-      log('🗑 已清除校準資料', '#fa0');
-      window.__detector.closeCalibration();
-      if (state.regions.status) renderBadgeEditor();
-    },
-
-    // 重新開始校準
-    restartCalibration: () => {
-      renderCalibStep1();
-    },
-
-    // 取消校準框選（從浮動提示按取消）
     cancelCalibFrame: () => {
       state._calibrating = false;
       hideCalibInstructions();
-      log('已取消校準', '#888');
+      log('已取消校準框選', '#888');
     },
 
-    // 從偵錯模態刪模板，並重新整理
-    deleteTplFromInspect: async (category, label, index) => {
-      if (!confirm(`確定要刪除 ${category === 'ch' ? 'CH.'+label : label} 的第 ${index+1} 張模板？`)) return;
-      const ok = TemplateDB.deleteAt(category, label, index);
-      if (ok) {
-        log(`🗑 已刪除 ${category === 'ch' ? 'CH.'+label : label} #${index+1}`, '#f80');
-        updateTplDisplay();
-        await window.__detector.openInspect();
+    confirmAutoCalibration: () => {
+      if (!state._calibTempResult || !state.regions.status) return;
+      applyCalibration(state.regions.status, state._calibTempResult, false);
+      updateCalibStatus();
+      log('✨ 校準已套用(自動模式)', '#0f0');
+      document.getElementById('dCalibModal').classList.remove('show');
+      if (state.panelMode === 'full') renderBadgeEditor();
+      delete state._calibTempResult;
+    },
+
+    skipCalibration: () => {
+      if (!state.regions.status) {
+        log('⚠️ 尚未框選計時圈,無法跳過', '#fa0');
+        return;
+      }
+      applyCalibration(state.regions.status, null, true);
+      updateCalibStatus();
+      log('⏭️ 已套用手動校準(預設比例)', '#fa0');
+      document.getElementById('dCalibModal').classList.remove('show');
+      if (state.panelMode === 'full') renderBadgeEditor();
+    },
+
+    resetCalibration: () => {
+      if (confirm('確定清除目前的校準資料?')) {
+        clearCalibration();
+        updateCalibStatus();
+        log('🗑 校準資料已清除', '#888');
+        renderCalibStep1();
       }
     },
 
-    // v0.6.4 紅環偵測診斷
-    toggleDiagAdvanced: () => {
-      const adv = document.getElementById('dDiagAdvanced');
-      adv.style.display = adv.style.display === 'none' ? 'block' : 'none';
+    restartCalibration: () => {
+      delete state._calibTempResult;
+      renderCalibStep1();
     },
 
-    runDiagnose: () => {
-      runDiagnose();
+    runDiagnose: runDiagnose,
+
+    toggleDiagAdvanced: () => {
+      const el = document.getElementById('dDiagAdvanced');
+      if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
     },
 
     toggleDiagnoseLoop: () => {
@@ -3849,67 +3977,26 @@
         btn.textContent = '🔁 連續測試';
         btn.classList.remove('red');
         btn.classList.add('orange');
-        log('⏹ 連續診斷已停止', '#888');
+        log('已停止連續診斷', '#888');
       } else {
         state.diagHistory = [];
-        document.getElementById('dDiagStability').style.display = 'block';
-        runDiagnose();
-        state.diagLoopTimer = setInterval(runDiagnose, 1000);
-        btn.textContent = '⏸ 停止測試';
+        state.diagLoopTimer = setInterval(runDiagnose, 500);
+        btn.textContent = '⏸ 停止';
         btn.classList.remove('orange');
         btn.classList.add('red');
-        log('▶️ 開始連續診斷（每秒 1 次）', '#fa0');
+        document.getElementById('dDiagStability').style.display = 'block';
+        log('🔁 連續診斷中(每 0.5 秒)', '#fa0');
       }
-    },
-    showEdit: (map, ch, val, mapRaw) => {
-      const area = document.getElementById('dConfirmArea');
-      area.innerHTML = `
-        <div class="confirm-banner">
-          修改送出：
-          <div class="correction-row">
-            <input type="text" id="dEditMap" value="${map}" style="width:60px">
-            <input type="text" id="dEditCh" value="${ch}" style="width:40px">
-            <select id="dEditVal" style="padding:3px">
-              <option ${val==='ON'?'selected':''}>ON</option>
-              <option ${val==='R1'?'selected':''}>R1</option>
-              <option ${val==='R2'?'selected':''}>R2</option>
-              <option ${val==='R3'?'selected':''}>R3</option>
-              <option ${val==='R4'?'selected':''}>R4</option>
-              <option ${val==='DE1'?'selected':''}>DE1</option>
-            </select>
-            <button class="dbtn" onclick="window.__detector.confirmEdit('${mapRaw}')">✓</button>
-          </div>
-        </div>`;
-    },
-    confirmEdit: (mapRaw) => {
-      const map = document.getElementById('dEditMap').value.trim();
-      const ch = document.getElementById('dEditCh').value.trim();
-      const val = document.getElementById('dEditVal').value;
-      if (!map || !ch) return;
-      doSubmit(map, ch, val);
-      if (document.getElementById('dContribute').checked) contributeMapAlias(mapRaw, map);
-    },
-    confirmManual: (val, mapRaw) => {
-      const map = document.getElementById('dFixMap').value.trim();
-      const ch = document.getElementById('dFixCh').value.trim();
-      if (!map || !ch) return;
-      doSubmit(map, ch, val);
-      if (document.getElementById('dContribute').checked && mapRaw) contributeMapAlias(mapRaw, map);
-    },
-    submitCorrection: () => {
-      const raw = document.getElementById('dCorrectRaw').value.trim();
-      const code = document.getElementById('dCorrectCode').value.trim();
-      if (!raw || !code) return;
-      contributeMapAlias(raw, code);
-      document.getElementById('dCorrectRaw').value = '';
-      document.getElementById('dCorrectCode').value = '';
     }
   };
 
+  // ═══════════════════════════════════════════════
+  // 啟動
+  // ═══════════════════════════════════════════════
   loadTesseract(() => {
     waitForApp(() => {
       injectUI();
-      console.log(DEBUG_PREFIX, 'v0.7.0 Beta 已就緒');
+      console.log(DEBUG_PREFIX, 'v0.7.1 已就緒(精準優先版)');
     });
   });
 
