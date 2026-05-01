@@ -563,8 +563,8 @@ function applyLang() {
     if (lmt) lmt.textContent = t('fullLogTitle');
     // 使用說明
     renderHelpPanel();
-    // 重繪列表（section labels）
-    renderList();
+    // 重繪列表（只在已登入時執行）
+    if (currentRoom) renderList();
 }
 
 function renderHelpPanel() {
