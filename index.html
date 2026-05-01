@@ -288,6 +288,7 @@
             </div>
             <div class="room-info">
                 <span class="version-tag">v1.5.6</span>
+                <button onclick="toggleHelpPanel()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 8px; border-radius:12px; cursor:pointer;">？</button>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
                 <button class="btn-danger" id="clearAllBtn" onclick="clearAllBosses()" style="display:none;">一鍵清除</button>
                 <button id="unbanAllBtn" onclick="toggleBanPanel()" style="display:none; background:none; border:1px solid #844; color:#a66; font-size:11px; padding:3px 8px; border-radius:6px; cursor:pointer;">🚫 黑名單</button>
@@ -336,6 +337,69 @@
         </div>
 
         <div id="renderArea"></div>
+    </div>
+</div>
+
+<!-- 使用說明面板 -->
+<div id="helpPanel" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:9000; justify-content:center; align-items:flex-start; padding-top:20px; overflow-y:auto;">
+    <div style="background:#111; border:1px solid #333; border-radius:12px; width:90%; max-width:560px; margin:0 auto 40px; overflow:hidden;">
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-bottom:1px solid #222; background:#0a0a0a;">
+            <span style="color:#0f0; font-size:14px; font-weight:bold;">📖 使用說明</span>
+            <button onclick="toggleHelpPanel()" style="background:none; border:none; color:#888; font-size:20px; cursor:pointer; padding:0; line-height:1;">✕</button>
+        </div>
+        <div style="padding:14px 16px; font-size:12px; line-height:1.9; color:#bbb; font-family:sans-serif;">
+
+            <div style="margin-bottom:14px;">
+                <div style="color:#0f0; font-weight:bold; margin-bottom:4px;">1. 時間新增／編輯 &nbsp;<span style="color:#555; font-weight:normal; font-size:11px;">地圖 分流 時間</span></div>
+                <div style="color:#777; padding-left:12px; font-size:11px; line-height:2;">
+                    153 1 1.30 &nbsp;→&nbsp; <span style="color:#aaa;">153-1 &nbsp;11:30</span><br>
+                    153 1 90 &nbsp;→&nbsp; <span style="color:#aaa;">153-1 &nbsp;1:30:00</span><br>
+                    153 1 1.3 &nbsp;→&nbsp; <span style="color:#aaa;">153-1 &nbsp;11:03</span><br>
+                    153 1 :30 &nbsp;→&nbsp; <span style="color:#aaa;">153-1 &nbsp;00:30</span>
+                </div>
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <div style="color:#0f0; font-weight:bold; margin-bottom:4px;">2. 階段新增／編輯 &nbsp;<span style="color:#555; font-weight:normal; font-size:11px;">地圖 分流 階段</span></div>
+                <div style="color:#777; padding-left:12px; font-size:11px; line-height:2;">
+                    153 1 001 &nbsp;→&nbsp; <span style="color:#aaa;">153-1 &nbsp;階段1</span><br>
+                    153 1 0015 &nbsp;→&nbsp; <span style="color:#aaa;">153-1 &nbsp;階段1.5</span><br>
+                    153 1 R1 &nbsp;→&nbsp; <span style="color:#aaa;">153-1 &nbsp;階段1（不分大小寫）</span><br>
+                    153 1 R1.5 &nbsp;→&nbsp; <span style="color:#aaa;">153-1 &nbsp;階段1.5</span>
+                </div>
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <div style="color:#0f0; font-weight:bold; margin-bottom:4px;">3. BOSS ON &nbsp;<span style="color:#555; font-weight:normal; font-size:11px;">地圖 分流 ON（不分大小寫）</span></div>
+                <div style="color:#777; padding-left:12px; font-size:11px;">
+                    153 1 ON &nbsp;→&nbsp; <span style="color:#aaa;">153-1 &nbsp;ON</span>
+                </div>
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <div style="color:#0f0; font-weight:bold; margin-bottom:4px;">4. BOSS 已擊殺 &nbsp;<span style="color:#555; font-weight:normal; font-size:11px;">地圖 分流 DE（不分大小寫）</span></div>
+                <div style="color:#777; padding-left:12px; font-size:11px;">
+                    153 1 de &nbsp;→&nbsp; <span style="color:#aaa;">153-1 &nbsp;已擊殺</span>
+                </div>
+            </div>
+
+            <div style="border-top:1px solid #1a1a1a; margin:10px 0;"></div>
+
+            <div style="margin-bottom:10px;">
+                <div style="color:#ffca28; font-weight:bold; margin-bottom:6px;">功能按鈕說明</div>
+                <div style="display:grid; gap:5px;">
+                    <div>🔊 &nbsp;<span style="color:#aaa;">語音提醒</span><span style="color:#555; font-size:11px;"> — 開啟後計時結束時播報地圖分流</span></div>
+                    <div>📢 &nbsp;<span style="color:#aaa;">ON 提醒</span><span style="color:#555; font-size:11px;"> — 任一卡片進入 ON 時發出提示音</span></div>
+                    <div>🛡️ &nbsp;<span style="color:#aaa;">4階段提醒</span><span style="color:#555; font-size:11px;"> — 任一卡片進入階段4時發出提示音</span></div>
+                    <div>⚠️ &nbsp;<span style="color:#aaa;">超時提醒</span><span style="color:#555; font-size:11px;"> — 卡片超時後顯示警告符號</span></div>
+                    <div>📌 &nbsp;<span style="color:#aaa;">釘選提醒</span><span style="color:#555; font-size:11px;"> — 開啟後只有置頂卡片觸發以上提醒</span></div>
+                    <div>🎨 &nbsp;<span style="color:#aaa;">色彩模式</span><span style="color:#555; font-size:11px;"> — 切換兩種卡片顏色配置</span></div>
+                    <div>💬 &nbsp;<span style="color:#aaa;">留言板</span><span style="color:#555; font-size:11px;"> — 隱藏／三行／六行模式切換；點擊在線用戶ID可隱藏其發言</span></div>
+                    <div>📜 &nbsp;<span style="color:#aaa;">編輯紀錄</span><span style="color:#555; font-size:11px;"> — 隱藏／3則／5則／10則模式切換</span></div>
+                </div>
+            </div>
+
+        </div>
     </div>
 </div>
 
@@ -1050,6 +1114,7 @@ function viewFullLogs() {
 }
 function closeLogModal() { document.getElementById('logModal').classList.remove('show'); }
 document.getElementById('logModal').addEventListener('click', function(e) { if(e.target===this) closeLogModal(); });
+document.getElementById('helpPanel').addEventListener('click', function(e) { if(e.target===this) toggleHelpPanel(); });
 function initLogs() {
     db.ref(`rooms/${currentRoom}/logs`).limitToLast(100).on('value', s => {
         lastLogData = s.val(); renderLogs(lastLogData); updateOnlineUsersDisplay(); renderList();
@@ -1107,7 +1172,14 @@ function updateOnlineUsersDisplay() {
 /* ════════ 黑名單管理 ════════ */
 let banPanelOpen = false;
 
-function toggleBanPanel() {
+function toggleHelpPanel() {
+    const p = document.getElementById('helpPanel');
+    if (!p) return;
+    const isOpen = p.style.display === 'flex';
+    p.style.display = isOpen ? 'none' : 'flex';
+}
+
+
     if (!hasBanAuth()) return;
     banPanelOpen = !banPanelOpen;
 
