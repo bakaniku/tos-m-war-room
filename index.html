@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.5.6</title>
+    <title>TOS M FB TIME v1.5.7</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -250,7 +250,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.5.6</div>
+        <div class="ver-info">v1.5.7</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="" maxlength="10"
                 oninput="this.value=this.value.replace('#','')"
@@ -287,7 +287,7 @@
                 </div>
             </div>
             <div class="room-info">
-                <span class="version-tag">v1.5.6</span>
+                <span class="version-tag">v1.5.7</span>
                 <button id="langBtn" onclick="toggleLang()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">日本語</button>
                 <button onclick="toggleHelpPanel()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 8px; border-radius:12px; cursor:pointer;">？</button>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
@@ -370,7 +370,7 @@ const LANG = {
     zh: {
         // 登入頁
         nickname: '你的稱呼', leaveEmpty: '留空使用隨機代碼',
-        createRoom: '＋ 創建新房間', roomInput: '輸入房號', joinRoom: '進入房間',
+        createRoomLabel: '＋ 創建新房間', roomInput: '輸入房號', joinRoomBtn: '進入房間',
         // Header
         online: '在線', loading: '載入中…',
         lightMode: '☀️ 亮色', darkMode: '🌙 暗色',
@@ -448,7 +448,7 @@ const LANG = {
     },
     ja: {
         nickname: 'ニックネーム', leaveEmpty: '空白でランダムコードを使用',
-        createRoom: '＋ 新しい部屋を作る', roomInput: '部屋番号を入力', joinRoom: '部屋に入る',
+        createRoomLabel: '＋ 新しい部屋を作る', roomInput: '部屋番号を入力', joinRoomBtn: '部屋に入る',
         online: 'オンライン', loading: '読み込み中…',
         lightMode: '☀️ ライト', darkMode: '🌙 ダーク',
         banList: '🚫 ブラックリスト', clearAll: '一括クリア', exit: '離れる',
@@ -523,11 +523,11 @@ function applyLang() {
     const nh = document.getElementById('nameHint');
     if (nh) nh.textContent = t('leaveEmpty');
     const cr = document.getElementById('createRoomBtn');
-    if (cr) cr.textContent = t('createRoom');
+    if (cr) cr.textContent = t('createRoomLabel');
     const ri = document.getElementById('roomInput');
     if (ri) ri.placeholder = t('roomInput');
     const jr = document.getElementById('joinRoomBtn');
-    if (jr) jr.textContent = t('joinRoom');
+    if (jr) jr.textContent = t('joinRoomBtn');
     const ol = document.getElementById('onlineLabel');
     if (ol) ol.textContent = t('online');
     const lb = document.getElementById('langBtn');
@@ -631,7 +631,7 @@ window.currentData = {};
 let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
 let lastProcessedInput = {};
 const protectedRooms = { 'GABIJA':'faker','000000':'tosm','ZEMYNA':'earth0407','SAULE':'apple','ASRINE':'lostu' };
-const currentVersion = "1.5.6";
+const currentVersion = "1.5.7";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
 let globalNextLocked = false;
@@ -656,11 +656,11 @@ window.addEventListener('DOMContentLoaded', () => {
     const nh = document.getElementById('nameHint');
     if (nh) nh.textContent = t('leaveEmpty');
     const cr = document.getElementById('createRoomBtn');
-    if (cr) cr.textContent = t('createRoom');
+    if (cr) cr.textContent = t('createRoomLabel');
     const ri = document.getElementById('roomInput');
     if (ri) ri.placeholder = t('roomInput');
     const jr = document.getElementById('joinRoomBtn');
-    if (jr) jr.textContent = t('joinRoom');
+    if (jr) jr.textContent = t('joinRoomBtn');
 });
 let isBanned = false;
 const myFixedId = localStorage.getItem('tos_fixed_id') || '';
