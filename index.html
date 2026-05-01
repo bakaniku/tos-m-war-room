@@ -1250,8 +1250,8 @@ function saveBoss(map, ch, val, doFocus = false) {
 
     let dv = valStr, tt = 0, flash = false, uv = valStr.toUpperCase();
     if (uv.startsWith("00")) { let r=uv.replace("00",""); uv=(r.length===2&&!r.includes('.'))?("R"+r[0]+"."+r[1]):("R"+r); }
-    if      (uv.startsWith("XX"))  { dv = t("idle"); }
-    else if (uv.startsWith("DE"))  { dv = t("killed"); }
+    if      (uv.startsWith("XX"))  { dv = "閒置"; }
+    else if (uv.startsWith("DE"))  { dv = "已擊殺"; }
     else if (uv === "ON")          { dv = "ON"; flash = true; }
     else if (uv.startsWith("R"))   { const rn=uv.substring(1); dv="階段"+rn; if(parseFloat(rn)>=4.0) flash=true; }
     else {
