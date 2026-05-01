@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.5.6</title>
+    <title>TOS M FB TIME v1.5.7</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -250,7 +250,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.5.6</div>
+        <div class="ver-info">v1.5.7</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="" maxlength="10"
                 oninput="this.value=this.value.replace('#','')"
@@ -287,7 +287,7 @@
                 </div>
             </div>
             <div class="room-info">
-                <span class="version-tag">v1.5.6</span>
+                <span class="version-tag">v1.5.7</span>
                 <button id="langBtn" onclick="toggleLang()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">日本語</button>
                 <button onclick="toggleHelpPanel()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 8px; border-radius:12px; cursor:pointer;">？</button>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
@@ -364,9 +364,9 @@
 
 <script>
 /* ════════ 語言系統 ════════ */
-let currentLang = localStorage.getItem('tos_lang') || 'zh';
+var currentLang = localStorage.getItem('tos_lang') || 'zh';
 
-const LANG = {
+var LANG = {
     zh: {
         // 登入頁
         nickname: '你的稱呼', leaveEmpty: '留空使用隨機代碼',
@@ -388,8 +388,8 @@ const LANG = {
         sortTime: '時間排序', sortGroup: '分組排序', sortMap: '地圖排序',
         // 輸入提示
         inputPlaceholder: '地圖 分流 階段(R)/分鐘',
-        inputHint: t('inputHint'),
-        dupWarning: t('dupWarning'),
+        inputHint: '範例：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 12:30 ｜ 80 3 ON',
+        dupWarning: '⚠️ 該地圖分流已存在於列表中！',
         // Section labels
         secPinned: '置頂追蹤區 ★', secKilled: '已擊殺區間',
         secTimeAll: '全域時間排序 (閒置置底)', secMapAll: '全域地圖等級排序 (含已擊殺)',
@@ -406,9 +406,9 @@ const LANG = {
         maxCancel: '取消滿員', maxSet: '標記滿員', memberInput: '點擊輸入人數',
         // 黑名單
         banTitle: '🚫 黑名單管理', banUnbanAll: '全部解封', banUnban: '解封',
-        banEmpty: t('banEmpty'), banBy: '由', banAt: '封鎖',
-        banNote: '備註：', banAddNote: t('banAddNote'),
-        banConfirmAll: t('banConfirmAll'),
+        banEmpty: '目前無封鎖紀錄', banBy: '由', banAt: '封鎖',
+        banNote: '備註：', banAddNote: '加備註…',
+        banConfirmAll: '確定解除所有封鎖？',
         banReason: '請填寫封鎖原由（必填）：',
         banReasonEmpty: '請填寫封鎖原由才能加入黑名單。',
         // 隱藏用戶
@@ -631,7 +631,7 @@ window.currentData = {};
 let localPinned = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}');
 let lastProcessedInput = {};
 const protectedRooms = { 'GABIJA':'faker','000000':'tosm','ZEMYNA':'earth0407','SAULE':'apple','ASRINE':'lostu' };
-const currentVersion = "1.5.6";
+const currentVersion = "1.5.7";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
 let globalNextLocked = false;
@@ -650,17 +650,7 @@ function getFixedIdPlaceholder() {
 window.addEventListener('DOMContentLoaded', () => {
     const input = document.getElementById('userNameInput');
     if (input) input.placeholder = getFixedIdPlaceholder();
-    // 套用儲存的語言設定
-    const lb = document.getElementById('langBtn');
-    if (lb) lb.textContent = t('langBtn');
-    const nh = document.getElementById('nameHint');
-    if (nh) nh.textContent = t('leaveEmpty');
-    const cr = document.getElementById('createRoomBtn');
-    if (cr) cr.textContent = t('createRoom');
-    const ri = document.getElementById('roomInput');
-    if (ri) ri.placeholder = t('roomInput');
-    const jr = document.getElementById('joinRoomBtn');
-    if (jr) jr.textContent = t('joinRoom');
+    setTimeout(applyLang, 0);
 });
 let isBanned = false;
 const myFixedId = localStorage.getItem('tos_fixed_id') || '';
