@@ -1,69 +1,52 @@
 /*
  * TOS M FB TIME - Window Capture Boss Detector
- * File: detector-v0.6.4.js
+ * File: detector-v0.7.2.js
  *
- * 使用方式：
- * 1. 將本檔案放在主 HTML 同層或可讀取的位置。
- * 2. 在原本主程式載入完成後加入：
- *    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
- *    <script src="detector-v0.6.4.js"></script>
+ * 載入方式：
+ * <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+ * <script src="detector-v0.7.2.js"></script>
  *
- * 3. 進入房間後，右下角會出現「TOSM Detector」面板。
- * 4. 點「開始擷取」，選擇 TOSM 遊戲視窗。
- *
- * 重要說明：
- * - 本檔案不直接寫 Firebase。
- * - 本檔案只會在判斷穩定後呼叫原主程式的 window.saveBoss(map, ch, value, false)。
- * - value 會輸出 XX / R1 / R2 / R3 / R4 / ON。
- * - 階段判斷使用狀態機，不以紅條比例直接代表階段。
- * - 若第一次開始偵測時已在紅條階段，無法只靠單張畫面知道目前是 R1~R4，
- *   會優先讀取 window.currentData[map_ch].lastInput；若沒有資料，會要求手動校正。
+ * 重要：
+ * - 本檔不直接寫 Firebase，只呼叫原本主程式 window.saveBoss(map, ch, value, false)。
+ * - 準確性優先：右上狀態圖示模板比對 + 中央公告 OCR + 地圖/分流辨識。
+ * - 第一次使用請先 ROI 校正，再建立 R1/R2/R3/R4/ON/WAITING 與 CH 模板。
  */
 
 (function () {
   "use strict";
 
-  const VERSION = "0.6.4";
+  const VERSION = "0.7.2";
+  const STORE_KEY = "tosm_detector_v072_store";
 
-  const DEFAULT_CONFIG = {
-    scanIntervalMs: 700,
-    ocrIntervalMs: 1800,
+  const CONFIG = {
+    scanIntervalMs: 350,
+    mapOcrIntervalMs: 2200,
+    announcementOcrIntervalMs: 900,
+    submitCooldownMs: 6000,
     stableNeed: 3,
-    submitCooldownMs: 6500,
-    autoSubmit: true,
-    confirmBeforeSubmit: false,
+    autoSubmit: false,
+    confirmBeforeSubmit: true,
+    autoSubmitWaiting: false,
     debug: false,
-
-    // 以使用者提供的 1648x900 範例畫面為基準的比例 ROI。
-    // 不同解析度會依比例自動換算。
-    // 若你的模擬器 UI 比例不同，可在面板開啟 debug 觀察後調整。
-    roi: {
-      // 右上小地圖下方的地圖名稱區。
-      mapName: { x: 0.775, y: 0.310, w: 0.160, h: 0.065 },
-
-      // 右上 CH.4 分流區。
-      channel: { x: 0.930, y: 0.315, w: 0.065, h: 0.060 },
-
-      // 右上圓形 BOSS / 進度圖示區。
-      // 你提供的截圖中在小地圖左下附近。
-      bossCircle: { x: 0.805, y: 0.170, w: 0.075, h: 0.115 }
+    previewScale: 0.32,
+    template: {
+      stageThreshold: 0.78,
+      stageStrongThreshold: 0.86,
+      channelThreshold: 0.74,
+      maxTemplatesPerLabel: 8,
+      imageSize: 48
     },
-
-    // 圓環進度判斷。
-    ring: {
-      sampleCount: 96,
-      radiusRatio: 0.42,
-      thicknessRatio: 0.13,
-      whiteThreshold: 0.30,
-      redThreshold: 0.18,
-      resetFrom: 0.82,
-      resetTo: 0.24,
-      minForwardDelta: 0.015
+    roi: {
+      mapName: { x: 0.755, y: 0.315, w: 0.190, h: 0.060 },
+      channel: { x: 0.930, y: 0.315, w: 0.065, h: 0.060 },
+      stageIcon: { x: 0.765, y: 0.145, w: 0.075, h: 0.105 },
+      announcement: { x: 0.280, y: 0.245, w: 0.460, h: 0.145 }
     }
   };
 
-  // 地圖名稱 → 地圖等級。
-  // 請依遊戲實際野外 BOSS 地圖持續補齊。
+  const STAGE_LABELS = ["WAITING", "R1", "R2", "R3", "R4", "ON"];
+  const CHANNEL_LABELS = ["CH1", "CH2", "CH3", "CH4", "CH5", "CH6", "CH7", "CH8", "CH9", "CH10"];
+
   const MAP_NAME_TO_LEVEL = {
     "夏奧雷伊西邊森林": "1",
     "夏奧雷伊東邊森林": "3",
@@ -160,28 +143,28 @@
     "那魯巴斯寺院別館": "153"
   };
 
-  const detector = {
-    version: VERSION,
-    config: deepMerge({}, DEFAULT_CONFIG),
+  const state = {
     running: false,
     video: null,
     stream: null,
     canvas: null,
     ctx: null,
-    loopTimer: null,
-    lastOcrAt: 0,
+    timer: null,
+    store: loadStore(),
+    lastMapOcrAt: 0,
+    lastAnnouncementOcrAt: 0,
     cachedMapName: "",
     cachedMapLevel: "",
     cachedChannel: "",
-    lastCandidateKey: "",
+    lastAnnouncement: null,
+    lastDecisionKey: "",
     stableCount: 0,
     lastSubmitKey: "",
     lastSubmitAt: 0,
-    trackers: {},
-    lastScan: null,
-    tesseractWorker: null,
-    workerReady: false,
-    manualPhaseTarget: null
+    pendingConfirm: null,
+    lastSubmittedStateByBoss: {},
+    calibration: { active: false, target: null, dragging: false, start: null, current: null },
+    lastFrameInfo: null
   };
 
   window.TOSMDetector = {
@@ -192,23 +175,24 @@
     unmount,
     scanOnce,
     setConfig,
-    setMapDict,
-    getState: () => ({
-      running: detector.running,
-      config: detector.config,
-      cachedMapName: detector.cachedMapName,
-      cachedMapLevel: detector.cachedMapLevel,
-      cachedChannel: detector.cachedChannel,
-      trackers: detector.trackers,
-      lastScan: detector.lastScan
-    })
+    exportData,
+    importData,
+    clearTemplates,
+    getState: () => JSON.parse(JSON.stringify({
+      running: state.running,
+      store: state.store,
+      cachedMapName: state.cachedMapName,
+      cachedMapLevel: state.cachedMapLevel,
+      cachedChannel: state.cachedChannel,
+      lastAnnouncement: state.lastAnnouncement,
+      lastFrameInfo: state.lastFrameInfo
+    }))
   };
 
   window.addEventListener("DOMContentLoaded", mount);
 
   function mount() {
-    if (document.getElementById("tosmDetectorPanel")) return;
-
+    if ($("tosmDetectorPanel")) return;
     injectStyle();
 
     const panel = document.createElement("div");
@@ -219,51 +203,80 @@
           <div class="td-title">TOSM Detector</div>
           <div class="td-ver">v${VERSION}</div>
         </div>
-        <button class="td-mini-btn" id="tdCollapseBtn" title="收合/展開">−</button>
+        <button id="tdCompactBtn" class="td-icon-btn" title="收合/展開">−</button>
       </div>
 
       <div id="tdBody">
-        <div id="tdStatus" class="td-status">尚未啟動</div>
+        <div id="tdStatus" class="td-status muted">尚未啟動</div>
 
         <div class="td-row">
-          <button id="tdStartBtn" class="td-btn td-primary">開始擷取</button>
-          <button id="tdStopBtn" class="td-btn">停止</button>
+          <button id="tdStartBtn" class="td-btn primary">▶ 開始擷取</button>
+          <button id="tdStopBtn" class="td-btn">■ 停止</button>
         </div>
 
-        <div class="td-row td-row-compact">
-          <label class="td-check"><input id="tdAutoSubmit" type="checkbox" checked> 自動送出</label>
-          <label class="td-check"><input id="tdConfirm" type="checkbox"> 送出前確認</label>
-          <label class="td-check"><input id="tdDebug" type="checkbox"> Debug</label>
+        <div class="td-switches">
+          <label><input id="tdAutoSubmit" type="checkbox"> 自動送出</label>
+          <label><input id="tdConfirm" type="checkbox" checked> 送出前確認</label>
+          <label><input id="tdWaiting" type="checkbox"> 自動送出 WAITING/XX</label>
+          <label><input id="tdDebug" type="checkbox"> Debug</label>
         </div>
 
         <div class="td-grid">
           <div>地圖</div><div id="tdMap">?</div>
-          <div>分流</div><div id="tdCh">?</div>
-          <div>條色</div><div id="tdBar">?</div>
-          <div>進度</div><div id="tdProgress">?</div>
-          <div>階段</div><div id="tdPhase">?</div>
+          <div>分流</div><div id="tdChannel">?</div>
+          <div>狀態圖示</div><div id="tdStageTemplate">?</div>
+          <div>公告</div><div id="tdAnnouncement">?</div>
+          <div>決策</div><div id="tdDecision">?</div>
           <div>穩定</div><div id="tdStable">0</div>
         </div>
 
-        <div id="tdManualBox" class="td-manual" style="display:none;">
-          <div class="td-warn">目前只看到紅條，無法判斷是第幾階段。請手動校正一次：</div>
-          <div class="td-row">
-            <button class="td-phase" data-phase="1">R1</button>
-            <button class="td-phase" data-phase="2">R2</button>
-            <button class="td-phase" data-phase="3">R3</button>
-            <button class="td-phase" data-phase="4">R4</button>
+        <details id="tdAdvanced">
+          <summary>進階 / 校正 / 模板</summary>
+
+          <div class="td-section">
+            <div class="td-section-title">ROI 校正</div>
+            <div class="td-small">開啟 Debug 後，在預覽圖拖曳框選。框選完成會自動儲存。</div>
+            <div class="td-row compact">
+              <button class="td-btn small" data-roi="mapName">地圖名</button>
+              <button class="td-btn small" data-roi="channel">分流</button>
+              <button class="td-btn small" data-roi="stageIcon">狀態圖示</button>
+              <button class="td-btn small" data-roi="announcement">中央公告</button>
+              <button id="tdResetRoi" class="td-btn small danger">重置 ROI</button>
+            </div>
           </div>
-        </div>
+
+          <div class="td-section">
+            <div class="td-section-title">狀態圖示模板</div>
+            <div class="td-small">在對應狀態畫面按下按鈕，會擷取目前「狀態圖示 ROI」作為模板。</div>
+            <div id="tdStageTemplateButtons" class="td-template-buttons"></div>
+          </div>
+
+          <div class="td-section">
+            <div class="td-section-title">分流模板</div>
+            <div class="td-small">在對應 CH 畫面按下按鈕，會擷取目前「分流 ROI」作為模板。</div>
+            <div id="tdChannelTemplateButtons" class="td-template-buttons"></div>
+          </div>
+
+          <div class="td-section">
+            <div class="td-section-title">模板管理</div>
+            <div class="td-row compact">
+              <button id="tdExport" class="td-btn small">匯出設定</button>
+              <button id="tdImport" class="td-btn small">匯入設定</button>
+              <button id="tdClearTemplates" class="td-btn small danger">清除模板</button>
+            </div>
+            <textarea id="tdImportBox" class="td-textarea" placeholder="匯入/匯出 JSON 會顯示在這裡"></textarea>
+          </div>
+
+          <canvas id="tdPreview" class="td-preview"></canvas>
+        </details>
 
         <div id="tdConfirmBox" class="td-confirm" style="display:none;">
-          <div id="tdConfirmText" class="td-confirm-text"></div>
-          <div class="td-row">
-            <button id="tdConfirmSend" class="td-btn td-primary">送出</button>
-            <button id="tdConfirmIgnore" class="td-btn">忽略</button>
+          <div id="tdConfirmText"></div>
+          <div class="td-row compact">
+            <button id="tdConfirmSend" class="td-btn primary small">送出</button>
+            <button id="tdConfirmIgnore" class="td-btn small">忽略</button>
           </div>
         </div>
-
-        <canvas id="tdDebugCanvas" style="display:none;"></canvas>
       </div>
     `;
 
@@ -271,979 +284,805 @@
 
     $("tdStartBtn").onclick = start;
     $("tdStopBtn").onclick = stop;
-    $("tdCollapseBtn").onclick = toggleCollapse;
-
-    $("tdAutoSubmit").onchange = e => {
-      detector.config.autoSubmit = !!e.target.checked;
-    };
-    $("tdConfirm").onchange = e => {
-      detector.config.confirmBeforeSubmit = !!e.target.checked;
-    };
-    $("tdDebug").onchange = e => {
-      detector.config.debug = !!e.target.checked;
-      const c = $("tdDebugCanvas");
-      if (c) c.style.display = detector.config.debug ? "block" : "none";
+    $("tdCompactBtn").onclick = toggleCompact;
+    $("tdResetRoi").onclick = resetRoi;
+    $("tdExport").onclick = () => { $("tdImportBox").value = exportData(); };
+    $("tdImport").onclick = () => importData($("tdImportBox").value);
+    $("tdClearTemplates").onclick = () => {
+      if (confirm("確定清除所有模板？ROI 與設定不會被清除。")) clearTemplates();
     };
 
-    panel.querySelectorAll(".td-phase").forEach(btn => {
-      btn.onclick = () => {
-        const phase = parseInt(btn.dataset.phase, 10);
-        applyManualPhase(phase);
-      };
-    });
+    $("tdAutoSubmit").onchange = e => { CONFIG.autoSubmit = e.target.checked; };
+    $("tdConfirm").onchange = e => { CONFIG.confirmBeforeSubmit = e.target.checked; };
+    $("tdWaiting").onchange = e => { CONFIG.autoSubmitWaiting = e.target.checked; };
+    $("tdDebug").onchange = e => { CONFIG.debug = e.target.checked; updatePreviewVisibility(); };
 
     $("tdConfirmSend").onclick = () => {
-      const pending = detector.pendingConfirm;
-      detector.pendingConfirm = null;
-      hideConfirmBox();
-      if (pending) submitResult(pending, true);
+      const item = state.pendingConfirm;
+      state.pendingConfirm = null;
+      hideConfirm();
+      if (item) submitDecision(item, true);
+    };
+    $("tdConfirmIgnore").onclick = () => {
+      state.pendingConfirm = null;
+      hideConfirm();
+      setStatus("已忽略本次候選", "muted");
     };
 
-    $("tdConfirmIgnore").onclick = () => {
-      detector.pendingConfirm = null;
-      hideConfirmBox();
-      setStatus("已忽略本次結果", "muted");
-    };
+    panel.querySelectorAll("[data-roi]").forEach(btn => {
+      btn.onclick = () => beginCalibration(btn.dataset.roi);
+    });
+
+    renderTemplateButtons();
+    setupPreviewEvents();
+    updateTemplateCounts();
+    updatePreviewVisibility();
   }
 
   function unmount() {
     stop();
-    const panel = document.getElementById("tosmDetectorPanel");
-    if (panel) panel.remove();
-    const style = document.getElementById("tosmDetectorStyle");
-    if (style) style.remove();
+    const p = $("tosmDetectorPanel");
+    if (p) p.remove();
+    const s = $("tosmDetectorStyle");
+    if (s) s.remove();
   }
 
   async function start() {
     try {
       if (!window.saveBoss || typeof window.saveBoss !== "function") {
-        alert("偵測器找不到 saveBoss()。請把 detector-v0.6.4.js 放在主程式 <script> 後面載入。");
+        alert("找不到 window.saveBoss()。請確認 detector-v0.7.2.js 載入在主程式之後。");
         return;
       }
-
       if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-        alert("此瀏覽器不支援螢幕/視窗擷取。請使用新版 Chrome / Edge。");
+        alert("瀏覽器不支援視窗擷取，請使用新版 Chrome 或 Edge。");
         return;
       }
 
-      detector.stream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          frameRate: 10,
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        },
+      state.stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: 12, width: { ideal: 1920 }, height: { ideal: 1080 } },
         audio: false
       });
 
-      detector.video = document.createElement("video");
-      detector.video.srcObject = detector.stream;
-      detector.video.muted = true;
-      detector.video.playsInline = true;
-      await detector.video.play();
+      state.video = document.createElement("video");
+      state.video.srcObject = state.stream;
+      state.video.muted = true;
+      state.video.playsInline = true;
+      await state.video.play();
 
-      detector.canvas = document.createElement("canvas");
-      detector.ctx = detector.canvas.getContext("2d", { willReadFrequently: true });
+      state.canvas = document.createElement("canvas");
+      state.ctx = state.canvas.getContext("2d", { willReadFrequently: true });
+      state.running = true;
+      state.lastMapOcrAt = 0;
+      state.lastAnnouncementOcrAt = 0;
+      state.stream.getVideoTracks().forEach(track => track.addEventListener("ended", stop));
 
-      detector.stream.getVideoTracks().forEach(track => {
-        track.addEventListener("ended", () => stop());
-      });
-
-      detector.running = true;
-      detector.lastOcrAt = 0;
-      detector.cachedMapName = "";
-      detector.cachedMapLevel = "";
-      detector.cachedChannel = "";
-
-      setStatus("擷取中，等待畫面穩定…", "ok");
-      updatePanelFields({});
-
-      detector.loopTimer = setInterval(scanOnce, detector.config.scanIntervalMs);
+      setStatus("擷取中，請確認選的是 TOSM 遊戲視窗", "ok");
+      state.timer = setInterval(scanOnce, CONFIG.scanIntervalMs);
       await scanOnce();
     } catch (err) {
       console.error("[TOSMDetector] start failed", err);
-      setStatus("啟動失敗或未授權擷取", "bad");
+      setStatus("擷取啟動失敗或使用者取消授權", "bad");
       stop();
     }
   }
 
   function stop() {
-    if (detector.loopTimer) clearInterval(detector.loopTimer);
-    detector.loopTimer = null;
-
-    if (detector.stream) {
-      detector.stream.getTracks().forEach(t => t.stop());
-    }
-
-    detector.running = false;
-    detector.stream = null;
-    detector.video = null;
-    detector.canvas = null;
-    detector.ctx = null;
-    hideManualBox();
-    hideConfirmBox();
+    if (state.timer) clearInterval(state.timer);
+    state.timer = null;
+    if (state.stream) state.stream.getTracks().forEach(t => t.stop());
+    state.stream = null;
+    state.video = null;
+    state.canvas = null;
+    state.ctx = null;
+    state.running = false;
     setStatus("已停止", "muted");
   }
 
   async function scanOnce() {
-    if (!detector.video || !detector.ctx) return;
-    if (detector.video.readyState < 2) return;
+    if (!state.video || state.video.readyState < 2 || !state.ctx) return;
 
-    const w = detector.video.videoWidth;
-    const h = detector.video.videoHeight;
+    const w = state.video.videoWidth;
+    const h = state.video.videoHeight;
     if (!w || !h) return;
 
-    detector.canvas.width = w;
-    detector.canvas.height = h;
-    detector.ctx.drawImage(detector.video, 0, 0, w, h);
+    state.canvas.width = w;
+    state.canvas.height = h;
+    state.ctx.drawImage(state.video, 0, 0, w, h);
 
     const now = Date.now();
-    let mapName = detector.cachedMapName;
-    let mapLevel = detector.cachedMapLevel;
-    let channel = detector.cachedChannel;
+    const stageResult = recognizeStageIcon(w, h);
+    const channelTemplate = recognizeChannelTemplate(w, h);
 
-    if (now - detector.lastOcrAt >= detector.config.ocrIntervalMs) {
-      detector.lastOcrAt = now;
-
-      const ocrResult = await readMapAndChannel(w, h);
-      if (ocrResult.mapName) {
-        mapName = ocrResult.mapName;
-        detector.cachedMapName = mapName;
-      }
-      if (ocrResult.mapLevel) {
-        mapLevel = ocrResult.mapLevel;
-        detector.cachedMapLevel = mapLevel;
-      }
-      if (ocrResult.channel) {
-        channel = ocrResult.channel;
-        detector.cachedChannel = channel;
-      }
+    if (now - state.lastMapOcrAt >= CONFIG.mapOcrIntervalMs) {
+      state.lastMapOcrAt = now;
+      await updateMapAndChannelByOcr(w, h, channelTemplate);
+    } else if (channelTemplate.label && channelTemplate.score >= CONFIG.template.channelThreshold) {
+      state.cachedChannel = channelTemplate.label.replace("CH", "");
     }
 
-    const progress = detectBossProgress(w, h);
+    if (now - state.lastAnnouncementOcrAt >= CONFIG.announcementOcrIntervalMs) {
+      state.lastAnnouncementOcrAt = now;
+      const ann = await recognizeAnnouncement(w, h);
+      if (ann && ann.stage) state.lastAnnouncement = ann;
+    }
 
-    detector.lastScan = {
-      mapName,
-      mapLevel,
-      channel,
-      progress,
+    const decision = makeDecision(stageResult, channelTemplate);
+    state.lastFrameInfo = {
+      mapName: state.cachedMapName,
+      mapLevel: state.cachedMapLevel,
+      channel: state.cachedChannel,
+      stageResult,
+      channelTemplate,
+      announcement: state.lastAnnouncement,
+      decision,
       time: now
     };
 
-    if (detector.config.debug) drawDebug(w, h, progress);
-
-    updatePanelFields({ mapName, mapLevel, channel, progress });
-
-    if (!mapLevel || !channel) {
-      setStatus(`辨識中：地圖=${mapName || "?"} 分流=${channel || "?"}`, "warn");
-      return;
-    }
-
-    const state = updateBossPhase(mapLevel, channel, progress);
-    updatePanelFields({ mapName, mapLevel, channel, progress, state });
-
-    if (!state) {
-      const p = Number.isFinite(progress.progress) ? Math.round(progress.progress * 100) : 0;
-      setStatus(`觀察中：${mapLevel}-${channel} ${progress.barType} ${p}%`, "muted");
-      return;
-    }
-
-    handleStableResult({
-      mapLevel,
-      channel,
-      state,
-      rawMapName: mapName,
-      barType: progress.barType,
-      progress: progress.progress
-    });
+    updatePanel(state.lastFrameInfo);
+    if (CONFIG.debug) drawPreview(w, h);
+    if (decision && decision.value) handleDecision(decision);
   }
 
-  async function readMapAndChannel(w, h) {
-    const out = { mapName: "", mapLevel: "", channel: "" };
+  async function updateMapAndChannelByOcr(w, h, channelTemplate) {
+    if (!window.Tesseract) {
+      setStatus("Tesseract.js 未載入：地圖/分流 OCR 不可用", "warn");
+      return;
+    }
 
     try {
-      const mapRoi = getRoi("mapName", w, h);
-      const chRoi = getRoi("channel", w, h);
+      const mapText = await ocrRoi("mapName", "chi_tra+eng", "map", w, h);
+      const mapMatch = resolveMap(normalizeMapText(mapText));
+      if (mapMatch.level && mapMatch.score >= 0.45) {
+        state.cachedMapName = mapMatch.name;
+        state.cachedMapLevel = mapMatch.level;
+      }
 
-      const mapText = await ocrRoi(mapRoi, "chi_tra+eng", "map");
-      const chText = await ocrRoi(chRoi, "eng", "channel");
-
-      out.mapName = normalizeMapText(mapText);
-      out.mapLevel = resolveMapLevel(out.mapName);
-      out.channel = parseChannel(chText);
-
-      // 有些 OCR 會把 CH 與數字讀壞，從原始 channel ROI 的亮字再跑一次簡易解析。
-      if (!out.channel) out.channel = parseChannel(normalizeAscii(chText));
+      let ch = "";
+      if (channelTemplate.label && channelTemplate.score >= CONFIG.template.channelThreshold) {
+        ch = channelTemplate.label.replace("CH", "");
+      }
+      if (!ch) {
+        const chText = await ocrRoi("channel", "eng", "channel", w, h);
+        ch = parseChannel(chText);
+      }
+      if (ch) state.cachedChannel = ch;
     } catch (err) {
-      console.warn("[TOSMDetector] OCR failed", err);
+      console.warn("[TOSMDetector] map/channel OCR failed", err);
     }
-
-    return out;
   }
 
-  async function ocrRoi(roi, lang, mode) {
-    if (!window.Tesseract) {
-      console.warn("[TOSMDetector] Tesseract.js 未載入，無法 OCR 地圖與分流。", { mode });
-      return "";
+  async function recognizeAnnouncement(w, h) {
+    if (!window.Tesseract) return null;
+
+    try {
+      const text = await ocrRoi("announcement", "chi_tra+eng", "announcement", w, h);
+      const raw = String(text || "").replace(/\s+/g, "");
+      let m = raw.match(/(?:警戒|憤怒|慎怒|提升|升)[^1-4]{0,8}([1-4])[^階段]{0,3}階段/);
+      if (!m) m = raw.match(/([1-4])階段/);
+
+      if (m) return { stage: `R${m[1]}`, value: `R${m[1]}`, raw, score: 0.92, time: Date.now() };
+      if (/ON|On|on|復活|出現/.test(raw)) return { stage: "ON", value: "ON", raw, score: 0.78, time: Date.now() };
+      return { stage: "", value: "", raw, score: 0, time: Date.now() };
+    } catch (err) {
+      console.warn("[TOSMDetector] announcement OCR failed", err);
+      return null;
     }
-
-    const tmp = document.createElement("canvas");
-    const scale = mode === "channel" ? 4 : 3;
-    tmp.width = Math.max(1, roi.w * scale);
-    tmp.height = Math.max(1, roi.h * scale);
-
-    const tctx = tmp.getContext("2d", { willReadFrequently: true });
-    tctx.imageSmoothingEnabled = false;
-    tctx.drawImage(detector.canvas, roi.x, roi.y, roi.w, roi.h, 0, 0, tmp.width, tmp.height);
-
-    preprocessForOcr(tctx, tmp.width, tmp.height, mode);
-
-    const options = {
-      logger: () => {}
-    };
-
-    if (mode === "channel") {
-      options.tessedit_char_whitelist = "CHch.：:0123456789 ";
-    }
-
-    const result = await window.Tesseract.recognize(tmp, lang, options);
-    return (result && result.data && result.data.text) ? result.data.text : "";
   }
 
-  function preprocessForOcr(tctx, w, h, mode) {
-    const img = tctx.getImageData(0, 0, w, h);
-    const d = img.data;
-
-    for (let i = 0; i < d.length; i += 4) {
-      const r = d[i];
-      const g = d[i + 1];
-      const b = d[i + 2];
-      const max = Math.max(r, g, b);
-      const min = Math.min(r, g, b);
-      const gray = r * 0.299 + g * 0.587 + b * 0.114;
-
-      let v;
-      if (mode === "channel") {
-        // CH 文字偏青藍色，保留亮色與青色。
-        const cyan = g > 110 && b > 110 && r < 130;
-        v = (gray > 135 || cyan || max - min > 70) ? 255 : 0;
-      } else {
-        // 地圖名稱白字，有陰影，使用較寬鬆門檻。
-        v = gray > 100 ? 255 : 0;
-      }
-
-      d[i] = d[i + 1] = d[i + 2] = v;
-      d[i + 3] = 255;
-    }
-
-    tctx.putImageData(img, 0, 0);
+  function recognizeStageIcon(w, h) {
+    const crop = cropRoiToTemplateVector("stageIcon", w, h, CONFIG.template.imageSize);
+    if (!crop) return { label: "", score: 0, scores: {} };
+    return matchTemplates(crop.vector, "stage", STAGE_LABELS);
   }
 
-  function detectBossProgress(w, h) {
-    const roi = getRoi("bossCircle", w, h);
-    const img = detector.ctx.getImageData(roi.x, roi.y, roi.w, roi.h);
+  function recognizeChannelTemplate(w, h) {
+    const crop = cropRoiToTemplateVector("channel", w, h, CONFIG.template.imageSize);
+    if (!crop) return { label: "", score: 0, scores: {} };
+    return matchTemplates(crop.vector, "channel", CHANNEL_LABELS);
+  }
 
-    const white = estimateRingProgress(img, "white");
-    const red = estimateRingProgress(img, "red");
-    const on = detectOnVisual(img);
+  function makeDecision(stageResult, channelTemplate) {
+    const mapLevel = state.cachedMapLevel;
+    const channel = state.cachedChannel || (channelTemplate.label ? channelTemplate.label.replace("CH", "") : "");
+    const ann = getFreshAnnouncement();
+    const templateStage = stageResult && stageResult.score >= CONFIG.template.stageThreshold ? stageResult.label : "";
+    const strongTemplate = stageResult && stageResult.score >= CONFIG.template.stageStrongThreshold;
 
-    let barType = "none";
-    let progress = 0;
+    let value = "";
     let confidence = 0;
+    let reason = "";
 
-    if (on.confidence >= 0.50) {
-      barType = "on";
-      progress = 1;
-      confidence = on.confidence;
-    } else if (white.confidence >= detector.config.ring.whiteThreshold && white.confidence >= red.confidence * 1.12) {
-      barType = "white";
-      progress = white.progress;
-      confidence = white.confidence;
-    } else if (red.confidence >= detector.config.ring.redThreshold) {
-      barType = "red";
-      progress = red.progress;
-      confidence = red.confidence;
+    if (ann && ann.value) {
+      if (!templateStage || templateStage === ann.value || !isStageConflict(templateStage, ann.value)) {
+        value = ann.value;
+        confidence = Math.max(ann.score, strongTemplate ? 0.96 : 0.90);
+        reason = templateStage ? `公告+圖示一致/不衝突：${ann.raw}` : `公告：${ann.raw}`;
+      } else return null;
+    } else if (templateStage && strongTemplate) {
+      value = templateStage;
+      confidence = stageResult.score;
+      reason = `狀態圖示模板 ${templateStage} ${(stageResult.score * 100).toFixed(1)}%`;
+    } else if (templateStage && stageResult.score >= CONFIG.template.stageThreshold) {
+      value = templateStage;
+      confidence = stageResult.score;
+      reason = `狀態圖示候選 ${templateStage} ${(stageResult.score * 100).toFixed(1)}%`;
     }
 
-    return {
-      barType,
-      progress: clamp01(progress),
-      confidence,
-      white,
-      red,
-      on,
-      roi
-    };
+    if (!value || !mapLevel || !channel) return null;
+    if (value === "WAITING") value = "XX";
+
+    if (value === "XX" && !CONFIG.autoSubmitWaiting) {
+      return { mapLevel, channel, value, confidence, reason: `${reason}；WAITING/XX 未開啟自動送出`, blocked: true };
+    }
+
+    if (!isAllowedTransition(mapLevel, channel, value)) return null;
+    return { mapLevel, channel, value, confidence, reason, blocked: false };
   }
 
-  function estimateRingProgress(imageData, colorType) {
-    const { width, height, data } = imageData;
-    const cx = width / 2;
-    const cy = height / 2;
-    const baseR = Math.min(width, height) * detector.config.ring.radiusRatio;
-    const thickness = Math.max(2, Math.min(width, height) * detector.config.ring.thicknessRatio);
-    const sampleCount = detector.config.ring.sampleCount;
-
-    const hitByAngle = [];
-    let hitAngles = 0;
-
-    for (let i = 0; i < sampleCount; i++) {
-      // 從 12 點鐘方向開始，順時針。
-      const angle = -Math.PI / 2 + (Math.PI * 2 * i / sampleCount);
-      let angleHit = false;
-
-      for (let rr = -thickness; rr <= thickness; rr += 2) {
-        const r = baseR + rr;
-        const x = Math.round(cx + Math.cos(angle) * r);
-        const y = Math.round(cy + Math.sin(angle) * r);
-        if (x < 0 || y < 0 || x >= width || y >= height) continue;
-
-        const idx = (y * width + x) * 4;
-        const px = {
-          r: data[idx],
-          g: data[idx + 1],
-          b: data[idx + 2],
-          a: data[idx + 3]
-        };
-
-        if (isColorHit(px, colorType)) {
-          angleHit = true;
-          break;
-        }
-      }
-
-      hitByAngle.push(angleHit);
-      if (angleHit) hitAngles++;
-    }
-
-    const confidence = hitAngles / sampleCount;
-    const progress = contiguousProgressFromTop(hitByAngle);
-
-    return {
-      progress,
-      confidence,
-      hitAngles,
-      sampleCount
-    };
+  function getFreshAnnouncement() {
+    const ann = state.lastAnnouncement;
+    if (!ann || !ann.value) return null;
+    if (Date.now() - ann.time > 4500) return null;
+    return ann;
   }
 
-  function contiguousProgressFromTop(hits) {
-    if (!hits.length) return 0;
-
-    // 容許少量斷裂：例如光效或壓縮造成中間斷點。
-    let count = 0;
-    let missRun = 0;
-    const maxMissRun = 3;
-
-    for (let i = 0; i < hits.length; i++) {
-      if (hits[i]) {
-        count = i + 1;
-        missRun = 0;
-      } else {
-        missRun++;
-        if (missRun > maxMissRun) break;
-      }
-    }
-
-    return clamp01(count / hits.length);
-  }
-
-  function isColorHit(px, type) {
-    const { r, g, b, a } = px;
-    if (a < 60) return false;
-
-    if (type === "red") {
-      return r >= 135 && g <= 105 && b <= 105 && r > g * 1.28 && r > b * 1.28;
-    }
-
-    if (type === "white") {
-      const max = Math.max(r, g, b);
-      const min = Math.min(r, g, b);
-      return max >= 155 && max - min <= 65;
-    }
-
+  function isStageConflict(a, b) {
+    if (!a || !b || a === b) return false;
+    if (a === "WAITING" && b === "XX") return false;
+    if (a === "ON" || b === "ON") return true;
+    if (/^R[1-4]$/.test(a) && /^R[1-4]$/.test(b)) return true;
     return false;
   }
 
-  function detectOnVisual(imageData) {
-    // ON 狀態實際畫面未提供完整樣本，因此這裡做保守判斷：
-    // 1. 紅色環接近滿圈；或
-    // 2. 圖示中心高亮/金紅大量出現。
-    // 建議實際取得 ON 截圖後再微調。
-    const red = estimateRingProgress(imageData, "red");
-
-    const { data } = imageData;
-    let goldOrRed = 0;
-    let valid = 0;
-
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      const a = data[i + 3];
-      if (a < 60) continue;
-
-      const bright = r + g + b > 220;
-      if (bright) valid++;
-
-      const gold = r > 150 && g > 95 && g < 190 && b < 100;
-      const redish = r > 150 && g < 95 && b < 95;
-      if (gold || redish) goldOrRed++;
-    }
-
-    const colorRatio = valid ? goldOrRed / valid : 0;
-    const confidence = Math.max(
-      red.progress >= 0.94 && red.confidence >= 0.32 ? 0.60 : 0,
-      colorRatio >= 0.23 ? 0.52 : 0
-    );
-
-    return { confidence, colorRatio, red };
-  }
-
-  function updateBossPhase(mapLevel, channel, detected) {
+  function isAllowedTransition(mapLevel, channel, value) {
     const id = `${mapLevel}_${channel}`;
-    const tracker = getTracker(id, mapLevel, channel, detected);
+    const last = state.lastSubmittedStateByBoss[id] || readCurrentBossState(mapLevel, channel);
+    if (!last || last === value) return true;
 
-    const barType = detected.barType;
-    const progress = detected.progress;
-
-    // ON 後看到白條，視為 BOSS 已被擊殺並回等待。
-    if (tracker.phase === 5 && (barType === "white" || barType === "none")) {
-      tracker.phase = 0;
-      tracker.lastProgress = progress;
-      tracker.lastBarType = barType;
-      tracker.initialized = true;
-      return "XX";
-    }
-
-    if (barType === "on") {
-      tracker.phase = 5;
-      tracker.lastProgress = progress;
-      tracker.lastBarType = barType;
-      tracker.initialized = true;
-      return "ON";
-    }
-
-    if (barType === "white") {
-      hideManualBox();
-
-      if (!tracker.initialized) {
-        tracker.phase = 0;
-        tracker.initialized = true;
-      }
-
-      // 白條跑滿一圈並重置，進入階段 1。
-      if (isProgressReset(tracker, "white", progress)) {
-        tracker.phase = 1;
-      }
-
-      // 如果已經有共享資料是 R1~R4，但畫面仍是白條，不急著倒退，避免 OCR/色彩誤判。
-      if (tracker.phase <= 0) {
-        tracker.lastProgress = progress;
-        tracker.lastBarType = barType;
-        return "XX";
-      }
-
-      tracker.lastProgress = progress;
-      tracker.lastBarType = barType;
-      return phaseToValue(tracker.phase);
-    }
-
-    if (barType === "red") {
-      if (!tracker.initialized) {
-        const initPhase = inferInitialPhaseFromCurrentData(id, detected);
-        if (initPhase == null) {
-          showManualBox(id);
-          tracker.lastProgress = progress;
-          tracker.lastBarType = barType;
-          return null;
-        }
-        tracker.phase = initPhase;
-        tracker.initialized = true;
-      }
-
-      // 剛從白條進紅條，代表至少階段 1。
-      if (tracker.lastBarType === "white" && tracker.phase === 0) {
-        tracker.phase = 1;
-      }
-
-      // 紅條跑滿並回起點，階段 +1。
-      if (isProgressReset(tracker, "red", progress)) {
-        tracker.phase += 1;
-      }
-
-      if (tracker.phase >= 5) {
-        tracker.phase = 5;
-        tracker.lastProgress = progress;
-        tracker.lastBarType = barType;
-        return "ON";
-      }
-
-      if (tracker.phase <= 0) tracker.phase = 1;
-
-      tracker.lastProgress = progress;
-      tracker.lastBarType = barType;
-      hideManualBox();
-      return phaseToValue(tracker.phase);
-    }
-
-    // 無法辨識時不更新狀態，避免誤送。
-    return null;
+    const rank = { XX: 0, R1: 1, R2: 2, R3: 3, R4: 4, ON: 5 };
+    const a = rank[last];
+    const b = rank[value];
+    if (value === "XX") return true;
+    if (last === "ON" && value !== "XX") return false;
+    if (a == null || b == null) return true;
+    return b >= a;
   }
 
-  function getTracker(id, mapLevel, channel, detected) {
-    if (!detector.trackers[id]) {
-      const initPhase = inferInitialPhaseFromCurrentData(id, detected);
-      detector.trackers[id] = {
-        id,
-        mapLevel,
-        channel,
-        phase: initPhase == null ? 0 : initPhase,
-        initialized: initPhase != null,
-        lastProgress: 0,
-        lastBarType: "none",
-        lastSubmittedValue: "",
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      };
-    }
-    return detector.trackers[id];
+  function readCurrentBossState(mapLevel, channel) {
+    const id = `${mapLevel}_${channel}`;
+    const b = window.currentData && window.currentData[id];
+    if (!b) return "";
+
+    const input = String(b.lastInput || "").toUpperCase();
+    if (input === "ON") return "ON";
+    if (input.startsWith("XX") || input.startsWith("DE")) return "XX";
+    const r = input.match(/^R([1-4])/);
+    if (r) return `R${r[1]}`;
+
+    const dv = String(b.displayValue || "").toUpperCase();
+    if (dv === "ON") return "ON";
+    const dvr = dv.match(/階段\s*([1-4])|段階\s*([1-4])/);
+    if (dvr) return `R${dvr[1] || dvr[2]}`;
+    return "";
   }
 
-  function inferInitialPhaseFromCurrentData(id, detected) {
-    const existing = window.currentData && window.currentData[id];
-    if (existing && existing.lastInput != null) {
-      const uv = String(existing.lastInput).toUpperCase();
+  function handleDecision(decision) {
+    const key = `${decision.mapLevel}_${decision.channel}_${decision.value}`;
+    if (key === state.lastDecisionKey) state.stableCount++;
+    else { state.lastDecisionKey = key; state.stableCount = 1; }
 
-      if (uv === "ON") return 5;
-      if (uv.startsWith("XX") || uv.startsWith("DE")) return 0;
-
-      const r = uv.match(/^R(\d+(?:\.\d+)?)/);
-      if (r) {
-        const phase = Math.floor(parseFloat(r[1]));
-        if (phase >= 1 && phase <= 4) return phase;
-      }
-
-      // 相容 001 / 0015 / 004 等輸入格式。
-      if (uv.startsWith("00")) {
-        const raw = uv.replace(/^00/, "");
-        const phase = Math.floor(parseFloat(raw[0] || "0"));
-        if (phase >= 1 && phase <= 4) return phase;
-      }
-    }
-
-    if (detected && detected.barType === "white") return 0;
-    if (detected && detected.barType === "on") return 5;
-
-    return null;
-  }
-
-  function isProgressReset(tracker, expectedBarType, currentProgress) {
-    if (tracker.lastBarType !== expectedBarType) return false;
-
-    const from = detector.config.ring.resetFrom;
-    const to = detector.config.ring.resetTo;
-
-    return tracker.lastProgress >= from && currentProgress <= to;
-  }
-
-  function phaseToValue(phase) {
-    if (phase >= 5) return "ON";
-    if (phase <= 0) return "XX";
-    return `R${phase}`;
-  }
-
-  function handleStableResult(result) {
-    const key = `${result.mapLevel}_${result.channel}_${result.state}`;
-
-    if (key === detector.lastCandidateKey) {
-      detector.stableCount++;
-    } else {
-      detector.lastCandidateKey = key;
-      detector.stableCount = 1;
-    }
-
-    updatePanelFields({ state: result.state });
-    const p = Number.isFinite(result.progress) ? Math.round(result.progress * 100) : "?";
-    setStatus(`候選：${result.mapLevel}-${result.channel} ${result.state} ${result.barType} ${p}% / ${detector.stableCount}`, detector.stableCount >= detector.config.stableNeed ? "ok" : "muted");
-
-    if (detector.stableCount < detector.config.stableNeed) return;
-    if (!detector.config.autoSubmit) return;
-
-    const now = Date.now();
-    if (key === detector.lastSubmitKey && now - detector.lastSubmitAt < detector.config.submitCooldownMs) return;
-
-    if (detector.config.confirmBeforeSubmit) {
-      showConfirmBox(result);
+    if (decision.blocked) {
+      setStatus(`候選：${key}，但未啟用自動送出 XX`, "muted");
       return;
     }
-
-    submitResult(result, false);
+    if (state.stableCount < CONFIG.stableNeed) {
+      setStatus(`候選：${key} / ${state.stableCount}/${CONFIG.stableNeed}`, "muted");
+      return;
+    }
+    if (!CONFIG.autoSubmit) {
+      setStatus(`已穩定但自動送出關閉：${key}`, "warn");
+      return;
+    }
+    if (CONFIG.confirmBeforeSubmit) {
+      showConfirm(decision);
+      return;
+    }
+    submitDecision(decision, false);
   }
 
-  function submitResult(result, forced) {
-    const key = `${result.mapLevel}_${result.channel}_${result.state}`;
+  function submitDecision(decision, forced) {
+    const key = `${decision.mapLevel}_${decision.channel}_${decision.value}`;
     const now = Date.now();
-
-    if (!forced && key === detector.lastSubmitKey && now - detector.lastSubmitAt < detector.config.submitCooldownMs) return;
-
-    detector.lastSubmitKey = key;
-    detector.lastSubmitAt = now;
+    if (!forced && key === state.lastSubmitKey && now - state.lastSubmitAt < CONFIG.submitCooldownMs) return;
 
     try {
-      window.saveBoss(result.mapLevel, result.channel, result.state, false);
-      setStatus(`已送出：${result.mapLevel}-${result.channel} ${result.state}`, "ok");
+      window.saveBoss(decision.mapLevel, decision.channel, decision.value, false);
+      state.lastSubmitKey = key;
+      state.lastSubmitAt = now;
+      state.lastSubmittedStateByBoss[`${decision.mapLevel}_${decision.channel}`] = decision.value;
+      setStatus(`已送出：${decision.mapLevel}-${decision.channel} ${decision.value}`, "ok");
     } catch (err) {
       console.error("[TOSMDetector] saveBoss failed", err);
-      setStatus("送出失敗，請查看 console", "bad");
+      setStatus("saveBoss 送出失敗，請看 console", "bad");
     }
   }
 
-  function showConfirmBox(result) {
-    detector.pendingConfirm = result;
-    const box = $("tdConfirmBox");
-    const text = $("tdConfirmText");
-    if (!box || !text) return;
-    text.textContent = `確認送出：${result.mapLevel}-${result.channel} ${result.state}`;
-    box.style.display = "block";
+  async function ocrRoi(roiName, lang, mode, w, h) {
+    const roi = getRoiPx(roiName, w, h);
+    const c = document.createElement("canvas");
+    const scale = mode === "channel" ? 4 : 3;
+    c.width = Math.max(1, Math.round(roi.w * scale));
+    c.height = Math.max(1, Math.round(roi.h * scale));
+    const cx = c.getContext("2d", { willReadFrequently: true });
+    cx.imageSmoothingEnabled = false;
+    cx.drawImage(state.canvas, roi.x, roi.y, roi.w, roi.h, 0, 0, c.width, c.height);
+    preprocessOcrCanvas(cx, c.width, c.height, mode);
+
+    const opts = { logger: () => {} };
+    if (mode === "channel") opts.tessedit_char_whitelist = "CHch.:：0123456789 ";
+    const res = await window.Tesseract.recognize(c, lang, opts);
+    return res && res.data ? res.data.text || "" : "";
   }
 
-  function hideConfirmBox() {
-    const box = $("tdConfirmBox");
-    if (box) box.style.display = "none";
+  function preprocessOcrCanvas(ctx, w, h, mode) {
+    const img = ctx.getImageData(0, 0, w, h);
+    const d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      const gray = r * 0.299 + g * 0.587 + b * 0.114;
+      let v;
+      if (mode === "channel") {
+        const cyan = g > 100 && b > 100 && r < 150;
+        v = gray > 125 || cyan ? 255 : 0;
+      } else if (mode === "announcement") {
+        const red = r > 120 && g < 90 && b < 90;
+        const white = gray > 125;
+        v = red || white ? 255 : 0;
+      } else v = gray > 95 ? 255 : 0;
+      d[i] = d[i + 1] = d[i + 2] = v;
+      d[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
   }
 
-  function showManualBox(id) {
-    detector.manualPhaseTarget = id;
-    const box = $("tdManualBox");
-    if (box) box.style.display = "block";
+  function cropRoiToTemplateVector(roiName, w, h, size) {
+    if (!state.canvas) return null;
+    const roi = getRoiPx(roiName, w, h);
+    const c = document.createElement("canvas");
+    c.width = size;
+    c.height = size;
+    const cx = c.getContext("2d", { willReadFrequently: true });
+    cx.imageSmoothingEnabled = true;
+    cx.drawImage(state.canvas, roi.x, roi.y, roi.w, roi.h, 0, 0, size, size);
+    return canvasToVector(c, size, size);
   }
 
-  function hideManualBox() {
-    detector.manualPhaseTarget = null;
-    const box = $("tdManualBox");
-    if (box) box.style.display = "none";
+  function canvasToVector(canvas, w, h) {
+    const cx = canvas.getContext("2d", { willReadFrequently: true });
+    const img = cx.getImageData(0, 0, w, h);
+    const d = img.data;
+    const vector = new Float32Array(w * h);
+    let sum = 0;
+    for (let i = 0, j = 0; i < d.length; i += 4, j++) {
+      const gray = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) / 255;
+      vector[j] = gray;
+      sum += gray;
+    }
+    const mean = sum / vector.length;
+    let norm = 0;
+    for (let i = 0; i < vector.length; i++) {
+      vector[i] -= mean;
+      norm += vector[i] * vector[i];
+    }
+    norm = Math.sqrt(norm) || 1;
+    for (let i = 0; i < vector.length; i++) vector[i] /= norm;
+    return { vector: Array.from(vector), width: w, height: h };
   }
 
-  function applyManualPhase(phase) {
-    const id = detector.manualPhaseTarget;
-    if (!id) return;
+  function matchTemplates(vector, group, labels) {
+    const templates = state.store.templates[group] || {};
+    const scores = {};
+    let bestLabel = "";
+    let bestScore = -1;
+    labels.forEach(label => {
+      const list = templates[label] || [];
+      let labelBest = -1;
+      for (const tpl of list) {
+        const score = vectorCorrelation(vector, tpl.vector);
+        if (score > labelBest) labelBest = score;
+      }
+      scores[label] = labelBest < 0 ? 0 : labelBest;
+      if (scores[label] > bestScore) {
+        bestScore = scores[label];
+        bestLabel = label;
+      }
+    });
+    if (bestScore < 0) bestScore = 0;
+    return { label: bestLabel, score: bestScore, scores };
+  }
 
-    if (!detector.trackers[id]) {
-      const parts = id.split("_");
-      detector.trackers[id] = {
-        id,
-        mapLevel: parts[0],
-        channel: parts[1],
-        phase,
-        initialized: true,
-        lastProgress: 0,
-        lastBarType: "red",
-        lastSubmittedValue: "",
-        createdAt: Date.now(),
-        updatedAt: Date.now()
+  function vectorCorrelation(a, b) {
+    if (!a || !b || a.length !== b.length) return 0;
+    let dot = 0;
+    for (let i = 0; i < a.length; i++) dot += a[i] * b[i];
+    return clamp01((dot + 1) / 2);
+  }
+
+  function captureTemplate(group, label) {
+    if (!state.canvas || !state.video) {
+      alert("請先開始擷取遊戲視窗。");
+      return;
+    }
+    const w = state.video.videoWidth;
+    const h = state.video.videoHeight;
+    const roiName = group === "stage" ? "stageIcon" : "channel";
+    const cropped = cropRoiToTemplateVector(roiName, w, h, CONFIG.template.imageSize);
+    if (!cropped) return;
+    const templates = state.store.templates[group];
+    if (!templates[label]) templates[label] = [];
+    templates[label].push({ vector: cropped.vector, time: Date.now() });
+    while (templates[label].length > CONFIG.template.maxTemplatesPerLabel) templates[label].shift();
+    saveStore();
+    updateTemplateCounts();
+    setStatus(`已新增模板：${group} ${label}，共 ${templates[label].length} 張`, "ok");
+  }
+
+  function renderTemplateButtons() {
+    const stageBox = $("tdStageTemplateButtons");
+    const channelBox = $("tdChannelTemplateButtons");
+    if (!stageBox || !channelBox) return;
+
+    stageBox.innerHTML = "";
+    STAGE_LABELS.forEach(label => {
+      const btn = document.createElement("button");
+      btn.className = "td-btn small template";
+      btn.innerHTML = `${label}<span class="td-count" id="tdCount-stage-${label}">0</span>`;
+      btn.onclick = () => captureTemplate("stage", label);
+      stageBox.appendChild(btn);
+    });
+
+    channelBox.innerHTML = "";
+    CHANNEL_LABELS.forEach(label => {
+      const btn = document.createElement("button");
+      btn.className = "td-btn small template";
+      btn.innerHTML = `${label}<span class="td-count" id="tdCount-channel-${label}">0</span>`;
+      btn.onclick = () => captureTemplate("channel", label);
+      channelBox.appendChild(btn);
+    });
+  }
+
+  function updateTemplateCounts() {
+    STAGE_LABELS.forEach(label => setText(`tdCount-stage-${label}`, String((state.store.templates.stage[label] || []).length)));
+    CHANNEL_LABELS.forEach(label => setText(`tdCount-channel-${label}`, String((state.store.templates.channel[label] || []).length)));
+  }
+
+  function clearTemplates() {
+    state.store.templates = { stage: {}, channel: {} };
+    saveStore();
+    updateTemplateCounts();
+    setStatus("已清除所有模板", "muted");
+  }
+
+  function beginCalibration(roiName) {
+    if (!state.canvas) {
+      alert("請先開始擷取並開啟 Debug。");
+      return;
+    }
+    CONFIG.debug = true;
+    const dbg = $("tdDebug");
+    if (dbg) dbg.checked = true;
+    updatePreviewVisibility();
+    state.calibration.active = true;
+    state.calibration.target = roiName;
+    state.calibration.dragging = false;
+    state.calibration.start = null;
+    state.calibration.current = null;
+    setStatus(`ROI 校正：請在預覽圖拖曳框選「${roiName}」`, "warn");
+  }
+
+  function setupPreviewEvents() {
+    const c = $("tdPreview");
+    if (!c) return;
+
+    c.addEventListener("mousedown", e => {
+      if (!state.calibration.active || !state.video) return;
+      const p = getPreviewPoint(e, c);
+      state.calibration.dragging = true;
+      state.calibration.start = p;
+      state.calibration.current = p;
+    });
+    c.addEventListener("mousemove", e => {
+      if (!state.calibration.active || !state.calibration.dragging) return;
+      state.calibration.current = getPreviewPoint(e, c);
+    });
+    window.addEventListener("mouseup", () => {
+      if (!state.calibration.active || !state.calibration.dragging || !state.video) return;
+      const start = state.calibration.start;
+      const end = state.calibration.current;
+      state.calibration.dragging = false;
+      if (!start || !end) return;
+
+      const x1 = Math.min(start.x, end.x);
+      const y1 = Math.min(start.y, end.y);
+      const x2 = Math.max(start.x, end.x);
+      const y2 = Math.max(start.y, end.y);
+      if (x2 - x1 < 5 || y2 - y1 < 5) return;
+
+      const vw = state.video.videoWidth;
+      const vh = state.video.videoHeight;
+      const sx = vw / c.width;
+      const sy = vh / c.height;
+      state.store.roi[state.calibration.target] = {
+        x: clamp01((x1 * sx) / vw),
+        y: clamp01((y1 * sy) / vh),
+        w: clamp01(((x2 - x1) * sx) / vw),
+        h: clamp01(((y2 - y1) * sy) / vh)
       };
-    } else {
-      detector.trackers[id].phase = phase;
-      detector.trackers[id].initialized = true;
-    }
-
-    hideManualBox();
-    setStatus(`已手動校正：${id.replace("_", "-")} R${phase}`, "ok");
+      saveStore();
+      setStatus(`ROI 已儲存：${state.calibration.target}`, "ok");
+      state.calibration.active = false;
+      state.calibration.target = null;
+    });
   }
 
-  function getRoi(name, w, h) {
-    const r = detector.config.roi[name];
+  function getPreviewPoint(e, canvas) {
+    const rect = canvas.getBoundingClientRect();
     return {
-      x: Math.max(0, Math.floor(r.x * w)),
-      y: Math.max(0, Math.floor(r.y * h)),
-      w: Math.max(1, Math.floor(r.w * w)),
-      h: Math.max(1, Math.floor(r.h * h))
+      x: (e.clientX - rect.left) * (canvas.width / rect.width),
+      y: (e.clientY - rect.top) * (canvas.height / rect.height)
     };
   }
 
-  function resolveMapLevel(mapName) {
-    if (!mapName) return "";
-
-    if (MAP_NAME_TO_LEVEL[mapName]) return MAP_NAME_TO_LEVEL[mapName];
-
-    let bestName = "";
-    let bestScore = 0;
-
-    Object.keys(MAP_NAME_TO_LEVEL).forEach(name => {
-      const score = similarity(mapName, name);
-      if (score > bestScore) {
-        bestScore = score;
-        bestName = name;
-      }
-    });
-
-    return bestScore >= 0.52 ? MAP_NAME_TO_LEVEL[bestName] : "";
+  function resetRoi() {
+    if (!confirm("確定重置 ROI？模板不會被刪除。")) return;
+    state.store.roi = JSON.parse(JSON.stringify(CONFIG.roi));
+    saveStore();
+    setStatus("ROI 已重置", "muted");
   }
 
-  function parseChannel(text) {
-    const s = normalizeAscii(text);
-    const m = s.match(/CH\.?\s*[:：]?\s*(\d{1,2})/i) || s.match(/\b(\d{1,2})\b/);
-    return m ? String(parseInt(m[1], 10)) : "";
+  function getRoiNormalized(name) {
+    return state.store.roi[name] || CONFIG.roi[name];
   }
 
-  function normalizeMapText(text) {
-    return String(text || "")
-      .replace(/\s+/g, "")
-      .replace(/[|｜]/g, "")
-      .replace(/[\[\]{}()（）【】]/g, "")
-      .replace(/[^\u4e00-\u9fa5A-Za-z0-9]/g, "")
-      .trim();
+  function getRoiPx(name, w, h) {
+    const r = getRoiNormalized(name);
+    return {
+      x: Math.round(r.x * w),
+      y: Math.round(r.y * h),
+      w: Math.max(1, Math.round(r.w * w)),
+      h: Math.max(1, Math.round(r.h * h))
+    };
   }
 
-  function normalizeAscii(text) {
-    return String(text || "")
-      .replace(/[ＯO]/g, "0")
-      .replace(/[ｌlI]/g, "1")
-      .replace(/[ＳS]/g, "5")
-      .replace(/[^A-Za-z0-9:.：\s]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
+  function drawPreview(w, h) {
+    const p = $("tdPreview");
+    if (!p || !state.canvas) return;
+    const scale = CONFIG.previewScale;
+    p.width = Math.max(1, Math.round(w * scale));
+    p.height = Math.max(1, Math.round(h * scale));
+    p.style.width = p.width + "px";
+    p.style.height = p.height + "px";
+    const px = p.getContext("2d");
+    px.drawImage(state.canvas, 0, 0, p.width, p.height);
+    drawRoi(px, "mapName", w, h, scale, "#00ff00");
+    drawRoi(px, "channel", w, h, scale, "#00aaff");
+    drawRoi(px, "stageIcon", w, h, scale, "#ff3333");
+    drawRoi(px, "announcement", w, h, scale, "#ffcc00");
 
-  function similarity(a, b) {
-    a = normalizeMapText(a);
-    b = normalizeMapText(b);
-    if (!a || !b) return 0;
-
-    // 字元重疊分數。
-    let hit = 0;
-    const used = new Array(b.length).fill(false);
-    for (const ch of a) {
-      const idx = b.split("").findIndex((c, i) => !used[i] && c === ch);
-      if (idx >= 0) {
-        used[idx] = true;
-        hit++;
-      }
+    if (state.calibration.active && state.calibration.dragging && state.calibration.start && state.calibration.current) {
+      const a = state.calibration.start;
+      const b = state.calibration.current;
+      px.strokeStyle = "#fff";
+      px.lineWidth = 2;
+      px.setLineDash([4, 4]);
+      px.strokeRect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+      px.setLineDash([]);
     }
-
-    return hit / Math.max(a.length, b.length);
   }
 
-  function drawDebug(w, h, progress) {
-    const debug = $("tdDebugCanvas");
-    if (!debug || !detector.canvas) return;
-
-    const scale = 0.28;
-    debug.width = Math.floor(w * scale);
-    debug.height = Math.floor(h * scale);
-    debug.style.width = debug.width + "px";
-    debug.style.height = debug.height + "px";
-
-    const dctx = debug.getContext("2d");
-    dctx.drawImage(detector.canvas, 0, 0, debug.width, debug.height);
-
-    dctx.lineWidth = 2;
-    drawRoiBox(dctx, "mapName", w, h, scale, "#00ff00");
-    drawRoiBox(dctx, "channel", w, h, scale, "#00aaff");
-    drawRoiBox(dctx, "bossCircle", w, h, scale, "#ff3333");
-
-    dctx.fillStyle = "rgba(0,0,0,.75)";
-    dctx.fillRect(4, 4, 240, 44);
-    dctx.fillStyle = "#fff";
-    dctx.font = "12px monospace";
-    dctx.fillText(`bar=${progress.barType} p=${Math.round(progress.progress * 100)}%`, 10, 22);
-    dctx.fillText(`red=${Math.round(progress.red.confidence * 100)} white=${Math.round(progress.white.confidence * 100)}`, 10, 40);
+  function drawRoi(ctx, name, w, h, scale, color) {
+    const r = getRoiPx(name, w, h);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(r.x * scale, r.y * scale, r.w * scale, r.h * scale);
+    ctx.fillStyle = color;
+    ctx.font = "12px monospace";
+    ctx.fillText(name, r.x * scale + 3, r.y * scale + 13);
   }
 
-  function drawRoiBox(dctx, name, w, h, scale, color) {
-    const r = getRoi(name, w, h);
-    dctx.strokeStyle = color;
-    dctx.strokeRect(r.x * scale, r.y * scale, r.w * scale, r.h * scale);
+  function updatePreviewVisibility() {
+    const p = $("tdPreview");
+    if (p) p.style.display = CONFIG.debug ? "block" : "none";
   }
 
-  function updatePanelFields(data) {
-    if (data.mapLevel || data.mapName) {
-      setText("tdMap", data.mapLevel ? `${data.mapLevel} (${data.mapName || ""})` : (data.mapName || "?"));
-    }
-    if (data.channel) setText("tdCh", data.channel);
-    if (data.progress) {
-      setText("tdBar", `${data.progress.barType} ${Math.round(data.progress.confidence * 100)}%`);
-      setText("tdProgress", `${Math.round(data.progress.progress * 100)}%`);
-    }
-    if (data.state) setText("tdPhase", data.state);
-    setText("tdStable", String(detector.stableCount || 0));
+  function updatePanel(info) {
+    setText("tdMap", info.mapLevel ? `${info.mapLevel} (${info.mapName || ""})` : (info.mapName || "?"));
+    setText("tdChannel", info.channel || "?");
+    if (info.stageResult) setText("tdStageTemplate", `${info.stageResult.label || "?"} ${(info.stageResult.score * 100).toFixed(1)}%`);
+    const ann = getFreshAnnouncement();
+    setText("tdAnnouncement", ann ? `${ann.value} ${(ann.score * 100).toFixed(0)}%` : "-");
+    setText("tdDecision", info.decision ? `${info.decision.value}${info.decision.blocked ? " (blocked)" : ""}` : "-");
+    setText("tdStable", String(state.stableCount || 0));
+  }
+
+  function showConfirm(decision) {
+    const key = `${decision.mapLevel}-${decision.channel} ${decision.value}`;
+    if (state.pendingConfirm && state.pendingConfirm.mapLevel === decision.mapLevel && state.pendingConfirm.channel === decision.channel && state.pendingConfirm.value === decision.value) return;
+    state.pendingConfirm = decision;
+    setText("tdConfirmText", `確認送出：${key}\n${decision.reason || ""}`);
+    const box = $("tdConfirmBox");
+    if (box) box.style.display = "block";
+    setStatus(`等待確認：${key}`, "warn");
+  }
+
+  function hideConfirm() {
+    const box = $("tdConfirmBox");
+    if (box) box.style.display = "none";
   }
 
   function setStatus(text, type) {
     const el = $("tdStatus");
     if (!el) return;
     el.textContent = text;
-    el.className = `td-status ${type || ""}`;
+    el.className = `td-status ${type || "muted"}`;
   }
 
-  function toggleCollapse() {
+  function toggleCompact() {
     const body = $("tdBody");
-    const btn = $("tdCollapseBtn");
+    const btn = $("tdCompactBtn");
     if (!body || !btn) return;
-
-    const closed = body.style.display === "none";
-    body.style.display = closed ? "block" : "none";
-    btn.textContent = closed ? "−" : "+";
+    const hidden = body.style.display === "none";
+    body.style.display = hidden ? "block" : "none";
+    btn.textContent = hidden ? "−" : "+";
   }
 
-  function setConfig(partialConfig) {
-    deepMerge(detector.config, partialConfig || {});
-    const auto = $("tdAutoSubmit");
-    const confirm = $("tdConfirm");
-    const debug = $("tdDebug");
-    if (auto) auto.checked = !!detector.config.autoSubmit;
-    if (confirm) confirm.checked = !!detector.config.confirmBeforeSubmit;
-    if (debug) debug.checked = !!detector.config.debug;
+  function parseChannel(text) {
+    const s = normalizeAscii(text);
+    const m = s.match(/CH\.?\s*[:：]?\s*(\d{1,2})/i) || s.match(/\b(\d{1,2})\b/);
+    if (!m) return "";
+    const n = parseInt(m[1], 10);
+    return n > 0 && n <= 20 ? String(n) : "";
   }
 
-  function setMapDict(dict) {
-    Object.assign(MAP_NAME_TO_LEVEL, dict || {});
+  function resolveMap(text) {
+    const q = normalizeMapText(text);
+    if (!q) return { name: "", level: "", score: 0 };
+    if (MAP_NAME_TO_LEVEL[q]) return { name: q, level: MAP_NAME_TO_LEVEL[q], score: 1 };
+    let bestName = "";
+    let bestScore = 0;
+    for (const name of Object.keys(MAP_NAME_TO_LEVEL)) {
+      const score = mapSimilarity(q, normalizeMapText(name));
+      if (score > bestScore) {
+        bestScore = score;
+        bestName = name;
+      }
+    }
+    return { name: bestName, level: bestName ? MAP_NAME_TO_LEVEL[bestName] : "", score: bestScore };
+  }
+
+  function mapSimilarity(a, b) {
+    if (!a || !b) return 0;
+    const setA = [...a];
+    const used = new Array(b.length).fill(false);
+    let hit = 0;
+    for (const ch of setA) {
+      for (let i = 0; i < b.length; i++) {
+        if (!used[i] && b[i] === ch) {
+          used[i] = true;
+          hit++;
+          break;
+        }
+      }
+    }
+    const charScore = hit / Math.max(a.length, b.length);
+    const includeBonus = b.includes(a) || a.includes(b) ? 0.18 : 0;
+    return clamp01(charScore + includeBonus);
+  }
+
+  function normalizeMapText(text) {
+    return String(text || "")
+      .replace(/\s+/g, "")
+      .replace(/[|｜]/g, "")
+      .replace(/[\[\]{}()（）【】「」『』]/g, "")
+      .replace(/[臺]/g, "台")
+      .replace(/[^\u4e00-\u9fa5A-Za-z0-9]/g, "")
+      .trim();
+  }
+
+  function normalizeAscii(text) {
+    return String(text || "")
+      .replace(/[ＯOｏ]/g, "0")
+      .replace(/[ＩIlｌ]/g, "1")
+      .replace(/[ＳS]/g, "5")
+      .replace(/[^A-Za-z0-9.:：\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function loadStore() {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (raw) return sanitizeStore(JSON.parse(raw));
+    } catch (err) {
+      console.warn("[TOSMDetector] store load failed", err);
+    }
+    return sanitizeStore({});
+  }
+
+  function sanitizeStore(s) {
+    s = s || {};
+    if (!s.roi) s.roi = JSON.parse(JSON.stringify(CONFIG.roi));
+    if (!s.templates) s.templates = {};
+    if (!s.templates.stage) s.templates.stage = {};
+    if (!s.templates.channel) s.templates.channel = {};
+    return s;
+  }
+
+  function saveStore() {
+    localStorage.setItem(STORE_KEY, JSON.stringify(state.store));
+  }
+
+  function exportData() {
+    return JSON.stringify(state.store, null, 2);
+  }
+
+  function importData(json) {
+    try {
+      state.store = sanitizeStore(JSON.parse(json));
+      saveStore();
+      updateTemplateCounts();
+      setStatus("設定已匯入", "ok");
+    } catch (err) {
+      alert("匯入失敗：JSON 格式錯誤");
+    }
+  }
+
+  function setConfig(partial) {
+    Object.assign(CONFIG, partial || {});
   }
 
   function injectStyle() {
-    if (document.getElementById("tosmDetectorStyle")) return;
-    const style = document.createElement("style");
-    style.id = "tosmDetectorStyle";
-    style.textContent = `
-      #tosmDetectorPanel {
-        position: fixed;
-        right: 12px;
-        bottom: 12px;
-        z-index: 99999;
-        width: 260px;
-        color: #aaa;
-        background: rgba(0, 0, 0, .90);
-        border: 1px solid #333;
-        border-radius: 12px;
-        box-shadow: 0 8px 24px rgba(0,0,0,.45);
-        font: 12px/1.45 monospace;
-        overflow: hidden;
-      }
-      #tosmDetectorPanel .td-head {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 9px 10px;
-        border-bottom: 1px solid #222;
-        background: rgba(15,15,15,.95);
-      }
-      #tosmDetectorPanel .td-title { color:#0f0; font-weight:bold; font-size:13px; }
+    if ($("tosmDetectorStyle")) return;
+    const s = document.createElement("style");
+    s.id = "tosmDetectorStyle";
+    s.textContent = `
+      #tosmDetectorPanel { position: fixed; right: 12px; bottom: 12px; width: 280px; max-height: 92vh; overflow: auto; z-index: 99999; background: rgba(0,0,0,.92); border: 1px solid #333; border-radius: 12px; color: #aaa; font: 12px/1.45 monospace; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+      #tosmDetectorPanel .td-head { display:flex; justify-content:space-between; align-items:center; padding:9px 10px; border-bottom:1px solid #222; background:#0b0b0b; position: sticky; top: 0; z-index: 2; }
+      #tosmDetectorPanel .td-title { color:#0f0; font-weight:bold; }
       #tosmDetectorPanel .td-ver { color:#555; font-size:10px; }
-      #tosmDetectorPanel #tdBody { padding: 10px; }
-      #tosmDetectorPanel .td-status {
-        min-height: 18px;
-        padding: 6px 8px;
-        margin-bottom: 8px;
-        border-radius: 6px;
-        background: #101010;
-        border: 1px solid #222;
-        color: #aaa;
-        word-break: break-all;
-      }
+      #tosmDetectorPanel #tdBody { padding:10px; }
+      #tosmDetectorPanel .td-icon-btn, #tosmDetectorPanel .td-btn { border:1px solid #444; color:#aaa; background:#111; border-radius:6px; padding:5px 8px; cursor:pointer; font:inherit; }
+      #tosmDetectorPanel .td-btn.primary { border-color:#0f0; color:#0f0; background:#001800; }
+      #tosmDetectorPanel .td-btn.danger { border-color:#733; color:#f66; }
+      #tosmDetectorPanel .td-btn.small { padding:4px 6px; font-size:11px; }
+      #tosmDetectorPanel .td-row { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+      #tosmDetectorPanel .td-row.compact { gap:5px; margin-bottom:4px; }
+      #tosmDetectorPanel .td-status { min-height:18px; padding:6px 8px; border:1px solid #222; background:#101010; border-radius:7px; margin-bottom:8px; white-space:pre-wrap; word-break:break-all; }
       #tosmDetectorPanel .td-status.ok { color:#0f0; border-color:#064; }
-      #tosmDetectorPanel .td-status.warn { color:#ff0; border-color:#660; }
+      #tosmDetectorPanel .td-status.warn { color:#ffca28; border-color:#665000; }
       #tosmDetectorPanel .td-status.bad { color:#f66; border-color:#733; }
       #tosmDetectorPanel .td-status.muted { color:#888; }
-      #tosmDetectorPanel .td-row {
-        display: flex;
-        gap: 6px;
-        align-items: center;
-        margin-bottom: 8px;
-        flex-wrap: wrap;
-      }
-      #tosmDetectorPanel .td-row-compact { gap: 8px; }
-      #tosmDetectorPanel .td-btn,
-      #tosmDetectorPanel .td-mini-btn,
-      #tosmDetectorPanel .td-phase {
-        border: 1px solid #444;
-        background: #111;
-        color: #aaa;
-        border-radius: 6px;
-        padding: 5px 9px;
-        cursor: pointer;
-        font: inherit;
-      }
-      #tosmDetectorPanel .td-mini-btn {
-        padding: 1px 7px;
-        font-size: 14px;
-        line-height: 1.2;
-      }
-      #tosmDetectorPanel .td-primary {
-        border-color: #0f0;
-        color: #0f0;
-        background: #001800;
-      }
-      #tosmDetectorPanel .td-phase {
-        border-color: #0a6;
-        color: #0f0;
-        min-width: 43px;
-      }
-      #tosmDetectorPanel .td-check {
-        color: #888;
-        font-size: 11px;
-        white-space: nowrap;
-      }
-      #tosmDetectorPanel .td-check input {
-        vertical-align: -2px;
-        margin-right: 3px;
-      }
-      #tosmDetectorPanel .td-grid {
-        display: grid;
-        grid-template-columns: 48px 1fr;
-        gap: 3px 8px;
-        padding: 8px;
-        border: 1px solid #222;
-        border-radius: 8px;
-        background: #080808;
-        margin-bottom: 8px;
-      }
+      #tosmDetectorPanel .td-switches { display:grid; grid-template-columns:1fr 1fr; gap:4px 6px; margin-bottom:8px; color:#888; font-size:11px; }
+      #tosmDetectorPanel .td-switches input { vertical-align:-2px; margin-right:3px; }
+      #tosmDetectorPanel .td-grid { display:grid; grid-template-columns:64px 1fr; gap:3px 8px; border:1px solid #222; background:#080808; border-radius:8px; padding:8px; margin-bottom:8px; }
       #tosmDetectorPanel .td-grid div:nth-child(odd) { color:#555; }
-      #tosmDetectorPanel .td-grid div:nth-child(even) { color:#bbb; word-break: break-all; }
-      #tosmDetectorPanel .td-manual,
-      #tosmDetectorPanel .td-confirm {
-        border: 1px solid #553;
-        border-radius: 8px;
-        padding: 8px;
-        background: #151205;
-        margin-bottom: 8px;
-      }
-      #tosmDetectorPanel .td-warn { color:#ffca28; margin-bottom: 7px; }
-      #tosmDetectorPanel .td-confirm-text { color:#ffca28; margin-bottom: 7px; }
-      #tosmDetectorPanel #tdDebugCanvas {
-        display: block;
-        max-width: 100%;
-        border: 1px solid #333;
-        border-radius: 6px;
-        background: #000;
-      }
+      #tosmDetectorPanel .td-grid div:nth-child(even) { color:#ddd; word-break:break-all; }
+      #tosmDetectorPanel details { border-top:1px solid #222; padding-top:8px; }
+      #tosmDetectorPanel summary { cursor:pointer; color:#0f0; margin-bottom:8px; }
+      #tosmDetectorPanel .td-section { border:1px solid #222; border-radius:8px; padding:8px; margin-bottom:8px; background:#080808; }
+      #tosmDetectorPanel .td-section-title { color:#ffca28; margin-bottom:4px; font-weight:bold; }
+      #tosmDetectorPanel .td-small { color:#666; font-size:11px; margin-bottom:6px; }
+      #tosmDetectorPanel .td-template-buttons { display:grid; grid-template-columns:repeat(3, 1fr); gap:5px; }
+      #tosmDetectorPanel .td-btn.template { position:relative; min-height:32px; }
+      #tosmDetectorPanel .td-count { display:block; color:#0f0; font-size:10px; margin-top:2px; }
+      #tosmDetectorPanel .td-textarea { width:100%; min-height:58px; box-sizing:border-box; background:#050505; color:#aaa; border:1px solid #333; border-radius:6px; font:10px monospace; padding:6px; }
+      #tosmDetectorPanel .td-preview { display:none; max-width:100%; border:1px solid #333; border-radius:8px; background:#000; cursor:crosshair; }
+      #tosmDetectorPanel .td-confirm { border:1px solid #665000; background:#171303; color:#ffca28; border-radius:8px; padding:8px; margin-top:8px; white-space:pre-wrap; }
     `;
-    document.head.appendChild(style);
+    document.head.appendChild(s);
   }
 
-  function setText(id, value) {
-    const el = $(id);
-    if (el) el.textContent = value;
-  }
-
-  function $(id) {
-    return document.getElementById(id);
-  }
-
-  function clamp01(n) {
-    if (!Number.isFinite(n)) return 0;
-    return Math.max(0, Math.min(1, n));
-  }
-
-  function deepMerge(target, source) {
-    for (const key of Object.keys(source || {})) {
-      const val = source[key];
-      if (val && typeof val === "object" && !Array.isArray(val)) {
-        if (!target[key] || typeof target[key] !== "object") target[key] = {};
-        deepMerge(target[key], val);
-      } else {
-        target[key] = val;
-      }
-    }
-    return target;
-  }
+  function $(id) { return document.getElementById(id); }
+  function setText(id, text) { const el = $(id); if (el) el.textContent = text; }
+  function clamp01(n) { return Math.max(0, Math.min(1, Number(n) || 0)); }
 })();
