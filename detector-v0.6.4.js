@@ -1,37 +1,41 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * 📷 TOS M FB TIME - 螢幕偵測模組 v0.8.0 (雙信號融合版)
+ * 📷 TOS M FB TIME - 螢幕偵測模組 v0.9.0 (時間域投票版)
  * ═══════════════════════════════════════════════════════════════════════
  *
- * 【v0.8.0 核心改動 — 雙信號融合】
+ * 【v0.9.0 核心改動 — 精度第二輪】
  *
- * 從 v0.7.1 的差異:
- *   1. 新增「中央公告 OCR」當第二信號(來自 v0.7.2 設計)
- *      - 偵測「警戒提升至 X 階段」、「ON / 復活」等文字
- *      - 滑動視窗投票(最近 3 次 OCR 多數決)避免單次幻讀
- *   2. 雙信號融合決策樹(取代單一徽章判定):
- *      - 兩信號一致 → 高信心採信
- *      - 兩信號衝突 → UNKNOWN(signal_conflict)
- *      - 模板拒答 + 公告強信號 → 採信公告(0.85 折)
- *      - 公告主導場景時提升至 0.95
- *   3. 狀態轉移約束(來自 v0.7.2):
- *      - WAITING → R1 → R2 → R3 → R4 → ON,不可倒退
- *      - 違反轉移 → 拒答,避免擷取錯誤造成的回退
- *   4. 從 window.currentData 讀回現狀,避免重複送與狀態回退
- *   5. 新增 announcement ROI(可選):
- *      - 沒框選時,公告信號停用,行為與 v0.7.1 完全一致
- *      - 框選後自動加入決策融合
+ * 從 v0.8.0 的差異:
+ *   1. 時間域 5-of-5 滑動視窗投票(Phase 3)
+ *      - 預設掃描 1.5s → 3s,5 次投票多數決
+ *      - 至少 3 次同 phase 才送出,杜絕單次幻讀
+ *      - 約 9~12 秒延遲,完全符合 BOSS 計時場景
+ *   2. 拒答規則 3 改寫:從「同標籤平均分」改成「前 3 名標籤共識」
+ *      - 解決:模板數量多但每張平均分不高的場景被誤判為拒答
+ *      - 例:30 張背景多變的 CH.7 模板,雖能正確判定卻被拒
+ *   3. 模板智慧丟舊:30 張上限 → 15,丟「最像其他模板」的那張
+ *      - 用 zone cosine 相似度評估,保留多樣性最高的代表樣本
+ *   4. 預設徽章框右上偏移:從 0.55/0/0.45/0.5 改為 0.65/0/0.35/0.4
+ *      - 修正某些畫面比例下徽章框抓到圓圈中央而非右上計時的問題
+ *   5. 紅環校準 UI 完全砍掉(資料層保留向下相容)
+ *      - 移除「✨ 校準」modal、🩺 紅環診斷區、debug canvas
+ *      - 老用戶歷史校準資料仍會被讀取使用
+ *   6. 偵錯模式精簡:只留 metrics 文字 + console.log
+ *
+ * 從 v0.8.0 保留:
+ *   - 雙信號融合決策樹(七種 case 完整保留)
+ *   - 公告 OCR + 滑動視窗投票(配合 3s 掃描調為 5/3 次)
+ *   - 狀態轉移約束(WAITING→R1→R2→R3→R4→ON 不可倒退)
+ *   - 從 window.currentData 讀回現狀,避免重複送
  *
  * 從 v0.7.1 保留:
  *   - 三特徵比對(Sobel 邊緣 + Zone 密度 + 像素 NCC)
  *   - 錨點對齊(±3px 搜尋)
- *   - 三規則拒答(low_confidence / ambiguous / inconsistent_within_label)
- *   - RANSAC 紅環自動校準
  *   - 既有模板完全相容
  *
  * 用法:
  *   在 beta.html 的 </body> 之前加入:
- *     <script src="detector-v0.8.0.js"></script>
+ *     <script src="detector-v0.9.0.js"></script>
  *
  * 依賴:
  *   - 主程式 beta.html 必須提供:saveBoss(map, ch, val), currentRoom, db
@@ -51,18 +55,24 @@
   // ═══ v0.7.1 精準優先門檻 ═══
   const TEMPLATE_MIN_SIM = 0.92;       // 提高(原 0.85)
   const TEMPLATE_AMBIGUOUS = 0.85;     // 提高(原 0.70)
-  const MAX_TEMPLATES_PER_LABEL = 30;
+  const MAX_TEMPLATES_PER_LABEL = 15;  // v0.9.0: 30 → 15(防止過多模板稀釋判定)
   const ALIGN_RADIUS = 3;              // 錨點對齊搜尋半徑(±px)
   const REJECT_TOP1_MIN = 0.92;        // 拒答:最高分必須達此值
   const REJECT_RIVAL_DIFF = 0.05;      // 拒答:最高分與不同標籤次高分至少差此值
-  const REJECT_LABEL_AVG = 0.88;       // 拒答:同標籤前 3 名平均要達此值
+  // v0.9.0 移除 REJECT_LABEL_AVG,改用「前 3 名標籤一致性」檢查
+  const REJECT_TOP3_CONSENSUS = 2;     // 前 3 名至少 N 名為同標籤才算共識通過
 
-  // ═══ v0.8.0 雙信號融合常數 ═══
-  const ANNOUNCEMENT_HISTORY_SIZE = 3;     // 滑動視窗大小
-  const ANNOUNCEMENT_VOTE_MIN = 2;         // 至少 N 次一致才採信(於視窗內)
-  const ANNOUNCEMENT_TTL_MS = 5000;        // 公告結果 TTL(超過視為過期)
-  const ANNOUNCEMENT_MIN_CONF = 0.5;       // 單次 OCR 最低信心
+  // ═══ v0.8.0 雙信號融合常數(v0.9.0 配合 3s 掃描調整)═══
+  const ANNOUNCEMENT_HISTORY_SIZE = 5;     // v0.9.0: 3 → 5
+  const ANNOUNCEMENT_VOTE_MIN = 3;         // v0.9.0: 2 → 3(5 次中至少 3 次同 phase)
+  const ANNOUNCEMENT_TTL_MS = 12000;       // v0.9.0: 5s → 12s(配合 3s 掃描頻率)
+  const ANNOUNCEMENT_MIN_CONF = 0.5;
   const STAGE_RANK = { 'WAITING': 0, 'R1': 1, 'R2': 2, 'R3': 3, 'R4': 4, 'ON': 5 };
+
+  // ═══ v0.9.0 時間域投票 ═══
+  const PHASE_VOTE_WINDOW = 5;             // 5 次決策投票
+  const PHASE_VOTE_MIN = 3;                // 至少 3 次同 phase 才送出
+  const DEFAULT_SCAN_INTERVAL_MS = 3000;   // 預設掃描間隔(原 1500)
 
   const CALIBRATION_STORAGE_KEY = 'tosm_detector_calibration_v7';
   const DEFAULT_RING_RATIOS = {
@@ -335,10 +345,56 @@
       if (this.data[category][label].includes(dataURL)) return false;
       this.data[category][label].push(dataURL);
       if (this.data[category][label].length > MAX_TEMPLATES_PER_LABEL) {
-        this.data[category][label].shift();
+        // v0.9.0: 智慧丟舊 — 找「跟其他模板最像」的那張丟掉,保留多樣性最高的
+        // 注意:add 是同步方法,我們用 dataURL 比對近似度(粗略但足夠)
+        // 真正精確的丟法需要 async,這邊用 fire-and-forget 在背景執行
+        this._smartPrune(category, label);
       }
       this.save();
       return true;
+    },
+
+    // v0.9.0 新增:智慧丟舊
+    // 策略:對每張模板,計算它對其他模板的平均相似度;丟掉「最像其他人」的那張
+    // 這樣保留下來的就是「最有差異性」的代表樣本
+    async _smartPrune(category, label) {
+      const arr = this.data[category][label];
+      if (!arr || arr.length <= MAX_TEMPLATES_PER_LABEL) return;
+
+      try {
+        // 提取每張的特徵
+        const feats = [];
+        for (const url of arr) {
+          feats.push(await this.dataURLToFeatures(url));
+        }
+
+        // 計算每張對其他所有張的平均相似度(用 zone cosine,粗略但快)
+        const avgSims = feats.map((f, i) => {
+          let sum = 0, count = 0;
+          for (let j = 0; j < feats.length; j++) {
+            if (i === j) continue;
+            sum += this._cosineSim01(f.zone, feats[j].zone);
+            count++;
+          }
+          return count > 0 ? sum / count : 0;
+        });
+
+        // 找 avgSims 最大的那張(最像其他人 = 最沒貢獻多樣性)
+        let maxIdx = 0;
+        for (let i = 1; i < avgSims.length; i++) {
+          if (avgSims[i] > avgSims[maxIdx]) maxIdx = i;
+        }
+
+        arr.splice(maxIdx, 1);
+        this.save();
+        if (typeof log === 'function') {
+          log(`🧹 模板智慧丟舊 ${label}: 移除 #${maxIdx+1}(最像其他模板)`, '#888');
+        }
+      } catch (e) {
+        // 失敗 fallback 到簡單 FIFO
+        arr.shift();
+        this.save();
+      }
     },
 
     clearCategory(category, label) {
@@ -445,14 +501,19 @@
           rivalLabel: rival.label, rivalSim: rival.similarity
         };
       } else {
-        const sameLabelMatches = allMatches.filter(m => m.label === top1.label).slice(0, 3);
-        if (sameLabelMatches.length >= 2) {
-          const avg = sameLabelMatches.reduce((s, m) => s + m.combined, 0) / sameLabelMatches.length;
-          if (avg < REJECT_LABEL_AVG) {
+        // v0.9.0: 改成「前 3 名 allMatches 中,top1 標籤是否佔多數」
+        // 原邏輯看「平均分」會在「模板數量多但每張平均分不高」時誤觸發
+        // (例如 30 張背景多變的 CH.7 模板,雖然能正確判定但平均拖低)
+        // 新邏輯只看「前 3 名是否都是同一個標籤」,符合「共識」的本意
+        const top3 = allMatches.slice(0, 3);
+        if (top3.length >= 3) {
+          const sameLabelInTop3 = top3.filter(m => m.label === top1.label).length;
+          if (sameLabelInTop3 < REJECT_TOP3_CONSENSUS) {
+            // 前 3 名混雜不同標籤 → 真的有共識問題
             rejection = {
-              reason: 'inconsistent_within_label',
-              detail: `${top1.label} top3 avg=${avg.toFixed(3)} < ${REJECT_LABEL_AVG}`,
-              avgWithinLabel: avg
+              reason: 'no_top3_consensus',
+              detail: `top3 中只有 ${sameLabelInTop3}/${top3.length} 是 ${top1.label}`,
+              top3Labels: top3.map(m => m.label)
             };
           }
         }
@@ -585,15 +646,19 @@
     diagHistory: [],
     // ═══ v0.8.0 雙信號融合相關狀態 ═══
     announcementHistory: [],              // 滑動視窗 [{phase, confidence, raw, time}]
-    lastDecisionDetail: null              // 最近一次決策細節(供 UI 顯示)
+    lastDecisionDetail: null,             // 最近一次決策細節(供 UI 顯示)
+    // ═══ v0.9.0 時間域投票 ═══
+    phaseHistory: []                      // 最近 N 次 fused 結果 [{phase, confidence, time}]
   };
   function getBadgeRect(statusRegion) {
     if (state.badgeRect) return { ...state.badgeRect };
+    // v0.9.0: 預設位置改為更靠右上角(原 0.55/0/0.45/0.5 → 0.65/0/0.35/0.4)
+    // 這樣比較不會抓到圈圈中央的圖案,而是抓到右上角的計時徽章
     return {
-      x: Math.floor(statusRegion.w * 0.55),
+      x: Math.floor(statusRegion.w * 0.65),
       y: 0,
-      w: Math.ceil(statusRegion.w * 0.45),
-      h: Math.floor(statusRegion.h * 0.5)
+      w: Math.ceil(statusRegion.w * 0.35),
+      h: Math.floor(statusRegion.h * 0.4)
     };
   }
 
@@ -774,17 +839,13 @@
   function updateCalibStatus() {
     const el = document.getElementById('dCalibStatus');
     if (!el) return;
+    // v0.9.0: 紅環校準 UI 已移除,只在有歷史校準資料時顯示提示
     if (!state.calibration || !state.calibration.timing) {
       el.style.display = 'none';
       return;
     }
-    const t = state.calibration.timing;
     el.style.display = 'block';
-    if (t.mode === 'auto') {
-      el.innerHTML = `<span style="color:#0f0">✨ 已校準(自動)</span> | 紅環半徑比 ${(t.ringRadiusRatio*100).toFixed(0)}%`;
-    } else {
-      el.innerHTML = `<span style="color:#fa0">⚠️ 已校準(手動)</span> | 使用預設比例`;
-    }
+    el.innerHTML = `<span style="color:#888">📌 使用歷史校準擷取(來自舊版校準)</span>`;
   }
 
   // v0.8.0: 顯示公告偵測狀態
@@ -1300,17 +1361,7 @@
     const badgeX2 = badge.x + badge.w, badgeY2 = badge.y + badge.h;
     let badgeWhiteCount = 0, badgeTotalPx = 0;
 
-    const debugCanvas = state.debugMode ? document.getElementById('dDebugCanvas') : null;
-    let debugData = null;
-    if (debugCanvas) {
-      debugCanvas.width = w * 4;
-      debugCanvas.height = h * 4;
-      const dctx = debugCanvas.getContext('2d');
-      dctx.imageSmoothingEnabled = false;
-      dctx.drawImage(canvas, 0, 0, debugCanvas.width, debugCanvas.height);
-      debugData = dctx.getImageData(0, 0, debugCanvas.width, debugCanvas.height);
-    }
-
+    // v0.9.0: 移除 dDebugCanvas 視覺化(留 metrics 計算即可)
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const i = (y * w + x) * 4;
@@ -1321,41 +1372,13 @@
         totalBright += bright;
         const isRed = r > 80 && (r - Math.max(g, b)) > 25;
         const isBrightWhite = maxC > 200 && (maxC - minC) < 60;
-        if (isRed) {
-          redCount++;
-          if (debugData) {
-            for (let dy = 0; dy < 4; dy++) for (let dx = 0; dx < 4; dx++) {
-              const px = (x * 4 + dx), py = (y * 4 + dy);
-              const di = (py * debugCanvas.width + px) * 4;
-              debugData.data[di] = 0; debugData.data[di+1] = 255; debugData.data[di+2] = 0;
-            }
-          }
-        }
-        if (isBrightWhite) {
-          whiteCount++;
-          if (debugData) {
-            for (let dy = 0; dy < 4; dy++) for (let dx = 0; dx < 4; dx++) {
-              const px = (x * 4 + dx), py = (y * 4 + dy);
-              const di = (py * debugCanvas.width + px) * 4;
-              debugData.data[di] = 0; debugData.data[di+1] = 120; debugData.data[di+2] = 255;
-            }
-          }
-        }
+        if (isRed) redCount++;
+        if (isBrightWhite) whiteCount++;
         if (x >= badgeX1 && x < badgeX2 && y >= badgeY1 && y < badgeY2) {
           badgeTotalPx++;
           if (isBrightWhite) badgeWhiteCount++;
         }
       }
-    }
-    if (debugData) {
-      const dctx = debugCanvas.getContext('2d');
-      dctx.putImageData(debugData, 0, 0);
-      dctx.strokeStyle = '#f80';
-      dctx.lineWidth = 2;
-      dctx.strokeRect(badgeX1 * 4, badgeY1 * 4, (badgeX2 - badgeX1) * 4, (badgeY2 - badgeY1) * 4);
-      dctx.fillStyle = '#f80';
-      dctx.font = 'bold 11px sans-serif';
-      dctx.fillText('徽章', badgeX1 * 4 + 2, badgeY1 * 4 + 12);
     }
     return {
       redRatio: redCount / n,
@@ -2415,7 +2438,7 @@
     panel.className = 'compact';
     panel.innerHTML = `
       <div class="panel-header" id="dPanelHeader">
-        <h3>📷 偵測器 <span class="small">v0.8.0</span></h3>
+        <h3>📷 偵測器 <span class="small">v0.9.0</span></h3>
         <div>
           <button class="panel-ctrl-btn" id="dTrainToggle" title="訓練模式:只存模板不送 Firebase">🎯</button>
           <button class="panel-ctrl-btn" id="dMuteToggle" title="靜音切換">🔔</button>
@@ -2441,7 +2464,7 @@
               <button class="dbtn" id="dMiniAuto" disabled>🔄 監控</button>
               <button class="dbtn red" id="dMiniStopAuto" disabled>⏸</button>
               <button class="dbtn gray" id="dMiniInspect" title="檢視當前偵測的詳細比對結果">🔬</button>
-              <button class="dbtn blue" id="dMiniCalibrate" title="校準計時圈位置">✨ 校準</button>
+              <button class="dbtn blue" id="dMiniCalibrate" title="切換至完整模式並打開徽章微調">🎯 徽章微調</button>
             </div>
             <div id="dCalibStatus" style="font-size:10px;text-align:center;margin-top:4px;color:#888;display:none"></div>
             <div id="dAnnStatus" style="font-size:10px;text-align:center;margin-top:2px;color:#08f;display:none"></div>
@@ -2563,58 +2586,6 @@
             <div class="small" id="dBadgeInfo" style="margin-top:4px;font-family:monospace"></div>
           </div>
 
-          <div class="sec" style="border:1px solid #f33;background:rgba(255,51,51,0.05)">
-            <div style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between">
-              <b style="color:#f33">🩺 紅環偵測診斷</b>
-              <span class="small">驗證自動規範化可行性</span>
-            </div>
-            <div class="small" style="margin-bottom:6px;color:#aaa">
-              診斷紅環中心+半徑能否穩定偵測。如果可以,未來可以「自動對齊擷取」<br>
-              讓所有人的模板可共享、不依賴框選範圍。
-            </div>
-            <div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap">
-              <button class="dbtn" onclick="window.__detector.runDiagnose()" style="padding:4px 8px;font-size:11px">🔬 單次診斷</button>
-              <button class="dbtn orange" id="dDiagLoopBtn" onclick="window.__detector.toggleDiagnoseLoop()" style="padding:4px 8px;font-size:11px">🔁 連續測試</button>
-              <button class="dbtn gray" onclick="window.__detector.toggleDiagAdvanced()" style="padding:4px 8px;font-size:11px">⚙️ 進階</button>
-            </div>
-
-            <div id="dDiagAdvanced" style="display:none;background:#0a0a0a;border:1px solid #333;border-radius:4px;padding:6px;margin-bottom:8px">
-              <div class="small" style="margin-bottom:4px;color:#888">紅色像素判定門檻:</div>
-              <div class="threshold-row">
-                <label>R 最低 <input type="number" id="dDiagRedMin" value="150" min="0" max="255" style="width:50px"></label>
-                <label>R 比 G/B 高 <input type="number" id="dDiagRedDom" value="60" min="0" max="200" style="width:40px"></label>
-              </div>
-              <div class="small" style="margin-top:6px;margin-bottom:4px;color:#888">徽章推導參數:</div>
-              <div class="threshold-row">
-                <label>偏移比例 <input type="number" id="dDiagOffsetRatio" value="0.95" step="0.05" min="0.3" max="1.5" style="width:50px"></label>
-                <label>大小比例 <input type="number" id="dDiagSizeRatio" value="0.65" step="0.05" min="0.3" max="1" style="width:50px"></label>
-              </div>
-              <div class="small" style="color:#666;margin-top:4px">
-                試試不同數值觀察「藍框」是否對齊真實徽章
-              </div>
-            </div>
-
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
-              <div>
-                <div class="small" style="text-align:center;color:#888;margin-bottom:2px">原始畫面</div>
-                <canvas id="dDiagOriginal" style="width:100%;border:1px solid #333;background:#000;image-rendering:pixelated;display:block"></canvas>
-              </div>
-              <div>
-                <div class="small" style="text-align:center;color:#888;margin-bottom:2px">偵測視覺化</div>
-                <canvas id="dDiagAnnotated" style="width:100%;border:1px solid #333;background:#000;image-rendering:pixelated;display:block"></canvas>
-              </div>
-            </div>
-
-            <div id="dDiagResult" style="font-family:monospace;font-size:11px;line-height:1.6;background:#0a0a0a;padding:6px;border-radius:4px;border:1px solid #333;min-height:50px">
-              (尚未診斷)
-            </div>
-
-            <div id="dDiagStability" style="margin-top:6px;display:none">
-              <div class="small" style="color:#0f0;margin-bottom:2px">📊 穩定度(最近 30 次)</div>
-              <div id="dDiagStabilityResult" style="font-family:monospace;font-size:10px;background:#0a0a0a;padding:4px;border-radius:3px;border:1px solid #222"></div>
-            </div>
-          </div>
-
           <div class="sec learn">
             <div style="margin-bottom:6px;display:flex;align-items:center;justify-content:space-between">
               <b>🧠 模板庫 <span class="small" id="dTplTotal"></span></b>
@@ -2671,7 +2642,7 @@
           <div class="sec important">
             <div style="margin-bottom:6px"><b>② 偵測設定</b></div>
             <div class="threshold-row">
-              <label>間隔 <input type="number" id="dInterval" value="1500" style="width:55px">ms</label>
+              <label>間隔 <input type="number" id="dInterval" value="3000" style="width:55px">ms</label>
               <label>最低置信度 <input type="number" id="dMinConf" value="0.5" step="0.05" min="0" max="1" style="width:50px"></label>
             </div>
             <div class="threshold-row">
@@ -2693,10 +2664,6 @@
               <div class="result-card"><div class="small">階段</div><div class="v" id="dValStatus">—</div><div class="conf-bar"><div class="conf-fill" id="dConfStatus"></div></div><canvas id="dCanStatus"></canvas><div class="metrics" id="dMetrics"></div></div>
               <div class="result-card"><div class="small">地圖</div><div class="v" id="dValMap" style="font-size:12px">—</div><div class="conf-bar"><div class="conf-fill" id="dConfMap"></div></div><canvas id="dCanMap"></canvas></div>
               <div class="result-card"><div class="small">分流</div><div class="v" id="dValCh">—</div><div class="conf-bar"><div class="conf-fill" id="dConfCh"></div></div><canvas id="dCanCh"></canvas></div>
-            </div>
-            <div id="dDebugBox" class="debug-box" style="display:none">
-              <div class="small" style="color:#ff0">🔧 綠=紅環,藍=白字,橘=徽章區</div>
-              <canvas id="dDebugCanvas"></canvas>
             </div>
           </div>
 
@@ -2732,19 +2699,6 @@
       </div>
     `;
     document.body.appendChild(inspectModal);
-
-    const calibModal = document.createElement('div');
-    calibModal.id = 'dCalibModal';
-    calibModal.innerHTML = `
-      <div class="calib-box">
-        <div class="calib-header">
-          <span>✨ 計時圈校準</span>
-          <button class="inspect-close" onclick="window.__detector.closeCalibration()">✕</button>
-        </div>
-        <div class="calib-body" id="dCalibBody"></div>
-      </div>
-    `;
-    document.body.appendChild(calibModal);
 
     bindEvents();
     initLearning();
@@ -3436,13 +3390,19 @@
     $('dMiniStopAuto').onclick = stopAuto;
 
     $('dMiniInspect').onclick = () => window.__detector.openInspect();
-    $('dMiniCalibrate').onclick = () => window.__detector.openCalibration();
+    $('dMiniCalibrate').onclick = () => {
+      // v0.9.0: 改成切換到完整模式並把徽章編輯器滾入視野
+      switchPanelMode('full');
+      setTimeout(() => {
+        const section = document.getElementById('dBadgeSection');
+        if (section) {
+          section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 300);
+    };
 
     $('dInspectModal').onclick = (e) => {
       if (e.target.id === 'dInspectModal') window.__detector.closeInspect();
-    };
-    $('dCalibModal').onclick = (e) => {
-      if (e.target.id === 'dCalibModal') window.__detector.closeCalibration();
     };
 
     $('dTplImport').onchange = async (e) => {
@@ -3456,7 +3416,7 @@
 
     $('dDebugMode').onchange = (e) => {
       state.debugMode = e.target.checked;
-      $('dDebugBox').style.display = state.debugMode ? 'block' : 'none';
+      // v0.9.0: 不再有 dDebugBox 視覺化,只切換 console.log 與 metrics 顯示
     };
 
     $('dZoom').oninput = (e) => {
@@ -3523,33 +3483,6 @@
         h: Math.round(Math.abs(endPt.y - startPt.y) / cssScale)
       };
       if (region.w < 10 || region.h < 10) return;
-
-      if (state._calibrating) {
-        state._calibrating = false;
-        hideCalibInstructions();
-        state.regions.status = region;
-        drawRegionBox('status', region);
-        localStorage.setItem('tosm_detector_regions_v5', JSON.stringify(state.regions));
-        log('📐 已框選計時圈,正在偵測紅環...', '#08f');
-        $('dCalibBody').innerHTML = `
-          <div class="calib-step active">
-            <h4>📐 步驟 2:正在自動偵測紅環</h4>
-            <div style="text-align:center;padding:20px">
-              <div style="font-size:24px">⏳</div>
-              <div style="margin-top:8px">取樣 10 次中,請稍候...</div>
-            </div>
-          </div>
-        `;
-        $('dCalibModal').classList.add('show');
-        runRingCalibration(region).then(result => {
-          if (result.success) {
-            renderCalibAutoResult(region, result);
-          } else {
-            renderCalibFailure(result.reason);
-          }
-        });
-        return;
-      }
 
       state.regions[state.currentMode] = region;
       drawRegionBox(state.currentMode, region);
@@ -3812,61 +3745,125 @@
     const result = await detectOnce();
     if (!result) return;
     if (!result.fused) return;
-    if (result.fused.phase === 'UNKNOWN') {
-      state.stableCount = 0;
+
+    // v0.9.0: 把每次 tick 的結果 push 進 phaseHistory
+    // UNKNOWN 也算一票(代表「不確定」),這樣多數決才公平
+    state.phaseHistory.push({
+      phase: result.fused.phase,
+      confidence: result.fused.confidence,
+      time: Date.now(),
+      map: result.map?.matched,
+      ch: result.ch?.ch
+    });
+    while (state.phaseHistory.length > PHASE_VOTE_WINDOW) {
+      state.phaseHistory.shift();
+    }
+
+    // 視窗未滿就先不決策(避免一啟動就用少量樣本誤送)
+    if (state.phaseHistory.length < PHASE_VOTE_WINDOW) {
+      updateVoteUI();
       return;
     }
-    handlePhaseChange(result);
+
+    // 視窗滿了 → 多數決
+    const voted = computePhaseVote();
+    updateVoteUI(voted);
+
+    if (!voted || voted.phase === 'UNKNOWN') return;
+    handlePhaseChange(voted, result);
   }
 
-  function handlePhaseChange(result) {
-    const map = result.map?.matched;
-    const ch = result.ch?.ch;
-    // v0.8.0: 用 fused 結果而非 phase
-    const phase = result.fused?.phase;
-    const confidence = result.fused?.confidence || 0;
+  // v0.9.0: 對 phaseHistory 做多數決
+  // 回傳:{phase, confidence, votes, total} 或 null
+  function computePhaseVote() {
+    const history = state.phaseHistory;
+    if (history.length < PHASE_VOTE_MIN) return null;
 
-    if (!map || !ch || !phase) return;
-    if (phase === 'UNKNOWN') {
-      state.stableCount = 0;
-      state.lastPhase = null;
+    // 用最新一次的 map/ch(投票期間若 map/ch 變了,以最新為準)
+    const latest = history[history.length - 1];
+
+    // 統計各 phase 票數,UNKNOWN 不算「正常票」但也不會勝出
+    const votes = {};
+    for (const h of history) {
+      const p = h.phase || 'UNKNOWN';
+      votes[p] = (votes[p] || 0) + 1;
+    }
+    let bestPhase = null, bestCount = 0;
+    for (const [p, c] of Object.entries(votes)) {
+      if (c > bestCount) { bestPhase = p; bestCount = c; }
+    }
+    if (bestPhase === 'UNKNOWN' || bestCount < PHASE_VOTE_MIN) {
+      return {
+        phase: 'UNKNOWN',
+        confidence: 0,
+        votes: bestCount,
+        total: history.length,
+        bestPhase,
+        map: latest.map,
+        ch: latest.ch
+      };
+    }
+
+    // 該 phase 在視窗內的平均信心
+    const matching = history.filter(h => h.phase === bestPhase);
+    const avgConf = matching.reduce((s, h) => s + (h.confidence || 0), 0) / matching.length;
+
+    return {
+      phase: bestPhase,
+      confidence: avgConf,
+      votes: bestCount,
+      total: history.length,
+      map: latest.map,
+      ch: latest.ch
+    };
+  }
+
+  // v0.9.0: 把投票進度顯示到 UI
+  function updateVoteUI(voted) {
+    const el = document.getElementById('dCompactStatus');
+    if (!el) return;
+    const len = state.phaseHistory.length;
+    const recent = state.phaseHistory.map(h => (h.phase || '?')).join(',');
+    if (len < PHASE_VOTE_WINDOW) {
+      el.textContent = `🗳 投票累積中 ${len}/${PHASE_VOTE_WINDOW} [${recent}]`;
+      el.style.color = '#888';
       return;
     }
+    if (voted && voted.phase !== 'UNKNOWN') {
+      el.textContent = `🗳 ${voted.phase} 勝出 ${voted.votes}/${voted.total} [${recent}]`;
+      el.style.color = '#0f0';
+    } else {
+      el.textContent = `🗳 無共識 [${recent}]`;
+      el.style.color = '#fa0';
+    }
+  }
+
+  function handlePhaseChange(voted, latestResult) {
+    // v0.9.0: voted 是滑動視窗多數決結果
+    //         latestResult 是最近一次原始 detectOnce 結果(取 map/ch)
+    const map = voted.map || latestResult.map?.matched;
+    const ch = voted.ch || latestResult.ch?.ch;
+    const phase = voted.phase;
+    const confidence = voted.confidence;
+
+    if (!map || !ch || !phase || phase === 'UNKNOWN') return;
 
     const minConf = parseFloat(document.getElementById('dMinConf').value) || 0.5;
-    if (confidence < minConf) {
-      state.stableCount = 0;
-      state.lastPhase = null;
-      return;
-    }
+    if (confidence < minConf) return;
 
-    if (phase === state.lastPhase) {
-      state.stableCount++;
-    } else {
-      state.lastPhase = phase;
-      state.stableCount = 1;
-      return;
-    }
-
-    if (state.stableCount < 2) return;
-
-    // ═══ v0.8.0: 狀態轉移約束 ═══
-    // 從主程式 currentData 讀回當前狀態,檢查新狀態是否合理
+    // ═══ 狀態轉移約束 ═══
     const currentState = readCurrentBossState(map, ch);
     if (currentState && !isAllowedTransition(currentState, phase)) {
-      // 違反轉移規則(例如 R3 → R1)→ 視為偵測異常,不送出
       if (state.debugMode) {
         console.log(DEBUG_PREFIX, '狀態轉移違規,跳過:', currentState, '→', phase);
       }
       log(`⚠️ 狀態轉移違規:${currentState} → ${phase},跳過`, '#fa0');
-      // 重置 stableCount,避免一直累積在違規狀態
-      state.stableCount = 0;
-      state.lastPhase = null;
+      // 重置投票歷史,避免一直累積違規票
+      state.phaseHistory = [];
       return;
     }
 
-    // ═══ v0.8.0: 現狀比對(避免重複送同一狀態)═══
-    // 如果新狀態跟主程式 currentData 顯示的狀態相同,可以跳過
+    // ═══ 現狀比對 ═══
     if (currentState === phase) {
       if (state.debugMode) {
         console.log(DEBUG_PREFIX, '現狀已是', phase, ',跳過');
@@ -3995,9 +3992,12 @@
 
   function startAuto() {
     if (state.autoTimer) return;
-    const interval = parseInt(document.getElementById('dInterval').value) || 1500;
+    const interval = parseInt(document.getElementById('dInterval').value) || DEFAULT_SCAN_INTERVAL_MS;
+    // v0.9.0: 啟動時清空投票歷史,確保每次重新監控都從乾淨狀態開始
+    state.phaseHistory = [];
+    state.announcementHistory = [];
     state.autoTimer = setInterval(monitorTick, interval);
-    log('🔄 自動監控已啟動', '#0f0');
+    log(`🔄 自動監控已啟動(每 ${interval}ms 掃描,${PHASE_VOTE_WINDOW}-of-${PHASE_VOTE_MIN} 投票)`, '#0f0');
     document.getElementById('dAuto').disabled = true;
     document.getElementById('dStopAuto').disabled = false;
     document.getElementById('dMiniAuto').disabled = true;
@@ -4027,6 +4027,7 @@
     }
     state.lastPhase = null;
     state.stableCount = 0;
+    state.phaseHistory = [];          // v0.9.0
   }
 
   function togglePanel() {
@@ -4311,90 +4312,14 @@
 
     closeInspect: () => document.getElementById('dInspectModal').classList.remove('show'),
 
-    openCalibration: () => {
-      renderCalibStep1();
-      document.getElementById('dCalibModal').classList.add('show');
-    },
-
-    closeCalibration: () => {
-      document.getElementById('dCalibModal').classList.remove('show');
-      if (state._calibrating) {
-        state._calibrating = false;
-        hideCalibInstructions();
-      }
-    },
-
-    startCalibFrameSelect: () => {
-      document.getElementById('dCalibModal').classList.remove('show');
-      enterCalibFrameMode();
-    },
-
-    cancelCalibFrame: () => {
-      state._calibrating = false;
-      hideCalibInstructions();
-      log('已取消校準框選', '#888');
-    },
-
-    confirmAutoCalibration: () => {
-      if (!state._calibTempResult || !state.regions.status) return;
-      applyCalibration(state.regions.status, state._calibTempResult, false);
-      updateCalibStatus();
-      log('✨ 校準已套用(自動模式)', '#0f0');
-      document.getElementById('dCalibModal').classList.remove('show');
-      if (state.panelMode === 'full') renderBadgeEditor();
-      delete state._calibTempResult;
-    },
-
-    skipCalibration: () => {
-      if (!state.regions.status) {
-        log('⚠️ 尚未框選計時圈,無法跳過', '#fa0');
-        return;
-      }
-      applyCalibration(state.regions.status, null, true);
-      updateCalibStatus();
-      log('⏭️ 已套用手動校準(預設比例)', '#fa0');
-      document.getElementById('dCalibModal').classList.remove('show');
-      if (state.panelMode === 'full') renderBadgeEditor();
-    },
-
+    // v0.9.0: 紅環校準 UI 已移除,但保留資料層相容性
+    // 老用戶若有歷史校準資料,captureBadgeFromCalibration 仍會用它
+    // 如需清除,呼叫此 API
     resetCalibration: () => {
-      if (confirm('確定清除目前的校準資料?')) {
+      if (confirm('確定清除歷史校準資料?徽章將回到「狀態圈右上角」預設位置')) {
         clearCalibration();
-        updateCalibStatus();
         log('🗑 校準資料已清除', '#888');
-        renderCalibStep1();
-      }
-    },
-
-    restartCalibration: () => {
-      delete state._calibTempResult;
-      renderCalibStep1();
-    },
-
-    runDiagnose: runDiagnose,
-
-    toggleDiagAdvanced: () => {
-      const el = document.getElementById('dDiagAdvanced');
-      if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
-    },
-
-    toggleDiagnoseLoop: () => {
-      const btn = document.getElementById('dDiagLoopBtn');
-      if (state.diagLoopTimer) {
-        clearInterval(state.diagLoopTimer);
-        state.diagLoopTimer = null;
-        btn.textContent = '🔁 連續測試';
-        btn.classList.remove('red');
-        btn.classList.add('orange');
-        log('已停止連續診斷', '#888');
-      } else {
-        state.diagHistory = [];
-        state.diagLoopTimer = setInterval(runDiagnose, 500);
-        btn.textContent = '⏸ 停止';
-        btn.classList.remove('orange');
-        btn.classList.add('red');
-        document.getElementById('dDiagStability').style.display = 'block';
-        log('🔁 連續診斷中(每 0.5 秒)', '#fa0');
+        if (state.panelMode === 'full') renderBadgeEditor();
       }
     }
   };
@@ -4405,7 +4330,7 @@
   loadTesseract(() => {
     waitForApp(() => {
       injectUI();
-      console.log(DEBUG_PREFIX, 'v0.8.0 已就緒(雙信號融合版)');
+      console.log(DEBUG_PREFIX, 'v0.9.0 已就緒(時間域投票版)');
     });
   });
 
