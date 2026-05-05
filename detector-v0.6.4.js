@@ -1,46 +1,36 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════
- * 📷 TOS M FB TIME - 螢幕偵測模組 v0.9.0 (時間域投票版)
+ * 📷 TOS M FB TIME - 螢幕偵測模組 v0.9.1 (文字主體中心化)
  * ═══════════════════════════════════════════════════════════════════════
  *
- * 【v0.9.0 核心改動 — 精度第二輪】
+ * 【v0.9.1 唯一改動 — 解決 1↔7、2↔7、3↔2 誤判】
  *
- * 從 v0.8.0 的差異:
- *   1. 時間域 5-of-5 滑動視窗投票(Phase 3)
- *      - 預設掃描 1.5s → 3s,5 次投票多數決
- *      - 至少 3 次同 phase 才送出,杜絕單次幻讀
- *      - 約 9~12 秒延遲,完全符合 BOSS 計時場景
- *   2. 拒答規則 3 改寫:從「同標籤平均分」改成「前 3 名標籤共識」
- *      - 解決:模板數量多但每張平均分不高的場景被誤判為拒答
- *      - 例:30 張背景多變的 CH.7 模板,雖能正確判定卻被拒
- *   3. 模板智慧丟舊:30 張上限 → 15,丟「最像其他模板」的那張
- *      - 用 zone cosine 相似度評估,保留多樣性最高的代表樣本
- *   4. 預設徽章框右上偏移:從 0.55/0/0.45/0.5 改為 0.65/0/0.35/0.4
- *      - 修正某些畫面比例下徽章框抓到圓圈中央而非右上計時的問題
- *   5. 紅環校準 UI 完全砍掉(資料層保留向下相容)
- *      - 移除「✨ 校準」modal、🩺 紅環診斷區、debug canvas
- *      - 老用戶歷史校準資料仍會被讀取使用
- *   6. 偵錯模式精簡:只留 metrics 文字 + console.log
+ * 從 v0.9.0 的差異:只有一個改動,聚焦解決「相似度都擠在 92~99%」的問題
  *
- * 從 v0.8.0 保留:
- *   - 雙信號融合決策樹(七種 case 完整保留)
- *   - 公告 OCR + 滑動視窗投票(配合 3s 掃描調為 5/3 次)
- *   - 狀態轉移約束(WAITING→R1→R2→R3→R4→ON 不可倒退)
- *   - 從 window.currentData 讀回現狀,避免重複送
+ * 問題分析:
+ *   舊版直接拿 32×32 標準化圖做特徵比對,但 32×32 中真正的「字」
+ *   只佔 15~20% 像素,其餘 80% 是 BOSS 身體紋路(背景)。
+ *   結果:三特徵分數主要在比背景而非比字,差距 0~1% 無法區分。
  *
- * 從 v0.7.1 保留:
- *   - 三特徵比對(Sobel 邊緣 + Zone 密度 + 像素 NCC)
- *   - 錨點對齊(±3px 搜尋)
- *   - 既有模板完全相容
+ * 改動內容:
+ *   在 extractFeatures 開頭加入 _textCenterCrop:
+ *   1. 找出圖中亮白色像素(g > 180)的 bounding box
+ *   2. 合理性檢查(白點數 20~600、bbox 4~28 px)
+ *   3. 把 bbox 等比例縮放到 24×24,置中於 32×32
+ *   4. 周圍補真實背景色(避免引入新邊緣)
  *
- * 用法:
- *   在 beta.html 的 </body> 之前加入:
- *     <script src="detector-v0.9.0.js"></script>
+ * 既有模板自動生效:dataURLToFeatures 載入時也會走相同流程,
+ * query 與 template 兩邊一致,不需要重訓。
  *
- * 依賴:
- *   - 主程式 beta.html 必須提供:saveBoss(map, ch, val), currentRoom, db
- *   - 主畫面必須有 #volRange 滑桿與 .audio-controls
- *   - 選用:window.currentData(用於狀態轉移約束與防重複)
+ * Fallback:若白點偵測失敗(例如 WAITING 沒字、整片黑),fallback
+ * 到原 32×32 行為,完全不影響。
+ *
+ * 從 v0.9.0 全部保留:
+ *   - 時間域 5-of-5 滑動視窗投票
+ *   - 拒答規則 3 標籤共識
+ *   - 模板智慧丟舊
+ *   - 雙信號融合(模板 + 公告 OCR)
+ *   - 狀態轉移約束
  *
  * ═══════════════════════════════════════════════════════════════════════
  */
@@ -124,11 +114,19 @@
       return norm;
     },
 
-    // ═══ v0.7.1 新版特徵提取 ═══
+    // ═══ v0.9.1 文字主體中心化(配合 v0.7.1 三特徵)═══
+    // 設計目的:消除背景污染。舊版直接用整張 32×32,背景紋路佔大部分像素
+    // 導致同數字 vs 異數字相似度都擠在 92~99%(0~1% 差距)無法區分。
+    // 新版:找白色文字 bbox,把它中心化縮放到 24×24,周圍 4px 邊框留空。
+    // 既有模板自動生效(dataURLToFeatures 也會走相同流程)。
     extractFeatures(canvas) {
-      const ctx = canvas.getContext('2d');
-      const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const w = canvas.width, h = canvas.height;
+      // Step 1: 文字主體中心化(若失敗,fallback 用原圖)
+      const centered = this._textCenterCrop(canvas);
+      const target = centered || canvas;
+
+      const ctx = target.getContext('2d');
+      const img = ctx.getImageData(0, 0, target.width, target.height);
+      const w = target.width, h = target.height;
       const len = w * h;
       const gray = new Float32Array(len);
       for (let i = 0, j = 0; i < img.data.length; i += 4, j++) {
@@ -146,8 +144,98 @@
         gray, binary, edge, zone, w, h,
         pixels: gray,
         magnitude: Math.sqrt(mag),
-        hash: null  // 不再使用 pHash
+        hash: null,
+        _wasCentered: !!centered   // debug 用:標記這個特徵是否經過中心化
       };
+    },
+
+    // ─── v0.9.1 新增:文字主體中心化 ───
+    // 找出 32×32 圖中亮白色像素的 bounding box,確認合理性後
+    // 把該 box 中心縮放到 24×24 並置於 32×32 中心(周圍補背景色)
+    // 失敗回傳 null,讓上層 fallback 用原圖
+    _textCenterCrop(srcCanvas) {
+      const W = srcCanvas.width, H = srcCanvas.height;
+      // 只對 32×32 標準大小做(模板都是這個尺寸)
+      if (W !== 32 || H !== 32) return null;
+
+      const ctx = srcCanvas.getContext('2d');
+      const img = ctx.getImageData(0, 0, W, H);
+      const d = img.data;
+
+      // 找亮白色像素(絕對亮度 > 180,避免 Otsu 在純色域失靈)
+      const WHITE_THRESHOLD = 180;
+      let minX = W, minY = H, maxX = -1, maxY = -1;
+      let whiteCount = 0;
+      // 順便算一下背景平均色(非白像素的平均),用來填補裁切後的邊框
+      let bgR = 0, bgG = 0, bgB = 0, bgN = 0;
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const i = (y * W + x) * 4;
+          // 用灰階亮度判定(因為 normalize 後 r=g=b)
+          const v = d[i];
+          if (v > WHITE_THRESHOLD) {
+            whiteCount++;
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          } else {
+            bgR += d[i];
+            bgG += d[i+1];
+            bgB += d[i+2];
+            bgN++;
+          }
+        }
+      }
+
+      // 合理性檢查
+      if (whiteCount < 12) return null;   // 太少:可能根本沒字(降低門檻以支援細筆劃)
+      if (whiteCount > 600) return null;  // 太多:可能整片白(WAITING / 異常擷取)
+      if (maxX < 0) return null;          // 沒找到任何白點
+      const bboxW = maxX - minX + 1;
+      const bboxH = maxY - minY + 1;
+      if (bboxW < 2 || bboxH < 2) return null;  // 太細小:可能是雜訊(僅 1 px 寬高才放棄)
+      if (bboxW > 28 || bboxH > 28) return null; // 太大:擠不進 24×24,放棄
+
+      // 平均背景色
+      if (bgN === 0) return null;
+      const avgR = Math.round(bgR / bgN);
+      const avgG = Math.round(bgG / bgN);
+      const avgB = Math.round(bgB / bgN);
+
+      // 計算等比例縮放後的尺寸,讓 bbox 最長邊縮到 24
+      const TARGET = 24;
+      const scale = TARGET / Math.max(bboxW, bboxH);
+      const newW = Math.max(1, Math.round(bboxW * scale));
+      const newH = Math.max(1, Math.round(bboxH * scale));
+
+      // 建一個 32×32 結果 canvas,先填背景色
+      const out = document.createElement('canvas');
+      out.width = 32;
+      out.height = 32;
+      const octx = out.getContext('2d');
+      octx.fillStyle = `rgb(${avgR},${avgG},${avgB})`;
+      octx.fillRect(0, 0, 32, 32);
+
+      // 把 bbox 區域 drawImage 進中心
+      const dx = Math.round((32 - newW) / 2);
+      const dy = Math.round((32 - newH) / 2);
+      octx.imageSmoothingEnabled = true;
+      octx.imageSmoothingQuality = 'high';
+      octx.drawImage(srcCanvas,
+        minX, minY, bboxW, bboxH,
+        dx, dy, newW, newH);
+
+      // 再 grayscale 一次(drawImage 會有抗鋸齒讓 r/g/b 略有差,統一一下)
+      const outImg = octx.getImageData(0, 0, 32, 32);
+      const od = outImg.data;
+      for (let i = 0; i < od.length; i += 4) {
+        const g = 0.299 * od[i] + 0.587 * od[i+1] + 0.114 * od[i+2];
+        od[i] = od[i+1] = od[i+2] = g;
+      }
+      octx.putImageData(outImg, 0, 0);
+
+      return out;
     },
 
     // ─── v0.7.1 新增:Otsu 二值化 ───
@@ -2438,7 +2526,7 @@
     panel.className = 'compact';
     panel.innerHTML = `
       <div class="panel-header" id="dPanelHeader">
-        <h3>📷 偵測器 <span class="small">v0.9.0</span></h3>
+        <h3>📷 偵測器 <span class="small">v0.9.1</span></h3>
         <div>
           <button class="panel-ctrl-btn" id="dTrainToggle" title="訓練模式:只存模板不送 Firebase">🎯</button>
           <button class="panel-ctrl-btn" id="dMuteToggle" title="靜音切換">🔔</button>
@@ -4330,7 +4418,7 @@
   loadTesseract(() => {
     waitForApp(() => {
       injectUI();
-      console.log(DEBUG_PREFIX, 'v0.9.0 已就緒(時間域投票版)');
+      console.log(DEBUG_PREFIX, 'v0.9.1 已就緒(文字主體中心化)');
     });
   });
 
