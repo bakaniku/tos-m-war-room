@@ -51,6 +51,9 @@
   const REJECT_RIVAL_DIFF = 0.05;      // 拒答:最高分與不同標籤次高分至少差此值
   // v0.9.0 移除 REJECT_LABEL_AVG,改用「前 3 名標籤一致性」檢查
   const REJECT_TOP3_CONSENSUS = 2;     // 前 3 名至少 N 名為同標籤才算共識通過
+  // v0.9.2 short-circuit:強信心直通,繞過 rival diff 檢查
+  const SHORTCIRCUIT_ABSOLUTE_CONF = 0.95;   // top1 sim 達此即直通(Solution 2)
+  const SHORTCIRCUIT_TOPN_CONSENSUS = 5;     // 前 N 個別 template 同 label 即直通(Solution 3)
 
   // ═══ v0.8.0 雙信號融合常數(v0.9.0 配合 3s 掃描調整)═══
   const ANNOUNCEMENT_HISTORY_SIZE = 5;     // v0.9.0: 3 → 5
@@ -575,8 +578,22 @@
       const top1 = results[0];
       const rival = results.find(r => r.label !== top1.label);
       let rejection = null;
+      let shortCircuit = null;
 
-      if (top1.similarity < REJECT_TOP1_MIN) {
+      // ─── v0.9.2 short-circuit:強信心直通 ───
+      // 動機:production 觀察到「前 N 名全同 label、top1 sim 0.99x」仍因 rival 接近被誤拒
+      //       (例如 R3=0.9932 vs R1=0.9576,diff=0.0356 < REJECT_RIVAL_DIFF=0.05)
+      // 兩個獨立短路條件,任一觸發即跳過所有拒答檢查
+      const isAbsoluteConfidence = top1.similarity >= SHORTCIRCUIT_ABSOLUTE_CONF;
+      const topN = allMatches.slice(0, SHORTCIRCUIT_TOPN_CONSENSUS);
+      const isTopNConsensus = topN.length >= SHORTCIRCUIT_TOPN_CONSENSUS
+                           && topN.every(m => m.label === top1.label);
+
+      if (isAbsoluteConfidence || isTopNConsensus) {
+        // 兩個都觸發時優先 absolute_conf(更強訊號)
+        shortCircuit = isAbsoluteConfidence ? 'absolute_conf' : 'topN_consensus';
+        // rejection 留 null,直通
+      } else if (top1.similarity < REJECT_TOP1_MIN) {
         rejection = {
           reason: 'low_confidence',
           detail: `top1=${top1.similarity.toFixed(3)} < ${REJECT_TOP1_MIN}`
@@ -612,7 +629,8 @@
         similarity: top1.similarity,
         topN: results.slice(0, 5),
         allMatches: allMatches.slice(0, 10),
-        rejection
+        rejection,
+        shortCircuit
       };
     },
 
@@ -1476,12 +1494,41 @@
     };
   }
 
+  // Horizontal-only morphological dilation: thickens vertical strokes so
+  // feature-poor glyphs ("1" — single thin stem, no foot, no flag) gain
+  // enough horizontal mass for the LSTM to anchor. Used only by
+  // ocrBadgeFallback (badge-isolated; no map / ch leak).
+  function dilateHorizontal(canvas, radius = 2) {
+    const out = document.createElement('canvas');
+    out.width = canvas.width; out.height = canvas.height;
+    const inCtx = canvas.getContext('2d');
+    const outCtx = out.getContext('2d');
+    const inImg = inCtx.getImageData(0, 0, canvas.width, canvas.height);
+    const outImg = outCtx.createImageData(canvas.width, canvas.height);
+    for (let y = 0; y < canvas.height; y++) {
+      for (let x = 0; x < canvas.width; x++) {
+        let v = 0;
+        for (let dx = -radius; dx <= radius; dx++) {
+          const nx = x + dx; if (nx < 0 || nx >= canvas.width) continue;
+          v = Math.max(v, inImg.data[(y * canvas.width + nx) * 4]);
+        }
+        const i = (y * canvas.width + x) * 4;
+        outImg.data[i] = outImg.data[i+1] = outImg.data[i+2] = v;
+        outImg.data[i+3] = 255;
+      }
+    }
+    outCtx.putImageData(outImg, 0, 0);
+    return out;
+  }
+
   async function ocrBadgeFallback(badgeCanvas) {
     const passes = [
       { preprocess: (s) => extractBrightPixels(upscale(s, 8), 180) },
       { preprocess: (s) => extractBrightPixels(upscale(s, 8), 210) },
       { preprocess: (s) => preprocessForOCR(s, { scale: 8 }) },
-      { preprocess: (s) => preprocessForOCR(s, { scale: 8, invert: true }) }
+      { preprocess: (s) => preprocessForOCR(s, { scale: 8, invert: true }) },
+      { preprocess: (s) => dilateHorizontal(extractBrightPixels(upscale(s, 8), 180), 3) },
+      { preprocess: (s) => dilateHorizontal(preprocessForOCR(s, { scale: 8 }), 2) }
     ];
     const results = [];
     for (const p of passes) {
@@ -4421,5 +4468,9 @@
       console.log(DEBUG_PREFIX, 'v0.9.1 已就緒(文字主體中心化)');
     });
   });
+
+  /* === TEST_HOOK BEGIN: do not remove. used by tosm-detector-eval harness === */
+  window.__detectorInternal = { TemplateDB, detectPhase, detectCh, detectAnnouncement, ocrMultiPass, ocrBadgeFallback, parseAnnouncementText, pushAnnouncement, getStableAnnouncement, fuseDualSignals, isAllowedTransition, captureBadgeCanvas, captureChCanvas, getBadgeRect, analyzeStatusMetrics, matchMapName, state };
+  /* === TEST_HOOK END === */
 
 })();
