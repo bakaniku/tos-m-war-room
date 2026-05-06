@@ -803,6 +803,8 @@
   function saveCollectorId(value) {
     const id = (value || '').trim();
     state.collectorId = id;
+    const input = document.getElementById('dCollectorId');
+    if (input && input.value.trim() !== id) input.value = id;
     try { localStorage.setItem(DATA_COLLECTION_COLLECTOR_KEY, id); } catch (e) {}
     updateDataCollectionUI();
     return id;
@@ -3712,6 +3714,22 @@
 
     $('dBrowseCategory').onchange = refreshBrowseLabels;
     $('dBrowseLabel').onchange = renderBrowseGrid;
+
+    const collectorInput = $('dCollectorId');
+    const collectorSave = $('dSaveCollectorId');
+    if (collectorInput) {
+      collectorInput.value = state.collectorId || getCollectorId();
+      collectorInput.onchange = () => saveCollectorId(collectorInput.value);
+      collectorInput.onkeydown = (e) => {
+        if (e.key === 'Enter') saveCollectorId(collectorInput.value);
+      };
+    }
+    if (collectorSave) {
+      collectorSave.onclick = () => {
+        const id = saveCollectorId(collectorInput ? collectorInput.value : getCollectorId());
+        log(id ? `Shadow collector_id saved: ${id}` : 'Shadow collector_id cleared', id ? '#0f0' : '#fa0');
+      };
+    }
 
     const miniTplHeader = $('dMiniTplHeader');
     const miniTplBody = $('dMiniTplBody');
