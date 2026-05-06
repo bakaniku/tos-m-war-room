@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ═══════════════════════════════════════════════════════════════════════
  * 📷 TOS M FB TIME - 螢幕偵測模組 v0.9.1 (文字主體中心化)
  * ═══════════════════════════════════════════════════════════════════════
@@ -74,6 +74,17 @@
     badgeOffsetRatio: 0.95,
     badgeSizeRatio: 0.65
   };
+  const DATA_COLLECTION_CONFIG_DEFAULT = Object.freeze({
+    dataCollectionEnabled: false,
+    shadowLoggingEnabled: false,
+    collectorIdRequired: true,
+    dailyStorageLimitMB: 500,
+    sampleRate: 1.0,
+    archiveAfterDays: 7
+  });
+  const DATA_COLLECTION_LOCAL_KEY = 'tosm_detector_shadow_records_v1';
+  const DATA_COLLECTION_COLLECTOR_KEY = 'tosm_detector_collector_id_v1';
+  const DATA_COLLECTION_SESSION_KEY = 'tosm_detector_session_id_v1';
 
   // ═══════════════════════════════════════════════
   // 模板資料庫 (v0.7.1 精準優先版)
@@ -756,8 +767,212 @@
     announcementHistory: [],              // 滑動視窗 [{phase, confidence, raw, time}]
     lastDecisionDetail: null,             // 最近一次決策細節(供 UI 顯示)
     // ═══ v0.9.0 時間域投票 ═══
-    phaseHistory: []                      // 最近 N 次 fused 結果 [{phase, confidence, time}]
+    phaseHistory: [],                      // 最近 N 次 fused 結果 [{phase, confidence, time}]
+    detectorConfig: { ...DATA_COLLECTION_CONFIG_DEFAULT },
+    detectorConfigLoaded: false,
+    collectorId: '',
+    sessionId: null,
+    frameSeq: 0,
+    lastShadowRecord: null,
+    shadowRecordCount: 0
   };
+
+  function ensureSessionId() {
+    if (state.sessionId) return state.sessionId;
+    try {
+      const existing = sessionStorage.getItem(DATA_COLLECTION_SESSION_KEY);
+      if (existing) {
+        state.sessionId = existing;
+        return existing;
+      }
+    } catch (e) {}
+    const id = `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    state.sessionId = id;
+    try { sessionStorage.setItem(DATA_COLLECTION_SESSION_KEY, id); } catch (e) {}
+    return id;
+  }
+
+  function getCollectorId() {
+    const input = document.getElementById('dCollectorId');
+    const fromInput = input ? input.value.trim() : '';
+    if (fromInput) return fromInput;
+    if (state.collectorId) return state.collectorId;
+    try { return localStorage.getItem(DATA_COLLECTION_COLLECTOR_KEY) || ''; } catch (e) { return ''; }
+  }
+
+  function saveCollectorId(value) {
+    const id = (value || '').trim();
+    state.collectorId = id;
+    try { localStorage.setItem(DATA_COLLECTION_COLLECTOR_KEY, id); } catch (e) {}
+    updateDataCollectionUI();
+    return id;
+  }
+
+  function applyDetectorConfig(config) {
+    state.detectorConfig = { ...DATA_COLLECTION_CONFIG_DEFAULT, ...(config || {}) };
+    state.detectorConfigLoaded = true;
+    updateDataCollectionUI();
+  }
+
+  function loadDetectorConfig() {
+    applyDetectorConfig({});
+    try {
+      db.ref('shared/detectorConfig').on('value', snap => {
+        applyDetectorConfig(snap.val() || {});
+      }, err => {
+        state.detectorConfigLoaded = true;
+        updateDataCollectionUI(`config read failed: ${err.message || err}`);
+      });
+    } catch (e) {
+      state.detectorConfigLoaded = true;
+      updateDataCollectionUI(`config unavailable: ${e.message || e}`);
+    }
+  }
+
+  function updateDataCollectionUI(extra) {
+    const input = document.getElementById('dCollectorId');
+    if (input && !input.value) input.value = state.collectorId || getCollectorId();
+    const el = document.getElementById('dDataCollectionStatus');
+    if (!el) return;
+    const cfg = state.detectorConfig || DATA_COLLECTION_CONFIG_DEFAULT;
+    const collectorId = getCollectorId();
+    const missingCollector = cfg.collectorIdRequired && !collectorId;
+    const enabled = !!cfg.dataCollectionEnabled && !!cfg.shadowLoggingEnabled && !missingCollector;
+    const parts = [
+      `config=${state.detectorConfigLoaded ? 'loaded' : 'loading'}`,
+      `collect=${cfg.dataCollectionEnabled ? 'on' : 'off'}`,
+      `shadow=${cfg.shadowLoggingEnabled ? 'on' : 'off'}`,
+      `collector=${collectorId || 'missing'}`,
+      `localRecords=${state.shadowRecordCount || 0}`
+    ];
+    if (missingCollector) parts.push('blocked=collector_id_required');
+    if (extra) parts.push(extra);
+    el.textContent = parts.join(' | ');
+    el.style.color = enabled ? '#0f0' : (missingCollector ? '#fa0' : '#888');
+  }
+
+  function plainResult(result) {
+    if (!result) return null;
+    return {
+      phase: result.phase ? {
+        label: result.phase.phase || null,
+        confidence: result.phase.confidence || 0,
+        source: result.phase.source || '',
+        raw: result.phase.ocrText || ''
+      } : null,
+      fused: result.fused ? {
+        label: result.fused.phase || null,
+        confidence: result.fused.confidence || 0,
+        source: result.fused.source || '',
+        policy: result.fused.phase && result.fused.phase !== 'UNKNOWN' ? 'ANSWER' : 'UNKNOWN'
+      } : null,
+      map: result.map ? {
+        label: result.map.matched || null,
+        confidence: result.map.confidence || 0,
+        raw: result.map.raw || '',
+        matchedName: result.map.matchedName || ''
+      } : null,
+      ch: result.ch ? {
+        label: result.ch.ch || null,
+        confidence: result.ch.confidence || 0,
+        source: result.ch.source || '',
+        raw: result.ch.raw || ''
+      } : null,
+      announcement: result.announcement ? {
+        label: result.announcement.phase || null,
+        confidence: result.announcement.confidence || 0,
+        raw: result.announcement.raw || ''
+      } : null
+    };
+  }
+
+  function buildFrameSampleRecord(result) {
+    const cfg = state.detectorConfig || DATA_COLLECTION_CONFIG_DEFAULT;
+    const video = document.getElementById('dVideo');
+    const frameId = `f_${Date.now().toString(36)}_${(++state.frameSeq).toString(36)}`;
+    return {
+      schema_version: 1,
+      timestamp: new Date().toISOString(),
+      collector_id: getCollectorId(),
+      session_id: ensureSessionId(),
+      frame_id: frameId,
+      source: 'getDisplayMedia',
+      image_size: video && video.videoWidth ? [video.videoWidth, video.videoHeight] : null,
+      regions: {
+        status: state.regions.status,
+        stage: state.regions.status,
+        map: state.regions.map,
+        ch: state.regions.ch,
+        announcement: state.regions.announcement
+      },
+      crops: {
+        stage_path: null,
+        map_path: null,
+        ch_path: null,
+        saved: false,
+        storage_status: 'day1_metadata_only'
+      },
+      v091: plainResult(result),
+      new_detector: null,
+      disagreement: false,
+      human_label: null,
+      split: 'shadow_only',
+      config: {
+        dataCollectionEnabled: !!cfg.dataCollectionEnabled,
+        shadowLoggingEnabled: !!cfg.shadowLoggingEnabled,
+        collectorIdRequired: !!cfg.collectorIdRequired,
+        sampleRate: Number(cfg.sampleRate || 0),
+        dailyStorageLimitMB: Number(cfg.dailyStorageLimitMB || 0)
+      },
+      production: {
+        trainingMode: !!state.trainingMode,
+        autoTimerActive: !!state.autoTimer,
+        autoSubmitChecked: !!document.getElementById('dAutoSubmit')?.checked
+      },
+      notes: ''
+    };
+  }
+
+  function appendLocalShadowRecord(record) {
+    let arr = [];
+    try { arr = JSON.parse(localStorage.getItem(DATA_COLLECTION_LOCAL_KEY) || '[]'); } catch (e) { arr = []; }
+    arr.push(record);
+    if (arr.length > 200) arr = arr.slice(arr.length - 200);
+    localStorage.setItem(DATA_COLLECTION_LOCAL_KEY, JSON.stringify(arr));
+    state.shadowRecordCount = arr.length;
+  }
+
+  function writeShadowLog(record) {
+    const cfg = state.detectorConfig || DATA_COLLECTION_CONFIG_DEFAULT;
+    if (!cfg.dataCollectionEnabled || !cfg.shadowLoggingEnabled) {
+      updateDataCollectionUI();
+      return false;
+    }
+    if (cfg.collectorIdRequired && !record.collector_id) {
+      updateDataCollectionUI('last=blocked_missing_collector');
+      return false;
+    }
+    const sampleRate = Math.max(0, Math.min(1, Number(cfg.sampleRate ?? 1)));
+    if (sampleRate < 1 && Math.random() > sampleRate) {
+      updateDataCollectionUI('last=sampled_out');
+      return false;
+    }
+    try {
+      appendLocalShadowRecord(record);
+      state.lastShadowRecord = record;
+      updateDataCollectionUI(`last=${record.frame_id}`);
+      return true;
+    } catch (e) {
+      updateDataCollectionUI(`last=write_failed:${e.message || e}`);
+      return false;
+    }
+  }
+
+  function captureShadowSample(result) {
+    const record = buildFrameSampleRecord(result);
+    writeShadowLog(record);
+    return record;
+  }
   function getBadgeRect(statusRegion) {
     if (state.badgeRect) return { ...state.badgeRect };
     // v0.9.0: 預設位置改為更靠右上角(原 0.55/0/0.45/0.5 → 0.65/0/0.35/0.4)
@@ -2776,6 +2991,15 @@
             </div>
           </div>
 
+
+          <div class="sec" id="dDataCollectionSec">
+            <div style="margin-bottom:6px"><b>Shadow Data</b> <span class="small">metadata only / no Firebase submit</span></div>
+            <div class="correction-row">
+              <input type="text" id="dCollectorId" placeholder="collector_id" style="flex:1">
+              <button class="dbtn gray" id="dSaveCollectorId" style="padding:3px 8px;font-size:10px">Save</button>
+            </div>
+            <div class="small" id="dDataCollectionStatus" style="margin-top:4px;font-family:monospace">config=loading</div>
+          </div>
           <div class="sec important">
             <div style="margin-bottom:6px"><b>② 偵測設定</b></div>
             <div class="threshold-row">
@@ -2839,6 +3063,7 @@
 
     bindEvents();
     initLearning();
+    loadDetectorConfig();
     loadPanelPos();
     loadMuteState();
     loadTrainModeState();
@@ -3837,6 +4062,7 @@
     showTplPreview();
     updateMiniPreview();
     updateAnnStatus();
+    captureShadowSample(state.lastResult);
 
     if (monStatus && state.autoTimer) {
       setTimeout(() => {
