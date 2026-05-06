@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ═══════════════════════════════════════════════════════════════════════
  * 📷 TOS M FB TIME - 螢幕偵測模組 v0.9.1 (文字主體中心化)
  * ═══════════════════════════════════════════════════════════════════════
@@ -975,8 +975,16 @@
     writeShadowLog(record);
     return record;
   }
+  function isLegacyBadgeRectDefault(statusRegion, badgeRect) {
+    if (!statusRegion || !badgeRect) return false;
+    return badgeRect.x === Math.floor(statusRegion.w * 0.5)
+      && badgeRect.y === 0
+      && badgeRect.w === Math.ceil(statusRegion.w * 0.5)
+      && badgeRect.h === Math.floor(statusRegion.h * 0.5);
+  }
+
   function getBadgeRect(statusRegion) {
-    if (state.badgeRect) return { ...state.badgeRect };
+    if (state.badgeRect && !isLegacyBadgeRectDefault(statusRegion, state.badgeRect)) return { ...state.badgeRect };
     // v0.9.0: 預設位置改為更靠右上角(原 0.55/0/0.45/0.5 → 0.65/0/0.35/0.4)
     // 這樣比較不會抓到圈圈中央的圖案,而是抓到右上角的計時徽章
     return {
@@ -985,6 +993,33 @@
       w: Math.ceil(statusRegion.w * 0.35),
       h: Math.floor(statusRegion.h * 0.4)
     };
+  }
+
+  function captureRegionCanvas(region, debugName = 'region') {
+    const canvas = document.createElement('canvas');
+    const video = document.getElementById('dVideo');
+    const requestedW = Math.max(1, Math.round(Number(region?.w) || 0));
+    const requestedH = Math.max(1, Math.round(Number(region?.h) || 0));
+    canvas.width = requestedW;
+    canvas.height = requestedH;
+    if (!region || !video || !video.videoWidth || !video.videoHeight) {
+      if (state.debugMode) console.warn(DEBUG_PREFIX, `${debugName} ROI skipped: video not ready`, { region });
+      return canvas;
+    }
+    const x = Math.round(Number(region.x) || 0);
+    const y = Math.round(Number(region.y) || 0);
+    const w = requestedW;
+    const h = requestedH;
+    const sx = Math.max(0, Math.min(x, video.videoWidth));
+    const sy = Math.max(0, Math.min(y, video.videoHeight));
+    const sw = Math.max(0, Math.min(w, video.videoWidth - sx));
+    const sh = Math.max(0, Math.min(h, video.videoHeight - sy));
+    if (sw <= 0 || sh <= 0) {
+      if (state.debugMode) console.warn(DEBUG_PREFIX, `${debugName} ROI outside video`, { region, videoWidth: video.videoWidth, videoHeight: video.videoHeight });
+      return canvas;
+    }
+    canvas.getContext('2d').drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+    return canvas;
   }
 
   function levenshtein(a, b) {
@@ -1459,13 +1494,7 @@
   }
 
   function captureChCanvas(region) {
-    const canvas = document.createElement('canvas');
-    canvas.width = region.w;
-    canvas.height = region.h;
-    const video = document.getElementById('dVideo');
-    canvas.getContext('2d').drawImage(video,
-      region.x, region.y, region.w, region.h, 0, 0, region.w, region.h);
-    return canvas;
+    return captureRegionCanvas(region, 'ch');
   }
 
   // ═══════════════════════════════════════════════
@@ -1880,12 +1909,9 @@
   }
 
   async function ocrMultiPass(region, targetCanvas, lang, whitelist, psm) {
-    const src = document.createElement('canvas');
-    src.width = region.w; src.height = region.h;
-    const video = document.getElementById('dVideo');
-    src.getContext('2d').drawImage(video, region.x, region.y, region.w, region.h, 0, 0, region.w, region.h);
+    const src = captureRegionCanvas(region, 'ocr');
     if (targetCanvas) {
-      targetCanvas.width = region.w; targetCanvas.height = region.h;
+      targetCanvas.width = src.width; targetCanvas.height = src.height;
       targetCanvas.getContext('2d').drawImage(src, 0, 0);
     }
     const passes = [
@@ -2085,9 +2111,32 @@
     // templateMatch: TemplateDB.match 回傳的物件(可能含 rejection)
     // announcement: getStableAnnouncement() 回傳的物件(可能 null)
 
-    const tplOk = templatePhase && templatePhase !== 'UNKNOWN' && !templateMatch?.rejection;
-    const tplRejected = !!templateMatch?.rejection;
+    const hasTemplateMatch = !!templateMatch && typeof templateMatch.similarity === 'number';
+    const tplOk = hasTemplateMatch && templatePhase && templatePhase !== 'UNKNOWN' && !templateMatch.rejection;
+    const tplRejected = hasTemplateMatch && !!templateMatch.rejection;
     const annOk = !!announcement;
+
+    // 全新瀏覽器/無模板資料時,detectPhase 可能 fallback 出 WAITING,但那不是模板信號。
+    // 為了 precision 優先,無模板且無穩定公告時拒答,不要把 fallback 當成可送出的階段。
+    if (!hasTemplateMatch) {
+      if (annOk) {
+        return {
+          phase: announcement.phase,
+          confidence: announcement.confidence * 0.8,
+          source: 'announcement(no-template)',
+          detail: {
+            annConf: announcement.confidence,
+            annVotes: `${announcement.voteCount}/${announcement.windowSize}`
+          }
+        };
+      }
+      return {
+        phase: 'UNKNOWN',
+        confidence: 0,
+        source: 'rejected:no_template_match',
+        detail: { templatePhase: templatePhase || null }
+      };
+    }
 
     // Case A: 兩信號都有 + 一致 → 高信心採信(信心增益)
     if (tplOk && annOk && templatePhase === announcement.phase) {
@@ -3907,7 +3956,10 @@
     }
     const br = localStorage.getItem('tosm_detector_badge_rect_v46');
     if (br) {
-      try { state.badgeRect = JSON.parse(br); } catch (e) {}
+      try {
+        const parsedBadgeRect = JSON.parse(br);
+        state.badgeRect = isLegacyBadgeRectDefault(state.regions.status, parsedBadgeRect) ? null : parsedBadgeRect;
+      } catch (e) {}
     }
   }
 
