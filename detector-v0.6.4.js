@@ -806,6 +806,14 @@
       backlog: [],
       timer: null,
       lastAction: ''
+    },
+    batchReview: {
+      open: false,
+      items: [],
+      index: 0,
+      legacySkipped: 0,
+      similarGroups: {},
+      objectUrls: []
     }
   };
 
@@ -1075,6 +1083,10 @@
     return buildShadowKey([record.collector_id, record.session_id, record.frame_id, kind, 'label']);
   }
 
+  function candidateIdFromParts(record, kind, status) {
+    return buildShadowKey([record.collector_id, record.session_id, record.frame_id, kind, status || 'candidate']);
+  }
+
   function openShadowDB() {
     if (!window.indexedDB) return Promise.reject(new Error('indexedDB_api_unavailable'));
     return new Promise((resolve, reject) => {
@@ -1192,6 +1204,21 @@
     };
     const tx = db.transaction(SHADOW_STORE_LABELS, 'readwrite');
     tx.objectStore(SHADOW_STORE_LABELS).put(record);
+    await idbTxDone(tx);
+    return record;
+  }
+
+  async function putShadowCandidate(candidate) {
+    const db = await ensureShadowDB();
+    const record = {
+      ...candidate,
+      candidate_id: candidate.candidate_id || candidateIdFromParts(candidate, candidate.kind || 'event', candidate.status),
+      status: candidate.status || 'pending',
+      created_at: candidate.created_at || new Date().toISOString(),
+      raw_data: candidate.raw_data || {}
+    };
+    const tx = db.transaction(SHADOW_STORE_CANDIDATES, 'readwrite');
+    tx.objectStore(SHADOW_STORE_CANDIDATES).put(record);
     await idbTxDone(tx);
     return record;
   }
@@ -1666,6 +1693,16 @@
     }, 'quick_review');
   }
 
+  function setQuickReviewActive(event) {
+    state.quickReview.active = {
+      event,
+      displayed_at: Date.now(),
+      expires_at: Date.now() + QUICK_REVIEW_TIMEOUT_MS
+    };
+    renderQuickReview();
+    scheduleQuickReviewTimeout();
+  }
+
   function promoteNextQuickReview() {
     clearQuickReviewTimer();
     const next = state.quickReview.backlog.shift();
@@ -1674,9 +1711,7 @@
       renderQuickReview();
       return;
     }
-    state.quickReview.active = { event: next, displayed_at: Date.now() };
-    renderQuickReview();
-    scheduleQuickReviewTimeout();
+    setQuickReviewActive(next);
   }
 
   function enqueueQuickReview(event) {
@@ -1685,14 +1720,22 @@
     const exists = state.quickReview.active?.event?.event_id === event.event_id
       || state.quickReview.backlog.some(e => e.event_id === event.event_id);
     if (exists) return;
-    if (!state.quickReview.active) {
-      state.quickReview.active = { event, displayed_at: Date.now() };
-      renderQuickReview();
-      scheduleQuickReviewTimeout();
+    const active = state.quickReview.active;
+    if (!active) {
+      setQuickReviewActive(event);
       return;
     }
+
     state.quickReview.backlog.push(event);
-    renderQuickReview();
+    const age = Date.now() - (active.displayed_at || 0);
+    if (!state.autoTimer || age < QUICK_REVIEW_TIMEOUT_MS) {
+      renderQuickReview();
+      return;
+    }
+
+    submitQuickReview('pending_review', null, 'quick_review_timeout').catch(e => {
+      console.warn(DEBUG_PREFIX, 'quick review enqueue timeout failed', e);
+    });
   }
 
   async function submitQuickReview(status, correctedValues, source = 'quick_review') {
@@ -1707,7 +1750,7 @@
     for (const kind of kinds) {
       const corrected = values[kind] || '';
       const predictedValue = predicted[kind] || '';
-      const labelStatus = status === 'corrected' && corrected !== predictedValue ? 'corrected' : status;
+      const labelStatus = status === 'corrected' ? (corrected !== predictedValue ? 'corrected' : 'confirmed') : status;
       labels.push(await putShadowLabel({
         label_id: labelIdFromParts(event, kind),
         event_id: event.event_id,
@@ -1734,6 +1777,305 @@
     state.quickReview.active = null;
     promoteNextQuickReview();
     return labels;
+  }
+
+  function isReviewableEvent(event) {
+    if (!event || event.storage_status === SHADOW_STORAGE_STATUS.LEGACY_METADATA_ONLY) return false;
+    if (!event.crop_ids || event.crop_ids.length === 0) return false;
+    return [
+      SHADOW_STORAGE_STATUS.SAVED_INDEXEDDB,
+      SHADOW_STORAGE_STATUS.PARTIAL_CROP_SAVED,
+      SHADOW_STORAGE_STATUS.METADATA_ONLY_PRUNED_STORAGE
+    ].includes(event.storage_status);
+  }
+
+  async function getCropsForEvent(event) {
+    const crops = await getAllFromStore(SHADOW_STORE_CROPS);
+    const ids = new Set(event.crop_ids || []);
+    return crops.filter(c => ids.has(c.crop_id));
+  }
+
+  function releaseBatchObjectUrls() {
+    for (const url of state.batchReview.objectUrls || []) {
+      try { URL.revokeObjectURL(url); } catch (e) {}
+    }
+    state.batchReview.objectUrls = [];
+  }
+
+  function blobToImageElement(crop) {
+    if (!crop || !crop.blob) return '<div class="batch-crop-missing">missing</div>';
+    const url = URL.createObjectURL(crop.blob);
+    state.batchReview.objectUrls.push(url);
+    const w = crop.width || '?';
+    const h = crop.height || '?';
+    return `<img class="batch-crop-img" src="${url}" title="${crop.kind} ${w}x${h}">`;
+  }
+
+  async function cropBlobToCanvas(blob) {
+    const bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    canvas.getContext('2d').drawImage(bitmap, 0, 0);
+    return canvas;
+  }
+
+  async function cropFingerprint(crop) {
+    if (!crop || !crop.blob) return '';
+    const bitmap = await createImageBitmap(crop.blob);
+    const canvas = document.createElement('canvas');
+    canvas.width = 8;
+    canvas.height = 8;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0, 8, 8);
+    const data = ctx.getImageData(0, 0, 8, 8).data;
+    const vals = [];
+    for (let i = 0; i < data.length; i += 4) vals.push((data[i] + data[i + 1] + data[i + 2]) / 3);
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    return vals.map(v => v >= avg ? '1' : '0').join('');
+  }
+
+  function hammingDistance(a, b) {
+    if (!a || !b || a.length !== b.length) return 999;
+    let d = 0;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) d++;
+    return d;
+  }
+
+  async function computeSimilarGroups(items) {
+    const groups = {};
+    const sample = items.slice(0, 80);
+    const hashes = [];
+    for (const event of sample) {
+      const crops = await getCropsForEvent(event);
+      const stageCrop = crops.find(c => c.kind === 'stage_badge');
+      hashes.push({ event_id: event.event_id, hash: await cropFingerprint(stageCrop) });
+    }
+    for (const item of hashes) {
+      groups[item.event_id] = hashes.filter(h => h.event_id !== item.event_id && hammingDistance(h.hash, item.hash) <= 6).length + 1;
+    }
+    return groups;
+  }
+
+  async function getBatchReviewItems(limit = 200) {
+    const [events, labels] = await Promise.all([
+      getAllFromStore(SHADOW_STORE_EVENTS),
+      getAllFromStore(SHADOW_STORE_LABELS)
+    ]);
+    state.batchReview.legacySkipped = events.filter(e => e?.storage_status === SHADOW_STORAGE_STATUS.LEGACY_METADATA_ONLY).length;
+    const labeled = new Set(labels.map(l => l.event_id).filter(Boolean));
+    return events
+      .filter(isReviewableEvent)
+      .filter(e => e.label_status_summary?.status === 'pending_review' || !labeled.has(e.event_id))
+      .sort((a, b) => String(b.timestamp || '').localeCompare(String(a.timestamp || '')))
+      .slice(0, limit);
+  }
+
+  function getBatchCorrectedValues() {
+    return {
+      stage: document.getElementById('dBatchStage')?.value.trim() || '',
+      map: document.getElementById('dBatchMap')?.value.trim() || '',
+      ch: document.getElementById('dBatchCh')?.value.trim() || ''
+    };
+  }
+
+  async function addEventTemplates(event, correctedValues) {
+    const crops = await getCropsForEvent(event);
+    const values = correctedValues || predictedValuesFromEvent(event);
+    const results = [];
+    const stageCrop = crops.find(c => c.kind === 'stage_badge');
+    if (stageCrop && values.stage && values.stage !== 'UNKNOWN') {
+      const canvas = await cropBlobToCanvas(stageCrop.blob);
+      const added = TemplateDB.add('phase', values.stage, canvas);
+      await putShadowCandidate({
+        candidate_id: candidateIdFromParts(event, 'stage_badge', added ? 'accepted' : 'duplicate'),
+        crop_id: stageCrop.crop_id,
+        event_id: event.event_id,
+        frame_id: event.frame_id,
+        kind: 'stage_badge',
+        collector_id: event.collector_id,
+        session_id: event.session_id,
+        status: added ? 'accepted' : 'duplicate',
+        raw_data: { category: 'phase', label: values.stage, template_added: added }
+      });
+      results.push({ kind: 'stage_badge', added });
+    }
+    const chCrop = crops.find(c => c.kind === 'ch');
+    if (chCrop && values.ch && values.ch !== 'UNKNOWN') {
+      const canvas = await cropBlobToCanvas(chCrop.blob);
+      const added = TemplateDB.add('ch', values.ch, canvas);
+      await putShadowCandidate({
+        candidate_id: candidateIdFromParts(event, 'ch', added ? 'accepted' : 'duplicate'),
+        crop_id: chCrop.crop_id,
+        event_id: event.event_id,
+        frame_id: event.frame_id,
+        kind: 'ch',
+        collector_id: event.collector_id,
+        session_id: event.session_id,
+        status: added ? 'accepted' : 'duplicate',
+        raw_data: { category: 'ch', label: values.ch, template_added: added }
+      });
+      results.push({ kind: 'ch', added });
+    }
+    updateTplDisplay();
+    return results;
+  }
+
+  async function openBatchReview() {
+    const modal = document.getElementById('dBatchReviewModal');
+    const body = document.getElementById('dBatchReviewBody');
+    if (!modal || !body) return;
+    state.batchReview.open = true;
+    state.batchReview.index = 0;
+    body.innerHTML = '<div style="padding:20px;text-align:center">Loading review queue...</div>';
+    modal.classList.add('show');
+    state.batchReview.items = await getBatchReviewItems();
+    state.batchReview.similarGroups = await computeSimilarGroups(state.batchReview.items);
+    await renderBatchReviewItem();
+  }
+
+  function closeBatchReview() {
+    state.batchReview.open = false;
+    releaseBatchObjectUrls();
+    const modal = document.getElementById('dBatchReviewModal');
+    if (modal) modal.classList.remove('show');
+  }
+
+  function installBatchReviewKeys() {
+    document.addEventListener('keydown', async e => {
+      if (!state.batchReview.open) return;
+      if (e.target && ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      if (e.key === 'ArrowRight') { e.preventDefault(); await moveBatchReview(1); }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); await moveBatchReview(-1); }
+      if (e.key.toLowerCase() === 'c') { e.preventDefault(); await submitBatchReview('confirmed', false); }
+      if (e.key.toLowerCase() === 'x') { e.preventDefault(); await submitBatchReview('skipped', false); }
+      if (e.key.toLowerCase() === 't') { e.preventDefault(); await addTemplateFromBatch(false); }
+    });
+  }
+
+  async function renderBatchReviewItem() {
+    const body = document.getElementById('dBatchReviewBody');
+    if (!body) return;
+    releaseBatchObjectUrls();
+    const items = state.batchReview.items || [];
+    const event = items[state.batchReview.index];
+    if (!event) {
+      body.innerHTML = `<div style="padding:20px;text-align:center;color:#888">No reviewable events<br><span class="small">legacy skipped: ${state.batchReview.legacySkipped || 0}</span></div>`;
+      return;
+    }
+    const p = predictedValuesFromEvent(event);
+    const crops = await getCropsForEvent(event);
+    const cropByKind = {};
+    crops.forEach(c => { cropByKind[c.kind] = c; });
+    const similar = state.batchReview.similarGroups[event.event_id] || 1;
+    body.innerHTML = `
+      <div class="batch-meta">
+        <span>${state.batchReview.index + 1}/${items.length}</span>
+        <span>${event.frame_id}</span>
+        <span>${event.timestamp || ''}</span>
+        <span>legacy skipped: ${state.batchReview.legacySkipped || 0}</span>
+        <span>similar group: ${similar}</span>
+      </div>
+      <div class="batch-crops">
+        <div class="batch-crop-card"><b>stage</b>${blobToImageElement(cropByKind.stage_badge)}</div>
+        <div class="batch-crop-card"><b>map</b>${blobToImageElement(cropByKind.map)}</div>
+        <div class="batch-crop-card"><b>ch</b>${blobToImageElement(cropByKind.ch)}</div>
+      </div>
+      <div class="batch-fields">
+        <label>stage <input id="dBatchStage" value="${p.stage || ''}"></label>
+        <label>map <input id="dBatchMap" value="${p.map || ''}"></label>
+        <label>ch <input id="dBatchCh" value="${p.ch || ''}"></label>
+      </div>
+      <div class="batch-actions">
+        <button class="dbtn" id="dBatchConfirm">Confirm</button>
+        <button class="dbtn gray" id="dBatchCorrect">Correct</button>
+        <button class="dbtn red" id="dBatchSkip">Skip</button>
+        <button class="dbtn blue" id="dBatchAddTpl">Add Template</button>
+        <button class="dbtn blue" id="dBatchConfirmTpl">Confirm + Add Template</button>
+      </div>
+      <div class="batch-actions">
+        <button class="dbtn gray" id="dBatchPrev">Prev</button>
+        <button class="dbtn gray" id="dBatchNext">Next</button>
+        <span class="small">Shortcuts: C confirm / X skip / T add template / Left Right navigate</span>
+      </div>
+    `;
+    document.getElementById('dBatchConfirm').onclick = () => submitBatchReview('confirmed', false);
+    document.getElementById('dBatchCorrect').onclick = () => submitBatchReview('corrected', false);
+    document.getElementById('dBatchSkip').onclick = () => submitBatchReview('skipped', false);
+    document.getElementById('dBatchAddTpl').onclick = () => addTemplateFromBatch(false);
+    document.getElementById('dBatchConfirmTpl').onclick = () => addTemplateFromBatch(true);
+    document.getElementById('dBatchPrev').onclick = () => moveBatchReview(-1);
+    document.getElementById('dBatchNext').onclick = () => moveBatchReview(1);
+  }
+
+  async function submitBatchReview(status, addTemplate = false) {
+    const event = state.batchReview.items[state.batchReview.index];
+    if (!event) return;
+    const predicted = predictedValuesFromEvent(event);
+    const values = getBatchCorrectedValues();
+    const kinds = ['stage', 'map', 'ch'];
+    const labels = [];
+    for (const kind of kinds) {
+      const corrected = values[kind] || '';
+      const predictedValue = predicted[kind] || '';
+      const labelStatus = status === 'corrected' ? (corrected !== predictedValue ? 'corrected' : 'confirmed') : status;
+      labels.push(await putShadowLabel({
+        label_id: labelIdFromParts(event, kind),
+        event_id: event.event_id,
+        crop_id: cropIdForLabelKind(event, kind),
+        frame_id: event.frame_id,
+        kind,
+        collector_id: event.collector_id,
+        session_id: event.session_id,
+        status: labelStatus,
+        predicted_value: predictedValue,
+        corrected_value: labelStatus === 'corrected' ? corrected : predictedValue,
+        confidence: event.v091?.[kind]?.confidence || event.v091?.fused?.confidence || 0,
+        source: 'batch_review',
+        add_template: !!addTemplate,
+        raw_data: {}
+      }));
+    }
+    if (status === 'skipped') {
+      const crops = await getCropsForEvent(event);
+      for (const crop of crops) {
+        await putShadowCandidate({
+          candidate_id: candidateIdFromParts(event, crop.kind, 'rejected'),
+          crop_id: crop.crop_id,
+          event_id: event.event_id,
+          frame_id: event.frame_id,
+          kind: crop.kind,
+          collector_id: event.collector_id,
+          session_id: event.session_id,
+          status: 'rejected',
+          raw_data: { source: 'batch_review_skip' }
+        });
+      }
+    }
+    if (addTemplate) await addEventTemplates(event, values);
+    await markEventHasLabel(event.event_id, { status, source: 'batch_review', label_ids: labels.map(l => l.label_id), add_template: !!addTemplate });
+    state.batchReview.items.splice(state.batchReview.index, 1);
+    if (state.batchReview.index >= state.batchReview.items.length) state.batchReview.index = Math.max(0, state.batchReview.items.length - 1);
+    await renderBatchReviewItem();
+  }
+
+  async function addTemplateFromBatch(confirmToo) {
+    const event = state.batchReview.items[state.batchReview.index];
+    if (!event) return;
+    if (confirmToo) {
+      await submitBatchReview('confirmed', true);
+      return;
+    }
+    const values = getBatchCorrectedValues();
+    await addEventTemplates(event, values);
+    await renderBatchReviewItem();
+  }
+
+  async function moveBatchReview(delta) {
+    const n = state.batchReview.items.length;
+    if (!n) return;
+    state.batchReview.index = Math.max(0, Math.min(n - 1, state.batchReview.index + delta));
+    await renderBatchReviewItem();
   }
   function isLegacyBadgeRectDefault(statusRegion, badgeRect) {
     if (!statusRegion || !badgeRect) return false;
@@ -3594,6 +3936,33 @@
       #dCalibModal .calib-actions {
         display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;
       }
+    #dQuickReview {
+      min-height: 92px;
+      margin-bottom: 6px;
+      padding: 6px;
+      border: 1px solid #333;
+      border-radius: 4px;
+      background: rgba(0,0,0,0.22);
+      box-sizing: border-box;
+    }
+    .batch-review-modal {
+      position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.72); z-index: 10002;
+    }
+    .batch-review-modal.show { display: flex; }
+    .batch-review-box {
+      width: min(760px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto;
+      background: #151515; border: 1px solid #444; border-radius: 6px; padding: 12px; color: #eee;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    }
+    .batch-review-header { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; }
+    .batch-meta { display:flex; flex-wrap:wrap; gap:10px; color:#aaa; font-size:11px; margin-bottom:8px; }
+    .batch-crops { display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; margin-bottom:10px; }
+    .batch-crop-card { border:1px solid #333; border-radius:4px; padding:6px; min-height:64px; text-align:center; }
+    .batch-crop-img { max-width:100%; image-rendering:pixelated; background:#000; margin-top:5px; }
+    .batch-crop-missing { color:#777; margin-top:8px; font-size:11px; }
+    .batch-fields, .batch-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; align-items:center; }
+    .batch-fields input { width: 120px; }
     `;
     document.head.appendChild(style);
     const panel = document.createElement('div');
@@ -3805,6 +4174,7 @@
 
           <div class="sec" id="dDataCollectionSec">
             <div style="margin-bottom:6px"><b>Shadow Data</b> <span class="small">metadata only / no Firebase submit</span></div>
+            <div id="dQuickReview"><div class="small" style="color:#888">Waiting for new detection...</div></div>
             <div class="correction-row">
               <input type="text" id="dCollectorId" placeholder="collector_id" style="flex:1">
               <button class="dbtn gray" id="dSaveCollectorId" style="padding:3px 8px;font-size:10px">Save</button>
@@ -3812,8 +4182,8 @@
             <div class="correction-row" style="margin-top:4px">
               <button class="dbtn gray" id="dTestShadowDB" style="padding:3px 8px;font-size:10px">Test DB</button>
               <button class="dbtn gray" id="dExportShadowData" style="padding:3px 8px;font-size:10px">Export</button>
+              <button class="dbtn gray" id="dBatchReview" style="padding:3px 8px;font-size:10px">Batch Review</button>
             </div>
-            <div id="dQuickReview" style="margin-top:6px;padding-top:5px;border-top:1px solid #333"></div>
             <div class="small" id="dDataCollectionStatus" style="margin-top:4px;font-family:monospace">config=loading</div>
           </div>
           <div class="sec important">
@@ -3864,6 +4234,20 @@
     `;
     document.body.appendChild(panel);
 
+    const batchModal = document.createElement('div');
+    batchModal.id = 'dBatchReviewModal';
+    batchModal.className = 'batch-review-modal';
+    batchModal.innerHTML = `
+      <div class="batch-review-box">
+        <div class="batch-review-header">
+          <b>Batch Review</b>
+          <button class="dbtn gray" onclick="window.__detector.closeBatchReview()">Close</button>
+        </div>
+        <div id="dBatchReviewBody"></div>
+      </div>
+    `;
+    document.body.appendChild(batchModal);
+
     const inspectModal = document.createElement('div');
     inspectModal.id = 'dInspectModal';
     inspectModal.innerHTML = `
@@ -3880,6 +4264,7 @@
     bindEvents();
     initLearning();
     renderQuickReview();
+    installBatchReviewKeys();
     initShadowCollectionStorage();
     loadDetectorConfig();
     loadPanelPos();
@@ -4553,6 +4938,17 @@
         catch (e) { console.error(DEBUG_PREFIX, 'Shadow IndexedDB spike failed', e); }
       };
     }
+    const batchReview = $('dBatchReview');
+    if (batchReview) {
+      batchReview.onclick = async () => {
+        try { await openBatchReview(); }
+        catch (e) {
+          console.error(DEBUG_PREFIX, 'Batch review failed', e);
+          log(`Batch review failed: ${String(e?.message || e).slice(0, 80)}`, '#f33');
+        }
+      };
+    }
+
     const exportShadow = $('dExportShadowData');
     if (exportShadow) {
       exportShadow.onclick = async () => {
@@ -5382,6 +5778,9 @@
     getLabelsForFrame,
     getUnlabeledEvents,
     markEventHasLabel,
+    putShadowCandidate,
+    openBatchReview,
+    closeBatchReview,
 
     exportTpl: () => TemplateDB.export(),
 
