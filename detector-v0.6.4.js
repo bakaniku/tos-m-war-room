@@ -92,6 +92,18 @@
   const SHADOW_STORE_LABELS = 'labels';
   const SHADOW_STORE_CANDIDATES = 'candidates';
   const SHADOW_KEY_MAX_LEN = 200;
+  const SHADOW_LOCAL_RECORD_LIMIT = 1000;
+  const SHADOW_DAILY_LIMIT_BYTES = 500 * 1024 * 1024;
+  const SHADOW_STORAGE_STATUS = Object.freeze({
+    SAVED_INDEXEDDB: 'saved_indexeddb',
+    METADATA_ONLY_PRUNED_STORAGE: 'metadata_only_pruned_storage',
+    INDEXEDDB_UNAVAILABLE: 'indexeddb_unavailable',
+    DAILY_LIMIT_EXCEEDED: 'daily_limit_exceeded',
+    CROP_CAPTURE_FAILED: 'crop_capture_failed',
+    PARTIAL_CROP_SAVED: 'partial_crop_saved',
+    SAMPLED_OUT: 'sampled_out',
+    LEGACY_METADATA_ONLY: 'legacy_metadata_only'
+  });
 
   // ═══════════════════════════════════════════════
   // 模板資料庫 (v0.7.1 精準優先版)
@@ -786,7 +798,8 @@
     shadowDBStatus: 'idle',
     shadowDBError: '',
     shadowDBStats: null,
-    shadowDBSpikeLayer: null
+    shadowDBSpikeLayer: null,
+    shadowMigration: { attempted: false, migrated: 0, failed: 0, error: '' }
   };
 
   function ensureSessionId() {
@@ -861,6 +874,11 @@
       `indexeddb=${state.shadowDBStatus || 'idle'}`
     ];
     if (state.shadowDBError) parts.push(`idb_error=${state.shadowDBError}`);
+    if (state.shadowMigration?.attempted) {
+      parts.push(state.shadowMigration.error
+        ? `migration=failed:${state.shadowMigration.error}`
+        : `migration=${state.shadowMigration.migrated}`);
+    }
     if (missingCollector) parts.push('blocked=collector_id_required');
     if (extra) parts.push(extra);
     el.textContent = parts.join(' | ');
@@ -949,11 +967,26 @@
     };
   }
 
+  function readLocalShadowRecords() {
+    try {
+      const arr = JSON.parse(localStorage.getItem(DATA_COLLECTION_LOCAL_KEY) || '[]');
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function initLocalShadowRecordCount() {
+    const arr = readLocalShadowRecords();
+    state.shadowRecordCount = arr.length;
+    updateDataCollectionUI();
+    return arr.length;
+  }
+
   function appendLocalShadowRecord(record) {
-    let arr = [];
-    try { arr = JSON.parse(localStorage.getItem(DATA_COLLECTION_LOCAL_KEY) || '[]'); } catch (e) { arr = []; }
+    let arr = readLocalShadowRecords();
     arr.push(record);
-    if (arr.length > 200) arr = arr.slice(arr.length - 200);
+    if (arr.length > SHADOW_LOCAL_RECORD_LIMIT) arr = arr.slice(arr.length - SHADOW_LOCAL_RECORD_LIMIT);
     localStorage.setItem(DATA_COLLECTION_LOCAL_KEY, JSON.stringify(arr));
     state.shadowRecordCount = arr.length;
   }
@@ -970,6 +1003,8 @@
     }
     const sampleRate = Math.max(0, Math.min(1, Number(cfg.sampleRate ?? 1)));
     if (sampleRate < 1 && Math.random() > sampleRate) {
+      record.crops = record.crops || {};
+      record.crops.storage_status = SHADOW_STORAGE_STATUS.SAMPLED_OUT;
       updateDataCollectionUI('last=sampled_out');
       return false;
     }
@@ -986,7 +1021,14 @@
 
   function captureShadowSample(result) {
     const record = buildFrameSampleRecord(result);
-    writeShadowLog(record);
+    const accepted = writeShadowLog(record);
+    if (accepted) {
+      persistShadowSampleIndexedDB(record).catch(e => {
+        state.shadowDBStatus = 'failed';
+        state.shadowDBError = String(e?.message || e).slice(0, 80);
+        updateDataCollectionUI(`idb_write=failed:${state.shadowDBError}`);
+      });
+    }
     return record;
   }
 
@@ -1121,6 +1163,216 @@
     return crop;
   }
 
+  async function deleteFromStore(storeName, key) {
+    const db = await ensureShadowDB();
+    const tx = db.transaction(storeName, 'readwrite');
+    tx.objectStore(storeName).delete(key);
+    await idbTxDone(tx);
+  }
+
+  async function getProtectedCropIds() {
+    try {
+      const labels = await getAllFromStore(SHADOW_STORE_LABELS);
+      return new Set(labels.filter(l => l && l.crop_id && l.status !== 'rejected').map(l => l.crop_id));
+    } catch (e) {
+      return new Set();
+    }
+  }
+
+  function cropImportanceScore(crop, protectedIds) {
+    if (protectedIds.has(crop.crop_id)) return Number.POSITIVE_INFINITY;
+    const raw = crop.raw_data || {};
+    let score = 0;
+    if (raw.disagreement) score += 1;
+    if (raw.low_confidence) score += 1;
+    if (raw.unknown_result) score += 1;
+    if (raw.rare_kind) score += 1;
+    if (Date.now() - Date.parse(crop.created_at || 0) < 60 * 60 * 1000) score += 1;
+    if (raw.has_correction) score += 1;
+    if (raw.class_balance) score += 1;
+    return score;
+  }
+
+  async function getDailyCropUsageBytes(date) {
+    const crops = await getAllFromStore(SHADOW_STORE_CROPS);
+    return crops
+      .filter(c => (c.date || String(c.created_at || '').slice(0, 10)) === date)
+      .reduce((sum, c) => sum + Number(c.byte_size || 0), 0);
+  }
+
+  async function pruneCropsForSpace(date, bytesNeeded) {
+    const crops = (await getAllFromStore(SHADOW_STORE_CROPS))
+      .filter(c => (c.date || String(c.created_at || '').slice(0, 10)) === date);
+    const protectedIds = await getProtectedCropIds();
+    const candidates = crops
+      .filter(c => !protectedIds.has(c.crop_id))
+      .map(c => ({ crop: c, score: cropImportanceScore(c, protectedIds) }))
+      .sort((a, b) => a.score - b.score || String(a.crop.created_at || '').localeCompare(String(b.crop.created_at || '')));
+    let freed = 0;
+    for (const item of candidates) {
+      await deleteFromStore(SHADOW_STORE_CROPS, item.crop.crop_id);
+      freed += Number(item.crop.byte_size || 0);
+      if (freed >= bytesNeeded) break;
+    }
+    return freed;
+  }
+
+  async function ensureDailyStorageRoom(date, incomingBytes) {
+    const used = await getDailyCropUsageBytes(date);
+    if (used + incomingBytes <= SHADOW_DAILY_LIMIT_BYTES) return { ok: true, used, freed: 0 };
+    const freed = await pruneCropsForSpace(date, used + incomingBytes - SHADOW_DAILY_LIMIT_BYTES);
+    const after = await getDailyCropUsageBytes(date);
+    return { ok: after + incomingBytes <= SHADOW_DAILY_LIMIT_BYTES, used: after, freed };
+  }
+
+  function canvasToPngBlob(canvas) {
+    return new Promise((resolve, reject) => {
+      if (!canvas || !canvas.width || !canvas.height) {
+        reject(new Error('empty_canvas'));
+        return;
+      }
+      canvas.toBlob(blob => {
+        if (blob) resolve(blob);
+        else reject(new Error('canvas_to_blob_failed'));
+      }, 'image/png');
+    });
+  }
+
+  function getShadowCropCanvases() {
+    const crops = [];
+    if (state.lastBadgeCanvas) crops.push({ kind: 'stage_badge', canvas: state.lastBadgeCanvas });
+    if (state.regions.map) crops.push({ kind: 'map', canvas: captureRegionCanvas(state.regions.map, 'shadow_map') });
+    if (state.lastChCanvas) crops.push({ kind: 'ch', canvas: state.lastChCanvas });
+    else if (state.regions.ch) crops.push({ kind: 'ch', canvas: captureRegionCanvas(state.regions.ch, 'shadow_ch') });
+    if (state.regions.announcement) crops.push({ kind: 'announcement', canvas: captureRegionCanvas(state.regions.announcement, 'shadow_announcement') });
+    return crops;
+  }
+
+  async function persistShadowSampleIndexedDB(record) {
+    const event = {
+      ...record,
+      event_id: eventIdFromRecord(record),
+      schema_version: 2,
+      storage_status: SHADOW_STORAGE_STATUS.SAVED_INDEXEDDB,
+      crop_ids: [],
+      missing_crop_kinds: []
+    };
+    const expected = ['stage_badge', 'map', 'ch'];
+    const cropInputs = getShadowCropCanvases();
+    const byKind = new Map(cropInputs.map(c => [c.kind, c.canvas]));
+    let cropFailure = false;
+    let prunedForStorage = false;
+
+    for (const kind of [...expected, ...(state.regions.announcement ? ['announcement'] : [])]) {
+      const canvas = byKind.get(kind);
+      if (!canvas) {
+        event.missing_crop_kinds.push(kind);
+        cropFailure = true;
+        continue;
+      }
+      try {
+        const blob = await canvasToPngBlob(canvas);
+        const date = String(record.timestamp || new Date().toISOString()).slice(0, 10);
+        const room = await ensureDailyStorageRoom(date, blob.size);
+        if (!room.ok) {
+          event.missing_crop_kinds.push(kind);
+          prunedForStorage = true;
+          continue;
+        }
+        const crop = {
+          crop_id: cropIdFromParts(record, kind),
+          event_id: event.event_id,
+          frame_id: record.frame_id,
+          kind,
+          collector_id: record.collector_id,
+          session_id: record.session_id,
+          date,
+          width: canvas.width,
+          height: canvas.height,
+          byte_size: blob.size,
+          mime_type: 'image/png',
+          blob,
+          created_at: new Date().toISOString(),
+          raw_data: {}
+        };
+        await putShadowCrop(crop);
+        event.crop_ids.push(crop.crop_id);
+      } catch (e) {
+        event.missing_crop_kinds.push(kind);
+        cropFailure = true;
+      }
+    }
+
+    if (event.crop_ids.length === 0 && (cropFailure || prunedForStorage)) {
+      event.storage_status = prunedForStorage ? SHADOW_STORAGE_STATUS.DAILY_LIMIT_EXCEEDED : SHADOW_STORAGE_STATUS.CROP_CAPTURE_FAILED;
+    } else if (event.missing_crop_kinds.length > 0) {
+      event.storage_status = prunedForStorage ? SHADOW_STORAGE_STATUS.METADATA_ONLY_PRUNED_STORAGE : SHADOW_STORAGE_STATUS.PARTIAL_CROP_SAVED;
+    }
+
+    try {
+      await putShadowEvent(event);
+      record.crops = {
+        ...(record.crops || {}),
+        saved: event.crop_ids.length > 0,
+        storage_status: event.storage_status,
+        crop_ids: event.crop_ids,
+        missing_crop_kinds: event.missing_crop_kinds
+      };
+      state.lastShadowRecord = record;
+      const stats = await getShadowDBStats();
+      updateDataCollectionUI(`last=${record.frame_id} idb=${stats.events}/${stats.crops}`);
+      return event;
+    } catch (e) {
+      event.storage_status = SHADOW_STORAGE_STATUS.METADATA_ONLY_PRUNED_STORAGE;
+      try { await putShadowEvent(event); } catch (_) {}
+      updateDataCollectionUI(`last=${record.frame_id} idb_write=failed`);
+      throw e;
+    }
+  }
+
+  async function migrateLegacyShadowRecords() {
+    const records = readLocalShadowRecords();
+    state.shadowRecordCount = records.length;
+    if (!records.length) {
+      state.shadowMigration = { attempted: true, migrated: 0, failed: 0, error: '' };
+      updateDataCollectionUI();
+      return state.shadowMigration;
+    }
+    let migrated = 0, failed = 0;
+    try {
+      for (const rec of records) {
+        if (!rec || !rec.frame_id) continue;
+        const event = {
+          ...rec,
+          event_id: eventIdFromRecord(rec),
+          schema_version: 2,
+          storage_status: SHADOW_STORAGE_STATUS.LEGACY_METADATA_ONLY,
+          crop_ids: [],
+          missing_crop_kinds: ['stage_badge', 'map', 'ch']
+        };
+        try {
+          await putShadowEvent(event);
+          migrated++;
+        } catch (e) {
+          failed++;
+        }
+      }
+      state.shadowMigration = { attempted: true, migrated, failed, error: failed ? `${failed}_failed` : '' };
+      updateDataCollectionUI();
+    } catch (e) {
+      state.shadowMigration = { attempted: true, migrated, failed, error: String(e?.message || e).slice(0, 80) };
+      updateDataCollectionUI();
+    }
+    return state.shadowMigration;
+  }
+
+  function initShadowCollectionStorage() {
+    initLocalShadowRecordCount();
+    migrateLegacyShadowRecords().catch(e => {
+      state.shadowMigration = { attempted: true, migrated: 0, failed: 0, error: String(e?.message || e).slice(0, 80) };
+      updateDataCollectionUI();
+    });
+  }
   async function getAllFromStore(storeName) {
     const db = await ensureShadowDB();
     const tx = db.transaction(storeName, 'readonly');
@@ -1173,6 +1425,7 @@
         db_name: SHADOW_DB_NAME,
         db_version: SHADOW_DB_VERSION,
         origin: location.origin,
+        collector_id: getCollectorId(),
         counts: { events: events.length, crops: exportedCrops.length, labels: labels.length, candidates: candidates.length }
       },
       events,
@@ -1183,9 +1436,10 @@
     const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const stamp = new Date().toISOString().slice(0, 19).replace('T', '-').replace(/:/g, '');
+    const collector = shadowKeyPart(getCollectorId(), 40);
     a.href = url;
-    a.download = `tosm-shadow-data-${stamp}.json`;
+    a.download = `tosm_shadow_${collector}_${stamp}.json`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -3385,6 +3639,7 @@
 
     bindEvents();
     initLearning();
+    initShadowCollectionStorage();
     loadDetectorConfig();
     loadPanelPos();
     loadMuteState();
@@ -4880,6 +5135,7 @@
     exportShadowData,
     runShadowDBSpike,
     getShadowDBStats,
+    migrateLegacyShadowRecords,
 
     exportTpl: () => TemplateDB.export(),
 
