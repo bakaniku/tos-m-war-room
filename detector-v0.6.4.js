@@ -94,6 +94,7 @@
   const SHADOW_KEY_MAX_LEN = 200;
   const SHADOW_LOCAL_RECORD_LIMIT = 1000;
   const SHADOW_DAILY_LIMIT_BYTES = 500 * 1024 * 1024;
+  const QUICK_REVIEW_TIMEOUT_MS = 8000;
   const SHADOW_STORAGE_STATUS = Object.freeze({
     SAVED_INDEXEDDB: 'saved_indexeddb',
     METADATA_ONLY_PRUNED_STORAGE: 'metadata_only_pruned_storage',
@@ -799,7 +800,13 @@
     shadowDBError: '',
     shadowDBStats: null,
     shadowDBSpikeLayer: null,
-    shadowMigration: { attempted: false, migrated: 0, failed: 0, error: '' }
+    shadowMigration: { attempted: false, migrated: 0, failed: 0, error: '' },
+    quickReview: {
+      active: null,
+      backlog: [],
+      timer: null,
+      lastAction: ''
+    }
   };
 
   function ensureSessionId() {
@@ -1064,6 +1071,10 @@
     return buildShadowKey([record.collector_id, record.session_id, record.frame_id, kind, 'crop']);
   }
 
+  function labelIdFromParts(record, kind) {
+    return buildShadowKey([record.collector_id, record.session_id, record.frame_id, kind, 'label']);
+  }
+
   function openShadowDB() {
     if (!window.indexedDB) return Promise.reject(new Error('indexedDB_api_unavailable'));
     return new Promise((resolve, reject) => {
@@ -1168,6 +1179,62 @@
     const tx = db.transaction(storeName, 'readwrite');
     tx.objectStore(storeName).delete(key);
     await idbTxDone(tx);
+  }
+
+  async function putShadowLabel(label) {
+    const db = await ensureShadowDB();
+    const record = {
+      ...label,
+      label_id: label.label_id || labelIdFromParts(label, label.kind || 'event'),
+      status: label.status || 'pending_review',
+      created_at: label.created_at || new Date().toISOString(),
+      raw_data: label.raw_data || {}
+    };
+    const tx = db.transaction(SHADOW_STORE_LABELS, 'readwrite');
+    tx.objectStore(SHADOW_STORE_LABELS).put(record);
+    await idbTxDone(tx);
+    return record;
+  }
+
+  async function getLabelsForFrame(frameId) {
+    const labels = await getAllFromStore(SHADOW_STORE_LABELS);
+    return labels.filter(l => l.frame_id === frameId);
+  }
+
+  async function markEventHasLabel(eventId, labelSummary) {
+    const event = await getFromStore(SHADOW_STORE_EVENTS, eventId);
+    if (!event) return null;
+    const updated = {
+      ...event,
+      has_label: true,
+      label_status_summary: labelSummary,
+      labeled_at: new Date().toISOString()
+    };
+    await putShadowEvent(updated);
+    return updated;
+  }
+
+  async function getUnlabeledEvents(limit = 20, mode = 'quick') {
+    const [events, labels] = await Promise.all([
+      getAllFromStore(SHADOW_STORE_EVENTS),
+      getAllFromStore(SHADOW_STORE_LABELS)
+    ]);
+    const labeledFrames = new Set(labels.map(l => l.frame_id));
+    const allowed = new Set([
+      SHADOW_STORAGE_STATUS.SAVED_INDEXEDDB,
+      SHADOW_STORAGE_STATUS.PARTIAL_CROP_SAVED
+    ]);
+    return events
+      .filter(e => e && allowed.has(e.storage_status))
+      .filter(e => e.crop_ids && e.crop_ids.length > 0)
+      .filter(e => !labeledFrames.has(e.frame_id))
+      .sort((a, b) => {
+        const au = a.v091?.fused?.label === 'UNKNOWN' || a.v091?.map?.label == null || a.v091?.ch?.label == null;
+        const bu = b.v091?.fused?.label === 'UNKNOWN' || b.v091?.map?.label == null || b.v091?.ch?.label == null;
+        if (au !== bu) return au ? -1 : 1;
+        return String(b.timestamp || '').localeCompare(String(a.timestamp || ''));
+      })
+      .slice(0, limit);
   }
 
   async function getProtectedCropIds() {
@@ -1321,6 +1388,7 @@
       state.lastShadowRecord = record;
       const stats = await getShadowDBStats();
       updateDataCollectionUI(`last=${record.frame_id} idb=${stats.events}/${stats.crops}`);
+      enqueueQuickReview(event);
       return event;
     } catch (e) {
       event.storage_status = SHADOW_STORAGE_STATUS.METADATA_ONLY_PRUNED_STORAGE;
@@ -1373,6 +1441,14 @@
       updateDataCollectionUI();
     });
   }
+  async function getFromStore(storeName, key) {
+    const db = await ensureShadowDB();
+    const tx = db.transaction(storeName, 'readonly');
+    const result = await idbRequest(tx.objectStore(storeName).get(key));
+    await idbTxDone(tx);
+    return result || null;
+  }
+
   async function getAllFromStore(storeName) {
     const db = await ensureShadowDB();
     const tx = db.transaction(storeName, 'readonly');
@@ -1495,6 +1571,169 @@
       log(`Shadow IndexedDB spike failed: ${state.shadowDBError}`, '#f33');
       throw e;
     }
+  }
+  function predictedValuesFromEvent(event) {
+    return {
+      stage: event?.v091?.fused?.label || event?.v091?.phase?.label || '',
+      map: event?.v091?.map?.label || '',
+      ch: event?.v091?.ch?.label || ''
+    };
+  }
+
+  function cropIdForLabelKind(event, kind) {
+    const cropKind = kind === 'stage' ? 'stage_badge' : kind;
+    return (event.crop_ids || []).find(id => id.includes(`_${cropKind}_crop`)) || cropIdFromParts(event, cropKind);
+  }
+
+  function clearQuickReviewTimer() {
+    if (state.quickReview.timer) {
+      clearTimeout(state.quickReview.timer);
+      state.quickReview.timer = null;
+    }
+  }
+
+  function scheduleQuickReviewTimeout() {
+    clearQuickReviewTimer();
+    if (!state.quickReview.active) return;
+    state.quickReview.timer = setTimeout(async () => {
+      const active = state.quickReview.active;
+      if (!active) return;
+      if (!state.autoTimer) {
+        scheduleQuickReviewTimeout();
+        return;
+      }
+      const age = Date.now() - active.displayed_at;
+      if (age < QUICK_REVIEW_TIMEOUT_MS) {
+        scheduleQuickReviewTimeout();
+        return;
+      }
+      try {
+        await submitQuickReview('pending_review', null, 'quick_review_timeout');
+      } catch (e) {
+        console.warn(DEBUG_PREFIX, 'quick review timeout failed', e);
+      }
+    }, QUICK_REVIEW_TIMEOUT_MS);
+  }
+
+  function renderQuickReview() {
+    const el = document.getElementById('dQuickReview');
+    if (!el) return;
+    const active = state.quickReview.active;
+    if (!active) {
+      el.innerHTML = `<div class="small" style="color:#888">review=idle | backlog=${state.quickReview.backlog.length}</div>`;
+      return;
+    }
+    const p = predictedValuesFromEvent(active.event);
+    const age = Math.max(0, Math.floor((Date.now() - active.displayed_at) / 1000));
+    el.innerHTML = `
+      <div class="small" style="display:flex;justify-content:space-between;gap:6px">
+        <span>Review ${active.event.frame_id}</span>
+        <span>${age}s / ${Math.round(QUICK_REVIEW_TIMEOUT_MS / 1000)}s | q=${state.quickReview.backlog.length}</span>
+      </div>
+      <div class="small" style="margin-top:3px;font-family:monospace">stage=${p.stage || '?'} map=${p.map || '?'} ch=${p.ch || '?'}</div>
+      <div class="correction-row" style="margin-top:4px">
+        <button class="dbtn" id="dQrConfirm" style="padding:2px 6px;font-size:10px">Confirm</button>
+        <button class="dbtn gray" id="dQrFix" style="padding:2px 6px;font-size:10px">Fix</button>
+        <button class="dbtn gray" id="dQrLater" style="padding:2px 6px;font-size:10px">Later</button>
+        <button class="dbtn red" id="dQrSkip" style="padding:2px 6px;font-size:10px">Skip</button>
+      </div>
+      <div id="dQrFixBox" style="display:none;margin-top:4px">
+        <div class="correction-row">
+          <input id="dQrStage" value="${p.stage || ''}" placeholder="stage" style="width:52px">
+          <input id="dQrMap" value="${p.map || ''}" placeholder="map" style="width:52px">
+          <input id="dQrCh" value="${p.ch || ''}" placeholder="ch" style="width:44px">
+          <button class="dbtn" id="dQrSaveFix" style="padding:2px 6px;font-size:10px">Save</button>
+        </div>
+      </div>
+      <div class="small" style="margin-top:3px;color:#888">${state.quickReview.lastAction || ''}</div>
+    `;
+    const confirm = document.getElementById('dQrConfirm');
+    const fix = document.getElementById('dQrFix');
+    const later = document.getElementById('dQrLater');
+    const skip = document.getElementById('dQrSkip');
+    const saveFix = document.getElementById('dQrSaveFix');
+    if (confirm) confirm.onclick = () => submitQuickReview('confirmed', null, 'quick_review');
+    if (later) later.onclick = () => submitQuickReview('pending_review', null, 'quick_review');
+    if (skip) skip.onclick = () => submitQuickReview('skipped', null, 'quick_review');
+    if (fix) fix.onclick = () => {
+      const box = document.getElementById('dQrFixBox');
+      if (box) box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    };
+    if (saveFix) saveFix.onclick = () => submitQuickReview('corrected', {
+      stage: document.getElementById('dQrStage')?.value.trim() || '',
+      map: document.getElementById('dQrMap')?.value.trim() || '',
+      ch: document.getElementById('dQrCh')?.value.trim() || ''
+    }, 'quick_review');
+  }
+
+  function promoteNextQuickReview() {
+    clearQuickReviewTimer();
+    const next = state.quickReview.backlog.shift();
+    if (!next) {
+      state.quickReview.active = null;
+      renderQuickReview();
+      return;
+    }
+    state.quickReview.active = { event: next, displayed_at: Date.now() };
+    renderQuickReview();
+    scheduleQuickReviewTimeout();
+  }
+
+  function enqueueQuickReview(event) {
+    if (!event || event.storage_status === SHADOW_STORAGE_STATUS.LEGACY_METADATA_ONLY) return;
+    if (!event.crop_ids || event.crop_ids.length === 0) return;
+    const exists = state.quickReview.active?.event?.event_id === event.event_id
+      || state.quickReview.backlog.some(e => e.event_id === event.event_id);
+    if (exists) return;
+    if (!state.quickReview.active) {
+      state.quickReview.active = { event, displayed_at: Date.now() };
+      renderQuickReview();
+      scheduleQuickReviewTimeout();
+      return;
+    }
+    state.quickReview.backlog.push(event);
+    renderQuickReview();
+  }
+
+  async function submitQuickReview(status, correctedValues, source = 'quick_review') {
+    const active = state.quickReview.active;
+    if (!active) return [];
+    clearQuickReviewTimer();
+    const event = active.event;
+    const predicted = predictedValuesFromEvent(event);
+    const values = correctedValues || predicted;
+    const kinds = ['stage', 'map', 'ch'];
+    const labels = [];
+    for (const kind of kinds) {
+      const corrected = values[kind] || '';
+      const predictedValue = predicted[kind] || '';
+      const labelStatus = status === 'corrected' && corrected !== predictedValue ? 'corrected' : status;
+      labels.push(await putShadowLabel({
+        label_id: labelIdFromParts(event, kind),
+        event_id: event.event_id,
+        crop_id: cropIdForLabelKind(event, kind),
+        frame_id: event.frame_id,
+        kind,
+        collector_id: event.collector_id,
+        session_id: event.session_id,
+        status: labelStatus,
+        predicted_value: predictedValue,
+        corrected_value: labelStatus === 'corrected' ? corrected : predictedValue,
+        confidence: event.v091?.[kind]?.confidence || event.v091?.fused?.confidence || 0,
+        source,
+        add_template: false,
+        raw_data: {}
+      }));
+    }
+    await markEventHasLabel(event.event_id, {
+      status,
+      source,
+      label_ids: labels.map(l => l.label_id)
+    });
+    state.quickReview.lastAction = `${status}:${event.frame_id}`;
+    state.quickReview.active = null;
+    promoteNextQuickReview();
+    return labels;
   }
   function isLegacyBadgeRectDefault(statusRegion, badgeRect) {
     if (!statusRegion || !badgeRect) return false;
@@ -3574,6 +3813,7 @@
               <button class="dbtn gray" id="dTestShadowDB" style="padding:3px 8px;font-size:10px">Test DB</button>
               <button class="dbtn gray" id="dExportShadowData" style="padding:3px 8px;font-size:10px">Export</button>
             </div>
+            <div id="dQuickReview" style="margin-top:6px;padding-top:5px;border-top:1px solid #333"></div>
             <div class="small" id="dDataCollectionStatus" style="margin-top:4px;font-family:monospace">config=loading</div>
           </div>
           <div class="sec important">
@@ -3639,6 +3879,7 @@
 
     bindEvents();
     initLearning();
+    renderQuickReview();
     initShadowCollectionStorage();
     loadDetectorConfig();
     loadPanelPos();
@@ -5132,10 +5373,15 @@
       updateTplDisplay();
     },
 
+    ensureShadowDB,
     exportShadowData,
     runShadowDBSpike,
     getShadowDBStats,
     migrateLegacyShadowRecords,
+    putShadowLabel,
+    getLabelsForFrame,
+    getUnlabeledEvents,
+    markEventHasLabel,
 
     exportTpl: () => TemplateDB.export(),
 
