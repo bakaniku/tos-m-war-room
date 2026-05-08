@@ -85,6 +85,13 @@
   const DATA_COLLECTION_LOCAL_KEY = 'tosm_detector_shadow_records_v1';
   const DATA_COLLECTION_COLLECTOR_KEY = 'tosm_detector_collector_id_v1';
   const DATA_COLLECTION_SESSION_KEY = 'tosm_detector_session_id_v1';
+  const SHADOW_DB_NAME = 'tosm_detector_shadow_db_v1';
+  const SHADOW_DB_VERSION = 1;
+  const SHADOW_STORE_EVENTS = 'events';
+  const SHADOW_STORE_CROPS = 'crops';
+  const SHADOW_STORE_LABELS = 'labels';
+  const SHADOW_STORE_CANDIDATES = 'candidates';
+  const SHADOW_KEY_MAX_LEN = 200;
 
   // ═══════════════════════════════════════════════
   // 模板資料庫 (v0.7.1 精準優先版)
@@ -774,7 +781,12 @@
     sessionId: null,
     frameSeq: 0,
     lastShadowRecord: null,
-    shadowRecordCount: 0
+    shadowRecordCount: 0,
+    shadowDB: null,
+    shadowDBStatus: 'idle',
+    shadowDBError: '',
+    shadowDBStats: null,
+    shadowDBSpikeLayer: null
   };
 
   function ensureSessionId() {
@@ -845,8 +857,10 @@
       `collect=${cfg.dataCollectionEnabled ? 'on' : 'off'}`,
       `shadow=${cfg.shadowLoggingEnabled ? 'on' : 'off'}`,
       `collector=${collectorId || 'missing'}`,
-      `localRecords=${state.shadowRecordCount || 0}`
+      `localRecords=${state.shadowRecordCount || 0}`,
+      `indexeddb=${state.shadowDBStatus || 'idle'}`
     ];
+    if (state.shadowDBError) parts.push(`idb_error=${state.shadowDBError}`);
     if (missingCollector) parts.push('blocked=collector_id_required');
     if (extra) parts.push(extra);
     el.textContent = parts.join(' | ');
@@ -974,6 +988,259 @@
     const record = buildFrameSampleRecord(result);
     writeShadowLog(record);
     return record;
+  }
+
+  function shortShadowHash(value) {
+    const s = String(value || '');
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0).toString(36);
+  }
+
+  function shadowKeyPart(value, maxLen = 48) {
+    const s = String(value || 'missing').trim().replace(/[^A-Za-z0-9_.-]+/g, '_') || 'missing';
+    if (s.length <= maxLen) return s;
+    return `${s.slice(0, Math.max(8, maxLen - 9))}_${shortShadowHash(s)}`;
+  }
+
+  function buildShadowKey(parts) {
+    const key = parts.map(p => shadowKeyPart(p)).join('_');
+    if (key.length <= SHADOW_KEY_MAX_LEN) return key;
+    const last = shadowKeyPart(parts[parts.length - 1], 32);
+    const prefix = shadowKeyPart(parts.slice(0, -1).join('_'), SHADOW_KEY_MAX_LEN - last.length - 2);
+    return `${prefix}_${last}`;
+  }
+
+  function eventIdFromRecord(record) {
+    return buildShadowKey([record.collector_id, record.session_id, record.frame_id, 'event']);
+  }
+
+  function cropIdFromParts(record, kind) {
+    return buildShadowKey([record.collector_id, record.session_id, record.frame_id, kind, 'crop']);
+  }
+
+  function openShadowDB() {
+    if (!window.indexedDB) return Promise.reject(new Error('indexedDB_api_unavailable'));
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(SHADOW_DB_NAME, SHADOW_DB_VERSION);
+      req.onerror = () => reject(req.error || new Error('indexeddb_open_failed'));
+      req.onblocked = () => reject(new Error('indexeddb_open_blocked'));
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(SHADOW_STORE_EVENTS)) {
+          const events = db.createObjectStore(SHADOW_STORE_EVENTS, { keyPath: 'event_id' });
+          events.createIndex('by_frame_id', 'frame_id', { unique: false });
+          events.createIndex('by_collector_session', ['collector_id', 'session_id'], { unique: false });
+          events.createIndex('by_storage_status', 'storage_status', { unique: false });
+          events.createIndex('by_timestamp', 'timestamp', { unique: false });
+        }
+        if (!db.objectStoreNames.contains(SHADOW_STORE_CROPS)) {
+          const crops = db.createObjectStore(SHADOW_STORE_CROPS, { keyPath: 'crop_id' });
+          crops.createIndex('by_frame_id', 'frame_id', { unique: false });
+          crops.createIndex('by_event_id', 'event_id', { unique: false });
+          crops.createIndex('by_kind', 'kind', { unique: false });
+          crops.createIndex('by_created_at', 'created_at', { unique: false });
+        }
+        if (!db.objectStoreNames.contains(SHADOW_STORE_LABELS)) {
+          const labels = db.createObjectStore(SHADOW_STORE_LABELS, { keyPath: 'label_id' });
+          labels.createIndex('by_frame_id', 'frame_id', { unique: false });
+          labels.createIndex('by_crop_id', 'crop_id', { unique: false });
+          labels.createIndex('by_status', 'status', { unique: false });
+          labels.createIndex('by_created_at', 'created_at', { unique: false });
+        }
+        if (!db.objectStoreNames.contains(SHADOW_STORE_CANDIDATES)) {
+          const candidates = db.createObjectStore(SHADOW_STORE_CANDIDATES, { keyPath: 'candidate_id' });
+          candidates.createIndex('by_crop_id', 'crop_id', { unique: false });
+          candidates.createIndex('by_status', 'status', { unique: false });
+          candidates.createIndex('by_created_at', 'created_at', { unique: false });
+        }
+      };
+      req.onsuccess = () => {
+        const db = req.result;
+        db.onversionchange = () => db.close();
+        resolve(db);
+      };
+    });
+  }
+
+  async function ensureShadowDB() {
+    if (state.shadowDB) return state.shadowDB;
+    try {
+      state.shadowDB = await openShadowDB();
+      state.shadowDBStatus = 'ok';
+      state.shadowDBError = '';
+      updateDataCollectionUI();
+      return state.shadowDB;
+    } catch (e) {
+      state.shadowDBStatus = 'failed';
+      state.shadowDBError = String(e?.message || e).slice(0, 80);
+      updateDataCollectionUI();
+      throw e;
+    }
+  }
+
+  function idbRequest(req) {
+    return new Promise((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error || new Error('indexeddb_request_failed'));
+    });
+  }
+
+  function idbTxDone(tx) {
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => reject(tx.error || new Error('indexeddb_tx_failed'));
+      tx.onabort = () => reject(tx.error || new Error('indexeddb_tx_aborted'));
+    });
+  }
+
+  async function putShadowEvent(event) {
+    const db = await ensureShadowDB();
+    const record = {
+      ...event,
+      event_id: event.event_id || eventIdFromRecord(event),
+      storage_status: event.storage_status || 'saved_indexeddb',
+      schema_version: event.schema_version || 2,
+      crop_ids: event.crop_ids || [],
+      missing_crop_kinds: event.missing_crop_kinds || []
+    };
+    const tx = db.transaction(SHADOW_STORE_EVENTS, 'readwrite');
+    tx.objectStore(SHADOW_STORE_EVENTS).put(record);
+    await idbTxDone(tx);
+    return record;
+  }
+
+  async function putShadowCrop(crop) {
+    const db = await ensureShadowDB();
+    const tx = db.transaction(SHADOW_STORE_CROPS, 'readwrite');
+    tx.objectStore(SHADOW_STORE_CROPS).put(crop);
+    await idbTxDone(tx);
+    return crop;
+  }
+
+  async function getAllFromStore(storeName) {
+    const db = await ensureShadowDB();
+    const tx = db.transaction(storeName, 'readonly');
+    const result = await idbRequest(tx.objectStore(storeName).getAll());
+    await idbTxDone(tx);
+    return result || [];
+  }
+
+  async function getShadowDBStats() {
+    const db = await ensureShadowDB();
+    const tx = db.transaction([SHADOW_STORE_EVENTS, SHADOW_STORE_CROPS, SHADOW_STORE_LABELS, SHADOW_STORE_CANDIDATES], 'readonly');
+    const events = await idbRequest(tx.objectStore(SHADOW_STORE_EVENTS).count());
+    const crops = await idbRequest(tx.objectStore(SHADOW_STORE_CROPS).count());
+    const labels = await idbRequest(tx.objectStore(SHADOW_STORE_LABELS).count());
+    const candidates = await idbRequest(tx.objectStore(SHADOW_STORE_CANDIDATES).count());
+    await idbTxDone(tx);
+    state.shadowDBStats = { events, crops, labels, candidates };
+    return state.shadowDBStats;
+  }
+
+  function blobToDataURL(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error || new Error('blob_read_failed'));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function exportShadowData() {
+    const [events, crops, labels, candidates] = await Promise.all([
+      getAllFromStore(SHADOW_STORE_EVENTS),
+      getAllFromStore(SHADOW_STORE_CROPS),
+      getAllFromStore(SHADOW_STORE_LABELS),
+      getAllFromStore(SHADOW_STORE_CANDIDATES)
+    ]);
+    const exportedCrops = [];
+    for (const crop of crops) {
+      const copy = { ...crop };
+      if (copy.blob) {
+        copy.data_url = await blobToDataURL(copy.blob);
+        delete copy.blob;
+      }
+      exportedCrops.push(copy);
+    }
+    const bundle = {
+      manifest: {
+        schema_version: 1,
+        exported_at: new Date().toISOString(),
+        db_name: SHADOW_DB_NAME,
+        db_version: SHADOW_DB_VERSION,
+        origin: location.origin,
+        counts: { events: events.length, crops: exportedCrops.length, labels: labels.length, candidates: candidates.length }
+      },
+      events,
+      crops: exportedCrops,
+      labels,
+      candidates
+    };
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    a.href = url;
+    a.download = `tosm-shadow-data-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    updateDataCollectionUI(`export=${events.length}/${exportedCrops.length}`);
+    return bundle;
+  }
+
+  async function runShadowDBSpike() {
+    try {
+      state.shadowDBStatus = 'testing';
+      state.shadowDBError = '';
+      updateDataCollectionUI('spike=running');
+      const base = buildFrameSampleRecord({});
+      const event = {
+        ...base,
+        event_id: eventIdFromRecord(base),
+        schema_version: 2,
+        storage_status: 'saved_indexeddb',
+        crop_ids: [],
+        missing_crop_kinds: [],
+        notes: 'indexeddb_spike'
+      };
+      let lastError = null;
+      for (let i = 0; i < 3; i++) {
+        try {
+          await putShadowEvent(event);
+          lastError = null;
+          break;
+        } catch (e) {
+          lastError = e;
+        }
+      }
+      if (lastError) throw lastError;
+      const db = await ensureShadowDB();
+      const tx = db.transaction(SHADOW_STORE_EVENTS, 'readonly');
+      const readBack = await idbRequest(tx.objectStore(SHADOW_STORE_EVENTS).get(event.event_id));
+      await idbTxDone(tx);
+      if (!readBack) throw new Error('indexeddb_silent_write_failure');
+      const stats = await getShadowDBStats();
+      if (!stats.events) throw new Error('indexeddb_stats_zero_after_write');
+      state.shadowDBStatus = 'ok';
+      state.shadowDBSpikeLayer = 1;
+      state.shadowDBError = '';
+      updateDataCollectionUI(`spike=ok layer=1 events=${stats.events}`);
+      log(`Shadow IndexedDB spike OK: events=${stats.events}`, '#0f0');
+      return { layer: 1, stats, event_id: event.event_id };
+    } catch (e) {
+      state.shadowDBStatus = 'failed';
+      state.shadowDBSpikeLayer = 3;
+      state.shadowDBError = String(e?.message || e).slice(0, 80);
+      updateDataCollectionUI('spike=failed layer=3');
+      log(`Shadow IndexedDB spike failed: ${state.shadowDBError}`, '#f33');
+      throw e;
+    }
   }
   function isLegacyBadgeRectDefault(statusRegion, badgeRect) {
     if (!statusRegion || !badgeRect) return false;
@@ -3049,6 +3316,10 @@
               <input type="text" id="dCollectorId" placeholder="collector_id" style="flex:1">
               <button class="dbtn gray" id="dSaveCollectorId" style="padding:3px 8px;font-size:10px">Save</button>
             </div>
+            <div class="correction-row" style="margin-top:4px">
+              <button class="dbtn gray" id="dTestShadowDB" style="padding:3px 8px;font-size:10px">Test DB</button>
+              <button class="dbtn gray" id="dExportShadowData" style="padding:3px 8px;font-size:10px">Export</button>
+            </div>
             <div class="small" id="dDataCollectionStatus" style="margin-top:4px;font-family:monospace">config=loading</div>
           </div>
           <div class="sec important">
@@ -3777,6 +4048,25 @@
       collectorSave.onclick = () => {
         const id = saveCollectorId(collectorInput ? collectorInput.value : getCollectorId());
         log(id ? `Shadow collector_id saved: ${id}` : 'Shadow collector_id cleared', id ? '#0f0' : '#fa0');
+      };
+    }
+    const testShadowDB = $('dTestShadowDB');
+    if (testShadowDB) {
+      testShadowDB.onclick = async () => {
+        try { await runShadowDBSpike(); }
+        catch (e) { console.error(DEBUG_PREFIX, 'Shadow IndexedDB spike failed', e); }
+      };
+    }
+    const exportShadow = $('dExportShadowData');
+    if (exportShadow) {
+      exportShadow.onclick = async () => {
+        try { await exportShadowData(); }
+        catch (e) {
+          state.shadowDBStatus = 'failed';
+          state.shadowDBError = String(e?.message || e).slice(0, 80);
+          updateDataCollectionUI('export=failed');
+          console.error(DEBUG_PREFIX, 'Shadow export failed', e);
+        }
       };
     }
 
@@ -4586,6 +4876,10 @@
       log(added ? `💾 分流模板 CH.${label} 已存入` : '⚠️ 此模板已存在', added ? '#0f0' : '#fa0');
       updateTplDisplay();
     },
+
+    exportShadowData,
+    runShadowDBSpike,
+    getShadowDBStats,
 
     exportTpl: () => TemplateDB.export(),
 
