@@ -3607,7 +3607,7 @@
       body.light #detectorPanel .dbtn { background: #1a7a1a; color: #fff; }
       #detectorPanel .log-line { font-family: monospace; font-size: 10px; color: #888; }
       #detectorPanel .correction-row {
-        display: flex; gap: 6px; margin-top: 6px; align-items: center;
+        display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center;
       }
       #detectorPanel .correction-row input, #detectorPanel .correction-row select { flex: 1; }
       #detectorPanel .zoom-row {
