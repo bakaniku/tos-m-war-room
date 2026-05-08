@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.5.8</title>
+    <title>TOS M FB TIME v1.5.9</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -250,7 +250,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.5.8</div>
+        <div class="ver-info">v1.5.9</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="" maxlength="10"
                 oninput="this.value=this.value.replace('#','')"
@@ -287,7 +287,7 @@
                 </div>
             </div>
             <div class="room-info">
-                <span class="version-tag">v1.5.8</span>
+                <span class="version-tag">v1.5.9</span>
                 <button id="langBtn" onclick="toggleLang()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">日本語</button>
                 <button onclick="toggleHelpPanel()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 8px; border-radius:12px; cursor:pointer;">？</button>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
@@ -642,7 +642,7 @@ db.ref('protected_rooms').on('value', s => {
         }
     });
 });
-const currentVersion = "1.5.8";
+const currentVersion = "1.5.9";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
 let globalNextLocked = false;
@@ -1251,8 +1251,8 @@ function saveBoss(map, ch, val, doFocus = false) {
 
     let dv = valStr, tt = 0, flash = false, uv = valStr.toUpperCase();
     if (uv.startsWith("00")) { let r=uv.replace("00",""); uv=(r.length===2&&!r.includes('.'))?("R"+r[0]+"."+r[1]):("R"+r); }
-    if      (uv.startsWith("XX"))  { dv = t("idle"); }
-    else if (uv.startsWith("DE"))  { dv = t("killed"); }
+    if      (uv.startsWith("XX"))  { dv = "閒置"; }
+    else if (uv.startsWith("DE"))  { dv = "已擊殺"; }
     else if (uv === "ON")          { dv = "ON"; flash = true; }
     else if (uv.startsWith("R"))   { const rn=uv.substring(1); dv="階段"+rn; if(parseFloat(rn)>=4.0) flash=true; }
     else {
@@ -1612,6 +1612,31 @@ function startSession(id) {
             }
         });
         initChat(); initLogs(); initNotice();
+
+        // ── Idle Timeout：30分鐘無操作自動斷線釋放連線 ──
+        let idleTimer = null;
+        const IDLE_LIMIT_MS = 6 * 60 * 60 * 1000; // 6小時無操作斷線
+
+        function resetIdleTimer() {
+            clearTimeout(idleTimer);
+            idleTimer = setTimeout(() => {
+                firebase.database().goOffline();
+                document.body.innerHTML = `
+                    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+                        height:100vh;background:#000;color:#555;font-family:sans-serif;gap:16px;">
+                        <div style="font-size:32px;">⏱</div>
+                        <div style="font-size:16px;color:#888;">閒置逾時，連線已中斷</div>
+                        <div style="font-size:12px;color:#444;">為節省連線資源，超過 6 小時無操作將自動斷線</div>
+                        <button onclick="location.reload()" style="margin-top:8px;background:#0f0;color:#000;
+                            border:none;padding:10px 30px;border-radius:8px;font-size:14px;
+                            font-weight:bold;cursor:pointer;">重新連線</button>
+                    </div>`;
+            }, IDLE_LIMIT_MS);
+        }
+
+        ['mousemove','mousedown','keydown','click','touchstart','scroll'].forEach(ev =>
+            window.addEventListener(ev, resetIdleTimer, { passive: true }));
+        resetIdleTimer();
     });
 }
 
@@ -1668,9 +1693,9 @@ function clearAllBosses() { if (!hasAuth()) return; if(confirm(t('confirmClear')
 function copyRoomID()     { navigator.clipboard.writeText(currentRoom); alert(t('roomCopied')); }
 function joinRoom()        { const i=document.getElementById('roomInput').value.trim().toUpperCase(); if(i) startSession(i); }
 function createRoom()      { startSession(Math.random().toString(36).substring(2,8).toUpperCase()); }
-function setSort(t) {
-    currentSort = t;
-    document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id===`sort${t.charAt(0).toUpperCase()+t.slice(1)}Btn`));
+function setSort(sortType) {
+    currentSort = sortType;
+    document.querySelectorAll('.btn-toggle').forEach(b => b.classList.toggle('active', b.id===`sort${sortType.charAt(0).toUpperCase()+sortType.slice(1)}Btn`));
     renderList();
 }
 function initChat() {
