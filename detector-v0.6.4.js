@@ -805,7 +805,8 @@
       active: null,
       backlog: [],
       timer: null,
-      lastAction: ''
+      lastAction: '',
+      editing: false
     },
     batchReview: {
       open: false,
@@ -1625,6 +1626,10 @@
     state.quickReview.timer = setTimeout(async () => {
       const active = state.quickReview.active;
       if (!active) return;
+      if (state.quickReview.editing) {
+        scheduleQuickReviewTimeout();
+        return;
+      }
       if (!state.autoTimer) {
         scheduleQuickReviewTimeout();
         return;
@@ -1651,20 +1656,23 @@
       return;
     }
     const p = predictedValuesFromEvent(active.event);
-    const age = Math.max(0, Math.floor((Date.now() - active.displayed_at) / 1000));
+    const ageMs = Math.max(0, Date.now() - active.displayed_at);
+    const age = Math.floor(ageMs / 1000);
+    const left = Math.max(0, Math.ceil((QUICK_REVIEW_TIMEOUT_MS - ageMs) / 1000));
+    const frameTail = String(active.event.frame_id || '').slice(-6) || '------';
     el.innerHTML = `
-      <div class="small" style="display:flex;justify-content:space-between;gap:6px">
-        <span>Review ${active.event.frame_id}</span>
-        <span>${age}s / ${Math.round(QUICK_REVIEW_TIMEOUT_MS / 1000)}s | q=${state.quickReview.backlog.length}</span>
+      <div class="quick-review-head small">
+        <span>Review #${frameTail}</span>
+        <span>${left}s | q=${state.quickReview.backlog.length}</span>
       </div>
-      <div class="small" style="margin-top:3px;font-family:monospace">stage=${p.stage || '?'} map=${p.map || '?'} ch=${p.ch || '?'}</div>
-      <div class="correction-row" style="margin-top:4px">
-        <button class="dbtn" id="dQrConfirm" style="padding:2px 6px;font-size:10px">Confirm</button>
-        <button class="dbtn gray" id="dQrFix" style="padding:2px 6px;font-size:10px">Fix</button>
-        <button class="dbtn gray" id="dQrLater" style="padding:2px 6px;font-size:10px">Later</button>
-        <button class="dbtn red" id="dQrSkip" style="padding:2px 6px;font-size:10px">Skip</button>
+      <div class="small quick-review-pred">stage=${p.stage || '?'} map=${p.map || '?'} ch=${p.ch || '?'}</div>
+      <div class="quick-review-actions">
+        <button class="dbtn" id="dQrConfirm" title="確認" aria-label="確認">✓</button>
+        <button class="dbtn gray" id="dQrFix" title="修改" aria-label="修改">✎</button>
+        <button class="dbtn gray" id="dQrLater" title="稍後" aria-label="稍後">⏸</button>
+        <button class="dbtn red" id="dQrSkip" title="略過" aria-label="略過">✗</button>
       </div>
-      <div id="dQrFixBox" style="display:none;margin-top:4px">
+      <div id="dQrFixBox" class="quick-review-fix" style="display:none">
         <div class="correction-row">
           <input id="dQrStage" value="${p.stage || ''}" placeholder="stage" style="width:52px">
           <input id="dQrMap" value="${p.map || ''}" placeholder="map" style="width:52px">
@@ -1683,8 +1691,10 @@
     if (later) later.onclick = () => submitQuickReview('pending_review', null, 'quick_review');
     if (skip) skip.onclick = () => submitQuickReview('skipped', null, 'quick_review');
     if (fix) fix.onclick = () => {
+      state.quickReview.editing = true;
+      if (state.panelMode === 'compact') switchPanelMode('full');
       const box = document.getElementById('dQrFixBox');
-      if (box) box.style.display = box.style.display === 'none' ? 'block' : 'none';
+      if (box) box.style.display = 'block';
     };
     if (saveFix) saveFix.onclick = () => submitQuickReview('corrected', {
       stage: document.getElementById('dQrStage')?.value.trim() || '',
@@ -1705,6 +1715,7 @@
 
   function promoteNextQuickReview() {
     clearQuickReviewTimer();
+    state.quickReview.editing = false;
     const next = state.quickReview.backlog.shift();
     if (!next) {
       state.quickReview.active = null;
@@ -1741,6 +1752,7 @@
   async function submitQuickReview(status, correctedValues, source = 'quick_review') {
     const active = state.quickReview.active;
     if (!active) return [];
+    state.quickReview.editing = false;
     clearQuickReviewTimer();
     const event = active.event;
     const predicted = predictedValuesFromEvent(event);
@@ -3936,15 +3948,19 @@
       #dCalibModal .calib-actions {
         display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;
       }
-    #dQuickReview {
-      min-height: 92px;
-      margin-bottom: 6px;
+    #dQuickReview.quick-review-top {
+      flex-shrink: 0;
+      min-height: 78px;
       padding: 6px;
-      border: 1px solid #333;
-      border-radius: 4px;
-      background: rgba(0,0,0,0.22);
+      border-bottom: 1px solid #333;
+      background: var(--bg-card, #111);
       box-sizing: border-box;
     }
+    #dQuickReview .quick-review-head { display:flex; justify-content:space-between; gap:6px; }
+    #dQuickReview .quick-review-pred { margin-top:3px; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #dQuickReview .quick-review-actions { display:flex; justify-content:center; gap:4px; margin-top:4px; }
+    #dQuickReview .quick-review-actions .dbtn { width:54px; padding:3px 0; margin:0; font-size:12px; line-height:1.2; }
+    #dQuickReview .quick-review-fix { margin-top:4px; }
     .batch-review-modal {
       position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
       background: rgba(0,0,0,0.72); z-index: 10002;
@@ -3978,6 +3994,7 @@
           <button class="panel-ctrl-btn" onclick="window.__detector.close()">✕</button>
         </div>
       </div>
+      <div id="dQuickReview" class="quick-review-top"><div class="small" style="color:#888">Waiting for new detection...</div></div>
       <div class="panel-body">
         <div class="compact-only">
           <div class="sec">
@@ -4174,7 +4191,7 @@
 
           <div class="sec" id="dDataCollectionSec">
             <div style="margin-bottom:6px"><b>Shadow Data</b> <span class="small">metadata only / no Firebase submit</span></div>
-            <div id="dQuickReview"><div class="small" style="color:#888">Waiting for new detection...</div></div>
+
             <div class="correction-row">
               <input type="text" id="dCollectorId" placeholder="collector_id" style="flex:1">
               <button class="dbtn gray" id="dSaveCollectorId" style="padding:3px 8px;font-size:10px">Save</button>
