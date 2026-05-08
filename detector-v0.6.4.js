@@ -1680,7 +1680,7 @@
           <button class="dbtn" id="dQrSaveFix" style="padding:2px 6px;font-size:10px">Save</button>
         </div>
       </div>
-      <div class="small" style="margin-top:3px;color:#888">${state.quickReview.lastAction || ''}</div>
+
     `;
     const confirm = document.getElementById('dQrConfirm');
     const fix = document.getElementById('dQrFix');
@@ -3950,14 +3950,17 @@
       }
     #dQuickReview.quick-review-top {
       flex-shrink: 0;
+      width: 100%;
+      max-width: 100%;
       min-height: 78px;
       padding: 6px;
       border-bottom: 1px solid #333;
       background: var(--bg-card, #111);
       box-sizing: border-box;
+      overflow: hidden;
     }
     #dQuickReview .quick-review-head { display:flex; justify-content:space-between; gap:6px; }
-    #dQuickReview .quick-review-pred { margin-top:3px; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #dQuickReview .quick-review-pred { display:block; width:100%; max-width:100%; box-sizing:border-box; margin-top:3px; font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     #dQuickReview .quick-review-actions { display:flex; justify-content:center; gap:4px; margin-top:4px; }
     #dQuickReview .quick-review-actions .dbtn { width:54px; padding:3px 0; margin:0; font-size:12px; line-height:1.2; }
     #dQuickReview .quick-review-fix { margin-top:4px; }
@@ -3986,7 +3989,7 @@
     panel.className = 'compact';
     panel.innerHTML = `
       <div class="panel-header" id="dPanelHeader">
-        <h3>📷 偵測器 <span class="small">v0.9.1</span></h3>
+        <h3>📷 偵測器 <span class="small">v0.9.1-day4-b1</span></h3>
         <div>
           <button class="panel-ctrl-btn" id="dTrainToggle" title="訓練模式:只存模板不送 Firebase">🎯</button>
           <button class="panel-ctrl-btn" id="dMuteToggle" title="靜音切換">🔔</button>
@@ -5707,10 +5710,15 @@
               <option value="-3" ${val==='-3'||val==-3?'selected':''}>R3</option>
               <option value="-4" ${val==='-4'||val==-4?'selected':''}>R4</option>
             </select>
-            <button class="dbtn" onclick="window.__detector.confirmEdit()">✅</button>
+            <button class="dbtn" onclick="window.__detector.confirmEdit()">✅</button><button class="dbtn red" onclick="window.__detector.cancelEdit('${map}','${ch}','${val}','${phase}')">✗</button>
           </div>
         </div>
       `;
+    },
+
+    cancelEdit: (map, ch, val, phase) => {
+      const v = (val === 'on' || val === 'waiting') ? val : parseInt(val);
+      showConfirmPrompt(map, ch, v, phase);
     },
 
     confirmEdit: () => {
@@ -5975,7 +5983,7 @@
   loadTesseract(() => {
     waitForApp(() => {
       injectUI();
-      console.log(DEBUG_PREFIX, 'v0.9.1 已就緒(文字主體中心化)');
+      console.log(DEBUG_PREFIX, 'v0.9.1-day4-b1 已就緒(文字主體中心化)');
     });
   });
 
