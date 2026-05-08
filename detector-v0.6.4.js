@@ -799,6 +799,9 @@
     shadowDBStatus: 'idle',
     shadowDBError: '',
     shadowDBStats: null,
+    shadowDailyUsageBytes: {},
+    lastShadowStatsCachedAt: 0,
+    lastShadowStatsResult: null,
     shadowDBSpikeLayer: null,
     shadowMigration: { attempted: false, migrated: 0, failed: 0, error: '' },
     quickReview: {
@@ -1184,6 +1187,7 @@
     const tx = db.transaction(SHADOW_STORE_CROPS, 'readwrite');
     tx.objectStore(SHADOW_STORE_CROPS).put(crop);
     await idbTxDone(tx);
+    updateShadowDailyUsageCache(crop, 1);
     return crop;
   }
 
@@ -1288,11 +1292,29 @@
     return score;
   }
 
+  function cropDateKey(crop) {
+    return crop?.date || String(crop?.created_at || '').slice(0, 10);
+  }
+
+  function updateShadowDailyUsageCache(crop, direction) {
+    const date = cropDateKey(crop);
+    if (!date) return;
+    const bytes = Number(crop?.byte_size || crop?.blob?.size || 0);
+    const next = Number(state.shadowDailyUsageBytes[date] || 0) + direction * bytes;
+    if (next < 0) delete state.shadowDailyUsageBytes[date];
+    else state.shadowDailyUsageBytes[date] = next;
+  }
+
   async function getDailyCropUsageBytes(date) {
+    if (Object.prototype.hasOwnProperty.call(state.shadowDailyUsageBytes, date)) {
+      return state.shadowDailyUsageBytes[date];
+    }
     const crops = await getAllFromStore(SHADOW_STORE_CROPS);
-    return crops
-      .filter(c => (c.date || String(c.created_at || '').slice(0, 10)) === date)
-      .reduce((sum, c) => sum + Number(c.byte_size || 0), 0);
+    const total = crops
+      .filter(c => cropDateKey(c) === date)
+      .reduce((sum, c) => sum + Number(c.byte_size || c.blob?.size || 0), 0);
+    state.shadowDailyUsageBytes[date] = total;
+    return total;
   }
 
   async function pruneCropsForSpace(date, bytesNeeded) {
@@ -1306,6 +1328,7 @@
     let freed = 0;
     for (const item of candidates) {
       await deleteFromStore(SHADOW_STORE_CROPS, item.crop.crop_id);
+      updateShadowDailyUsageCache(item.crop, -1);
       freed += Number(item.crop.byte_size || 0);
       if (freed >= bytesNeeded) break;
     }
@@ -1486,6 +1509,10 @@
   }
 
   async function getShadowDBStats() {
+    const now = Date.now();
+    if (state.lastShadowStatsResult && now - state.lastShadowStatsCachedAt < 30000) {
+      return state.lastShadowStatsResult;
+    }
     const db = await ensureShadowDB();
     const tx = db.transaction([SHADOW_STORE_EVENTS, SHADOW_STORE_CROPS, SHADOW_STORE_LABELS, SHADOW_STORE_CANDIDATES], 'readonly');
     const events = await idbRequest(tx.objectStore(SHADOW_STORE_EVENTS).count());
@@ -1494,6 +1521,8 @@
     const candidates = await idbRequest(tx.objectStore(SHADOW_STORE_CANDIDATES).count());
     await idbTxDone(tx);
     state.shadowDBStats = { events, crops, labels, candidates };
+    state.lastShadowStatsResult = state.shadowDBStats;
+    state.lastShadowStatsCachedAt = now;
     return state.shadowDBStats;
   }
 
@@ -3989,7 +4018,7 @@
     panel.className = 'compact';
     panel.innerHTML = `
       <div class="panel-header" id="dPanelHeader">
-        <h3>📷 偵測器 <span class="small">v0.9.1-day4-b1</span></h3>
+        <h3>📷 偵測器 <span class="small">v0.9.1-day5-b8</span></h3>
         <div>
           <button class="panel-ctrl-btn" id="dTrainToggle" title="訓練模式:只存模板不送 Firebase">🎯</button>
           <button class="panel-ctrl-btn" id="dMuteToggle" title="靜音切換">🔔</button>
@@ -5983,7 +6012,7 @@
   loadTesseract(() => {
     waitForApp(() => {
       injectUI();
-      console.log(DEBUG_PREFIX, 'v0.9.1-day4-b1 已就緒(文字主體中心化)');
+      console.log(DEBUG_PREFIX, 'v0.9.1-day5-b8 已就緒(文字主體中心化)');
     });
   });
 
