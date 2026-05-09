@@ -3517,12 +3517,14 @@
       body.light #detectorPanel .panel-header { background: #f5f5f2; border-bottom-color: #ddd; }
       #detectorPanel .panel-header:active { cursor: grabbing; }
       #detectorPanel .panel-body { overflow-y: auto; padding: 10px; }
-      #detectorPanel h3 { color: #0f0; margin: 0; font-size: 14px; }
+      #detectorPanel h3 { color: #0f0; margin: 0; font-size: 14px; white-space: nowrap; }
+      #detectorPanel h3 .version-tag { display: inline-block; font-size: 9px; white-space: nowrap; vertical-align: baseline; }
       body.light #detectorPanel h3 { color: #1a7a1a; }
+      #detectorPanel .panel-header > div { display: flex; flex-shrink: 0; gap: 3px; }
       #detectorPanel .panel-ctrl-btn {
         background: none; border: 1px solid #444; color: #888;
-        padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 11px;
-        margin-left: 4px;
+        padding: 2px 5px; border-radius: 4px; cursor: pointer; font-size: 11px;
+        margin-left: 0;
       }
       #detectorPanel .panel-ctrl-btn:hover { color: #ddd; border-color: #666; }
       #detectorPanel .panel-ctrl-btn.muted { color: #f33; border-color: #622; }
@@ -4018,7 +4020,7 @@
     panel.className = 'compact';
     panel.innerHTML = `
       <div class="panel-header" id="dPanelHeader">
-        <h3>📷 偵測器 <span class="small">v0.9.1-day5-b8</span></h3>
+        <h3>📷 偵測器 <span class="small version-tag">v0.9.1-day5-bx</span></h3>
         <div>
           <button class="panel-ctrl-btn" id="dTrainToggle" title="訓練模式:只存模板不送 Firebase">🎯</button>
           <button class="panel-ctrl-btn" id="dMuteToggle" title="靜音切換">🔔</button>
@@ -6012,7 +6014,7 @@
   loadTesseract(() => {
     waitForApp(() => {
       injectUI();
-      console.log(DEBUG_PREFIX, 'v0.9.1-day5-b8 已就緒(文字主體中心化)');
+      console.log(DEBUG_PREFIX, 'v0.9.1-day5-bx 已就緒(文字主體中心化)');
     });
   });
 
