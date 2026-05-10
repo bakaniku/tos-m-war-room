@@ -1968,7 +1968,7 @@
     if (!modal || !body) return;
     state.batchReview.open = true;
     state.batchReview.index = 0;
-    body.innerHTML = '<div style="padding:20px;text-align:center">Loading review queue...</div>';
+    body.innerHTML = '<div style="padding:20px;text-align:center">載入標註佇列中...</div>';
     modal.classList.add('show');
     state.batchReview.items = await getBatchReviewItems();
     state.batchReview.similarGroups = await computeSimilarGroups(state.batchReview.items);
@@ -2001,7 +2001,7 @@
     const items = state.batchReview.items || [];
     const event = items[state.batchReview.index];
     if (!event) {
-      body.innerHTML = `<div style="padding:20px;text-align:center;color:#888">No reviewable events<br><span class="small">legacy skipped: ${state.batchReview.legacySkipped || 0}</span></div>`;
+      body.innerHTML = `<div style="padding:20px;text-align:center;color:#888">沒有可標註項目<br><span class="small">legacy skipped: ${state.batchReview.legacySkipped || 0}</span></div>`;
       return;
     }
     const p = predictedValuesFromEvent(event);
@@ -2018,26 +2018,26 @@
         <span>similar group: ${similar}</span>
       </div>
       <div class="batch-crops">
-        <div class="batch-crop-card"><b>stage</b>${blobToImageElement(cropByKind.stage_badge)}</div>
-        <div class="batch-crop-card"><b>map</b>${blobToImageElement(cropByKind.map)}</div>
-        <div class="batch-crop-card"><b>ch</b>${blobToImageElement(cropByKind.ch)}</div>
+        <div class="batch-crop-card"><b>階段</b>${blobToImageElement(cropByKind.stage_badge)}</div>
+        <div class="batch-crop-card"><b>地圖</b>${blobToImageElement(cropByKind.map)}</div>
+        <div class="batch-crop-card"><b>分流</b>${blobToImageElement(cropByKind.ch)}</div>
       </div>
       <div class="batch-fields">
-        <label>stage <input id="dBatchStage" value="${p.stage || ''}"></label>
-        <label>map <input id="dBatchMap" value="${p.map || ''}"></label>
-        <label>ch <input id="dBatchCh" value="${p.ch || ''}"></label>
+        <label>階段 <input id="dBatchStage" value="${p.stage || ''}"></label>
+        <label>地圖 <input id="dBatchMap" value="${p.map || ''}"></label>
+        <label>分流 <input id="dBatchCh" value="${p.ch || ''}"></label>
       </div>
       <div class="batch-actions">
-        <button class="dbtn" id="dBatchConfirm">Confirm</button>
-        <button class="dbtn gray" id="dBatchCorrect">Correct</button>
-        <button class="dbtn red" id="dBatchSkip">Skip</button>
-        <button class="dbtn blue" id="dBatchAddTpl">Add Template</button>
-        <button class="dbtn blue" id="dBatchConfirmTpl">Confirm + Add Template</button>
+        <button class="dbtn" id="dBatchConfirm">確認</button>
+        <button class="dbtn gray" id="dBatchCorrect">修正</button>
+        <button class="dbtn red" id="dBatchSkip">跳過</button>
+        <button class="dbtn blue" id="dBatchAddTpl">加入模板</button>
+        <button class="dbtn blue" id="dBatchConfirmTpl">確認&加入</button>
       </div>
       <div class="batch-actions">
-        <button class="dbtn gray" id="dBatchPrev">Prev</button>
-        <button class="dbtn gray" id="dBatchNext">Next</button>
-        <span class="small">Shortcuts: C confirm / X skip / T add template / Left Right navigate</span>
+        <button class="dbtn gray" id="dBatchPrev">上一筆</button>
+        <button class="dbtn gray" id="dBatchNext">下一筆</button>
+        <span class="small">快捷鍵:C 確認 / X 跳過 / T 加入模板 / 左右鍵切換</span>
       </div>
     `;
     document.getElementById('dBatchConfirm').onclick = () => submitBatchReview('confirmed', false);
@@ -4020,7 +4020,7 @@
     panel.className = 'compact';
     panel.innerHTML = `
       <div class="panel-header" id="dPanelHeader">
-        <h3>📷 偵測器 <span class="small version-tag">v0.9.1-day5-bx</span></h3>
+        <h3>📷 偵測器 <span class="small version-tag">v0.9.1-day5-b7a</span></h3>
         <div>
           <button class="panel-ctrl-btn" id="dTrainToggle" title="訓練模式:只存模板不送 Firebase">🎯</button>
           <button class="panel-ctrl-btn" id="dMuteToggle" title="靜音切換">🔔</button>
@@ -4233,7 +4233,7 @@
             <div class="correction-row" style="margin-top:4px">
               <button class="dbtn gray" id="dTestShadowDB" style="padding:3px 8px;font-size:10px">Test DB</button>
               <button class="dbtn gray" id="dExportShadowData" style="padding:3px 8px;font-size:10px">Export</button>
-              <button class="dbtn gray" id="dBatchReview" style="padding:3px 8px;font-size:10px">Batch Review</button>
+              <button class="dbtn gray" id="dBatchReview" style="padding:3px 8px;font-size:10px">批次標註</button>
             </div>
             <div class="small" id="dDataCollectionStatus" style="margin-top:4px;font-family:monospace">config=loading</div>
           </div>
@@ -4291,8 +4291,8 @@
     batchModal.innerHTML = `
       <div class="batch-review-box">
         <div class="batch-review-header">
-          <b>Batch Review</b>
-          <button class="dbtn gray" onclick="window.__detector.closeBatchReview()">Close</button>
+          <b>批次標註</b>
+          <button class="dbtn gray" onclick="window.__detector.closeBatchReview()">關閉</button>
         </div>
         <div id="dBatchReviewBody"></div>
       </div>
@@ -4995,7 +4995,7 @@
         try { await openBatchReview(); }
         catch (e) {
           console.error(DEBUG_PREFIX, 'Batch review failed', e);
-          log(`Batch review failed: ${String(e?.message || e).slice(0, 80)}`, '#f33');
+          log(`批次標註失敗: ${String(e?.message || e).slice(0, 80)}`, '#f33');
         }
       };
     }
@@ -6014,7 +6014,7 @@
   loadTesseract(() => {
     waitForApp(() => {
       injectUI();
-      console.log(DEBUG_PREFIX, 'v0.9.1-day5-bx 已就緒(文字主體中心化)');
+      console.log(DEBUG_PREFIX, 'v0.9.1-day5-b7a 已就緒(文字主體中心化)');
     });
   });
 
