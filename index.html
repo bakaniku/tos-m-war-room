@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.5.9</title>
+    <title>TOS M FB TIME v1.5.6</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -250,7 +250,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.5.9</div>
+        <div class="ver-info">v1.5.6</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="" maxlength="10"
                 oninput="this.value=this.value.replace('#','')"
@@ -287,11 +287,12 @@
                 </div>
             </div>
             <div class="room-info">
-                <span class="version-tag">v1.5.9</span>
+                <span class="version-tag">v1.5.6</span>
                 <button id="langBtn" onclick="toggleLang()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">日本語</button>
                 <button onclick="toggleHelpPanel()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 8px; border-radius:12px; cursor:pointer;">？</button>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
                 <button class="btn-danger" id="clearAllBtn" onclick="clearAllBosses()" style="display:none;">一鍵清除</button>
+                <button id="allRank1Btn" onclick="allRank1()" style="display:none; background:none; border:1px solid #555; color:#ffcc00; font-size:11px; padding:3px 8px; border-radius:6px; cursor:pointer;">All R1</button>
                 <button id="unbanAllBtn" onclick="toggleBanPanel()" style="display:none; background:none; border:1px solid #844; color:#a66; font-size:11px; padding:3px 8px; border-radius:6px; cursor:pointer;">🚫 黑名單</button>
                 <button id="exitBtn" style="background:none;color:#444;" onclick="location.reload()">退出</button>
             </div>
@@ -642,7 +643,7 @@ db.ref('protected_rooms').on('value', s => {
         }
     });
 });
-const currentVersion = "1.5.9";
+const currentVersion = "1.5.6";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
 let globalNextLocked = false;
@@ -1031,6 +1032,8 @@ function renderList() {
     if (clearBtn) clearBtn.style.display = auth ? 'block' : 'none';
     const unbanBtn = document.getElementById('unbanAllBtn');
     if (unbanBtn) unbanBtn.style.display = hasBanAuth() ? 'inline-block' : 'none';
+    const allR1Btn = document.getElementById('allRank1Btn');
+    if (allR1Btn) allR1Btn.style.display = (isProtectedRoom() ? auth : true) ? 'inline-block' : 'none';
 
     const drawBox = (items, label, collapsible = false) => {
         if (!items.length) return;
@@ -1615,7 +1618,7 @@ function startSession(id) {
 
         // ── Idle Timeout：30分鐘無操作自動斷線釋放連線 ──
         let idleTimer = null;
-        const IDLE_LIMIT_MS = 24 * 60 * 60 * 1000; // 24小時無操作斷線
+        const IDLE_LIMIT_MS = 7 * 24 * 60 * 60 * 1000; // 1週無操作斷線
 
         function resetIdleTimer() {
             clearTimeout(idleTimer);
@@ -1626,7 +1629,7 @@ function startSession(id) {
                         height:100vh;background:#000;color:#555;font-family:sans-serif;gap:16px;">
                         <div style="font-size:32px;">⏱</div>
                         <div style="font-size:16px;color:#888;">閒置逾時，連線已中斷</div>
-                        <div style="font-size:12px;color:#444;">為節省連線資源，超過 24 小時無操作將自動斷線</div>
+                        <div style="font-size:12px;color:#444;">為節省連線資源，超過 1 週無操作將自動斷線</div>
                         <button onclick="location.reload()" style="margin-top:8px;background:#0f0;color:#000;
                             border:none;padding:10px 30px;border-radius:8px;font-size:14px;
                             font-weight:bold;cursor:pointer;">重新連線</button>
@@ -1689,6 +1692,17 @@ function addBoss() {
     if (p.length < 3) return;
     saveBoss(p[0], p[1], p.slice(2).join(' ')); i.value = '';
 }
+function allRank1() {
+    if (isProtectedRoom() && !hasAuth()) return;
+    if (!confirm('確定將所有卡片設為階段1？')) return;
+    const data = window.currentData || {};
+    Object.entries(data).forEach(([id, b]) => {
+        const uv = (b.lastInput || '').toString().toUpperCase();
+        if (uv.startsWith('DE') || uv.startsWith('XX') || b.targetTime > 0) return;
+        saveBoss(b.map, b.ch, 'R1');
+    });
+}
+
 function clearAllBosses() { if (!hasAuth()) return; if(confirm(t('confirmClear'))) db.ref(`rooms/${currentRoom}/bosses`).remove(); }
 function copyRoomID()     { navigator.clipboard.writeText(currentRoom); alert(t('roomCopied')); }
 function joinRoom()        { const i=document.getElementById('roomInput').value.trim().toUpperCase(); if(i) startSession(i); }
