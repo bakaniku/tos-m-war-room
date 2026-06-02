@@ -1694,11 +1694,11 @@ function addBoss() {
 }
 function allRank1() {
     if (isProtectedRoom() && !hasAuth()) return;
-    if (!confirm('確定將所有卡片設為階段1？')) return;
+    if (!confirm('確定將所有「1分流」卡片設為階段1？')) return;
     const data = window.currentData || {};
     Object.entries(data).forEach(([id, b]) => {
-        const uv = (b.lastInput || '').toString().toUpperCase();
-        if (uv.startsWith('DE') || uv.startsWith('XX') || b.targetTime > 0) return;
+        // 只改 1 分流
+        if (b.ch.toString() !== '1') return;
         saveBoss(b.map, b.ch, 'R1');
     });
 }
