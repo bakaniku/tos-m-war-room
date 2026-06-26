@@ -1726,5 +1726,108 @@ function initChat() {
     });
 }
 </script>
+<style id="detectorDrawerStyles">
+    #detectorDrawerToggle {
+        position: fixed;
+        right: 20px;
+        bottom: 20px;
+        z-index: 7000;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        min-height: 40px;
+        padding: 10px 16px;
+        border-radius: 999px;
+        border: 1px solid rgba(0, 255, 0, 0.45);
+        background: #101510;
+        color: #0f0;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.38);
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1;
+    }
+    #detectorDrawerToggle:hover {
+        border-color: #0f0;
+        background: #142014;
+    }
+    #detectorDrawerPanel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        z-index: 7000;
+        width: min(440px, 92vw);
+        height: 100vh;
+        background: #0a0a0a;
+        box-shadow: -18px 0 36px rgba(0, 0, 0, 0.58);
+        transform: translateX(100%);
+        transition: transform .25s ease;
+    }
+    #detectorDrawerPanel.open {
+        transform: translateX(0);
+    }
+    .detectorDrawerHeader {
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-sizing: border-box;
+        padding: 0 10px 0 14px;
+        border-bottom: 1px solid #1f1f1f;
+        color: #0f0;
+        font-size: 13px;
+        font-weight: 700;
+    }
+    #detectorDrawerClose {
+        width: 30px;
+        height: 30px;
+        padding: 0;
+        border-radius: 8px;
+        border: 1px solid #333;
+        background: #111;
+        color: #aaa;
+        font-size: 18px;
+        line-height: 1;
+    }
+    #detectorDrawerClose:hover {
+        color: #fff;
+        border-color: #0f0;
+    }
+</style>
+<button id="detectorDrawerToggle" type="button">🎯 偵測</button>
+<aside id="detectorDrawerPanel" aria-label="TOS M 偵測抽屜" aria-hidden="true">
+    <div class="detectorDrawerHeader">
+        <span>偵測</span>
+        <button id="detectorDrawerClose" type="button" aria-label="關閉偵測抽屜">×</button>
+    </div>
+    <iframe id="detectorDrawerFrame" src="https://tosm.bakaniku.com/" allow="display-capture; autoplay" style="width:100%;height:calc(100vh - 40px);border:none;"></iframe>
+</aside>
+<script id="detectorDrawerScript">
+const DETECTOR_URL = "https://tosm.bakaniku.com/";
+
+(function () {
+    const toggle = document.getElementById('detectorDrawerToggle');
+    const panel = document.getElementById('detectorDrawerPanel');
+    const close = document.getElementById('detectorDrawerClose');
+    const frame = document.getElementById('detectorDrawerFrame');
+
+    if (!toggle || !panel || !close || !frame) return;
+
+    frame.src = DETECTOR_URL;
+
+    function setDetectorDrawerOpen(open) {
+        panel.classList.toggle('open', open);
+        panel.setAttribute('aria-hidden', open ? 'false' : 'true');
+    }
+
+    toggle.addEventListener('click', function () {
+        setDetectorDrawerOpen(!panel.classList.contains('open'));
+    });
+
+    close.addEventListener('click', function () {
+        setDetectorDrawerOpen(false);
+    });
+})();
+</script>
 </body>
 </html>
