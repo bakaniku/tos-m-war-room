@@ -199,8 +199,16 @@
         if (!cardsEl) return;
         cardsEl.innerHTML = cardHtml(base[0], false, now) + cardHtml(base[1], false, now)
             + cardHtml(third, true, now);
-        if (pipWin) { panel.style.zoom = scale; panel.style.transform = ''; }
-        else { panel.style.zoom = ''; panel.style.transform = 'scale(' + scale + ')'; }
+        if (pipWin) {
+            panel.style.zoom = scale;
+            panel.style.transform = '';
+            // zoom 縮放整個盒模型, 寬度除回 zoom 才貼得滿視窗 (否則右側留白且越縮越寬)
+            panel.style.width = Math.max(180, Math.round(pipWin.innerWidth / scale - 12)) + 'px';
+        } else {
+            panel.style.zoom = '';
+            panel.style.transform = 'scale(' + scale + ')';
+            panel.style.width = '';
+        }
     }
 
     function onPanelClick(e) {
@@ -217,8 +225,8 @@
         if (t.dataset && t.dataset.on) doAct(t.dataset.on, b => window.saveBoss && saveBoss(String(b.map), String(b.ch), 'ON'));
         if (t.id === 'mtSend') submitDraft();
         if (t.id === 'mtClose') { visible = false; panel.classList.remove('open'); saveCfg(); }
-        if (t.id === 'mtShrink' || t.id === 'mtShrink2') { scale = Math.max(0.6, scale - 0.1); saveCfg(); render(); }
-        if (t.id === 'mtGrow' || t.id === 'mtGrow2') { scale = Math.min(1.4, scale + 0.1); saveCfg(); render(); }
+        if (t.id === 'mtShrink' || t.id === 'mtShrink2') { scale = Math.max(0.6, scale - 0.05); saveCfg(); render(); }
+        if (t.id === 'mtGrow' || t.id === 'mtGrow2') { scale = Math.min(1.4, scale + 0.05); saveCfg(); render(); }
         if (t.id === 'mtPip') openPip();
     }
 
