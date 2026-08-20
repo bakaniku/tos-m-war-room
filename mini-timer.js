@@ -117,7 +117,9 @@
                 .slice(0, 2).map(([id, b]) => ({ id, b }));
         } catch (e) { base = []; }
         const used = new Set(base.map(r => r.id));
-        const rows = entries.map(([id, b]) => ({ id, b }));
+        const rows = entries.map(([id, b]) => ({ id, b })).filter(r => {
+            try { return !getBossStatus(r.b, r.id).isGrey; } catch (e) { return true; }
+        });
         const cds = rows.filter(r => r.b.targetTime > now)
             .sort((a, b) => a.b.targetTime - b.b.targetTime);
         const over = rows.filter(r => r.b.targetTime > 0 && r.b.targetTime <= now
@@ -155,8 +157,18 @@
         }
         const cjk = (valTxt.match(/[㐀-鿿]/g) || []).length;
         const fit = [24, 22, 20, 18, 16, 14, 13].find(sz => sz * (cjk * 0.98 + (valTxt.length - cjk) * 0.6) <= 86) || 13;
-        const clock = b.targetTime > 0 ? new Date(b.targetTime).toTimeString().slice(0, 5) : '';
-        const sub = [clock, b.updater || ''].filter(Boolean).join(' · ');
+        let sub;
+        if (b.targetTime > 0) {
+            const clock = new Date(b.targetTime).toTimeString().slice(0, 5);
+            sub = [clock, b.updater || ''].filter(Boolean).join(' · ');
+        } else {
+            // 階段卡: 開始時刻 ＋經過時間 (設計稿樣式), 加最後編輯者
+            const st = b.startTime || 0;
+            const clock = st ? new Date(st).toTimeString().slice(0, 5) : '';
+            const el = st ? fmt(now - st) : '';
+            sub = [clock && el ? clock + ' ＋' + el : clock || el, b.updater || '']
+                .filter(Boolean).join(' · ');
+        }
         const lockLeft = Math.max(0, (locks[r.id] || 0) - now);
         let act;
         if (isThird) {
