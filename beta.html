@@ -1902,6 +1902,8 @@ function initChat() {
             const d = latest[id] || {};
             if (!d.respawn || !d.map_level || !d.ch) continue;
             if (!d.updated_at || now - d.updated_at > STALE_MS) continue;
+            // 倒數讀取本身要夠新: 面板關閉後殘留的舊讀值不能拿來填 (它已經不準了)
+            if (!d.respawn_seen_at || now - Date.parse(d.respawn_seen_at) > 600000) continue;
             const rmark = `rsp|${d.map_level}|${d.ch}|${d.respawn_seen_at}`;
             if (appliedMark['r_' + id] === rmark) continue;
             appliedMark['r_' + id] = rmark;
