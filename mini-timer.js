@@ -27,6 +27,10 @@
 #miniTimerPanel.inpip{position:static;transform-origin:top left;margin:6px;
  width:calc(100vw - 12px);transform:none !important;}
 #miniTimerPanel.inpip #mtBar{display:none;}
+.mtScaleBtn{box-sizing:border-box;display:none;align-items:center;justify-content:center;
+ height:26px;width:26px;flex:none;border-radius:3px;background:rgba(0,0,0,.8);
+ border:1px solid rgba(74,222,128,.34);color:#b7ecc9;font-size:13px;font-weight:700;cursor:pointer;}
+#miniTimerPanel.inpip .mtScaleBtn{display:flex;}
 .mtCol{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
 .mtCard{box-sizing:border-box;display:flex;flex-direction:column;gap:2px;padding:4px 5px;
  background:rgba(8,10,8,.9);border:1px solid rgba(74,222,128,.32);border-radius:4px;
@@ -69,6 +73,8 @@
 <span id="mtClose" title="收起">×</span></div>
 <div class="mtRow" id="mtCards"></div>
 <div class="mtRow"><input id="mtInput" placeholder="80 3 R1.5">
+<div id="mtShrink2" class="mtScaleBtn" title="縮小">−</div>
+<div id="mtGrow2" class="mtScaleBtn" title="放大">＋</div>
 <div id="mtSend">送出</div></div>`;
     document.body.appendChild(panel);
 
@@ -162,12 +168,9 @@
             const clock = new Date(b.targetTime).toTimeString().slice(0, 5);
             sub = [clock, b.updater || ''].filter(Boolean).join(' · ');
         } else {
-            // 階段卡: 開始時刻 ＋經過時間 (設計稿樣式), 加最後編輯者
+            // 階段卡: 只留超時時間, 格式同主頁
             const st = b.startTime || 0;
-            const clock = st ? new Date(st).toTimeString().slice(0, 5) : '';
-            const el = st ? fmt(now - st) : '';
-            sub = [clock && el ? clock + ' ＋' + el : clock || el, b.updater || '']
-                .filter(Boolean).join(' · ');
+            sub = st ? '(' + fmt(now - st) + ')' : '';
         }
         const lockLeft = Math.max(0, (locks[r.id] || 0) - now);
         let act;
@@ -196,7 +199,8 @@
         if (!cardsEl) return;
         cardsEl.innerHTML = cardHtml(base[0], false, now) + cardHtml(base[1], false, now)
             + cardHtml(third, true, now);
-        panel.style.transform = pipWin ? '' : 'scale(' + scale + ')';
+        if (pipWin) { panel.style.zoom = scale; panel.style.transform = ''; }
+        else { panel.style.zoom = ''; panel.style.transform = 'scale(' + scale + ')'; }
     }
 
     function onPanelClick(e) {
@@ -213,8 +217,8 @@
         if (t.dataset && t.dataset.on) doAct(t.dataset.on, b => window.saveBoss && saveBoss(String(b.map), String(b.ch), 'ON'));
         if (t.id === 'mtSend') submitDraft();
         if (t.id === 'mtClose') { visible = false; panel.classList.remove('open'); saveCfg(); }
-        if (t.id === 'mtShrink') { scale = Math.max(0.6, scale - 0.1); saveCfg(); render(); }
-        if (t.id === 'mtGrow') { scale = Math.min(1.4, scale + 0.1); saveCfg(); render(); }
+        if (t.id === 'mtShrink' || t.id === 'mtShrink2') { scale = Math.max(0.6, scale - 0.1); saveCfg(); render(); }
+        if (t.id === 'mtGrow' || t.id === 'mtGrow2') { scale = Math.min(1.4, scale + 0.1); saveCfg(); render(); }
         if (t.id === 'mtPip') openPip();
     }
 
