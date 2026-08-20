@@ -1800,20 +1800,18 @@ function initChat() {
         <span>偵測</span>
         <button id="detectorDrawerClose" type="button" aria-label="關閉偵測抽屜">×</button>
     </div>
-    <iframe id="detectorDrawerFrame" src="https://tosm.bakaniku.com/" allow="display-capture; autoplay" style="width:100%;height:calc(100vh - 40px);border:none;"></iframe>
+    <div id="nativeDetBoard" style="padding:12px;color:#ddd;font-size:14px;overflow-y:auto;height:calc(100vh - 40px);">
+        <div style="opacity:.6;">等待偵測資料…</div>
+    </div>
 </aside>
 <script id="detectorDrawerScript">
-const DETECTOR_URL = "https://tosm.bakaniku.com/";
-
 (function () {
     const toggle = document.getElementById('detectorDrawerToggle');
     const panel = document.getElementById('detectorDrawerPanel');
     const close = document.getElementById('detectorDrawerClose');
-    const frame = document.getElementById('detectorDrawerFrame');
+    const board = document.getElementById('nativeDetBoard');
 
-    if (!toggle || !panel || !close || !frame) return;
-
-    frame.src = DETECTOR_URL;
+    if (!toggle || !panel || !close || !board) return;
 
     function setDetectorDrawerOpen(open) {
         panel.classList.toggle('open', open);
@@ -1827,6 +1825,53 @@ const DETECTOR_URL = "https://tosm.bakaniku.com/";
     close.addEventListener('click', function () {
         setDetectorDrawerOpen(false);
     });
+
+    // ═══ 原生偵測器即時狀態板 (讀 shared/nativeDetector/*, 各回報者各自寫
+    //     自己的節點, 顯示端彙整 —— 不存在搶寫問題) ═══
+    const STAGE_STYLE = {
+        WAITING:  ['等待重生', '#8a8a8a'],
+        R1:       ['第 1 階段', '#e0a030'],
+        R2:       ['第 2 階段', '#e08030'],
+        R3:       ['第 3 階段', '#e05030'],
+        R4:       ['第 4 階段', '#e03050'],
+        ON:       ['BOSS 出現!', '#ff4040'],
+        UNKNOWN:  ['辨識中…', '#666'],
+        NO_BADGE: ['無 BOSS 資訊', '#666'],
+    };
+    const STALE_MS = 120000;
+    let latest = {};
+
+    function render() {
+        const ids = Object.keys(latest);
+        if (!ids.length) {
+            board.innerHTML = '<div style="opacity:.6;">目前沒有偵測器在線。</div>';
+            return;
+        }
+        const now = Date.now();
+        board.innerHTML = ids.map(id => {
+            const d = latest[id] || {};
+            const age = d.updated_at ? Math.max(0, Math.round((now - d.updated_at) / 1000)) : null;
+            const stale = age === null || age * 1000 > STALE_MS;
+            const [stageText, stageColor] = STAGE_STYLE[d.stage] || [d.stage || '—', '#666'];
+            const mapText = d.map_name ? `Lv.${d.map_level} ${d.map_name}` : '（非野外地圖）';
+            const chText = d.ch ? `CH.${d.ch}` : '';
+            const ageText = age === null ? '無時間' : (age < 60 ? `${age} 秒前` : `${Math.floor(age / 60)} 分前`);
+            return `<div style="border:1px solid #333;border-radius:8px;padding:10px;margin-bottom:8px;${stale ? 'opacity:.4;' : ''}">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <b style="color:${stale ? '#888' : stageColor};">${stageText}</b>
+                    <span style="opacity:.6;font-size:12px;">${stale ? '⚠ 離線 · ' : ''}${ageText}</span>
+                </div>
+                <div style="margin-top:4px;">${mapText} <span style="color:#6cc;">${chText}</span></div>
+                <div style="opacity:.45;font-size:11px;margin-top:2px;">${id}</div>
+            </div>`;
+        }).join('');
+    }
+
+    db.ref('shared/nativeDetector').on('value', s => {
+        latest = s.val() || {};
+        render();
+    });
+    setInterval(render, 1000);
 })();
 </script>
 </body>
