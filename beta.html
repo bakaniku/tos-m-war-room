@@ -1113,7 +1113,6 @@ function renderList() {
                     <div class="stage-row" id="sr_${id}">
                         <span class="stage-label" id="t_${id}" style="color:${st.isGrey?'#555':st.color}">...</span>
                         ${nextHtml}
-                        ${(b.hp && b.hp.p != null && b.displayValue === 'ON' && Date.now() - (b.hp.t || 0) < 600000) ? `<span style="font-size:15px;color:${b.hp.p <= 25 ? '#f55' : b.hp.p <= 60 ? '#fa0' : '#8d8'};">❤${b.hp.p}%</span>` : ''}
                     </div>
                     <div class="elapsed-row" id="e_${id}"></div>
                 </div>
@@ -1919,20 +1918,6 @@ function initChat() {
             const cur = (window.currentData || {})[`${d.map_level}_${d.ch}`];
             if (cur && cur.targetTime > 0 && Math.abs((cur.targetTime - now) - detMs) < 180000) continue;
             saveBoss(String(d.map_level), String(d.ch), d.respawn);
-        }
-        // 血量代寫: 寫進卡片的 hp 子欄位 (不經 saveBoss, 不影響階段/計時/記錄)
-        for (const id of Object.keys(latest)) {
-            const d = latest[id] || {};
-            if (d.hp_pct == null || !d.map_level || !d.ch) continue;
-            if (d.stage !== 'ON') continue;  // 血量只屬於 ON 階段的 BOSS 本體
-            if (d.map_fresh === false) continue;
-            if (!d.updated_at || now - d.updated_at > STALE_MS) continue;
-            if (!d.hp_seen_at || now - Date.parse(d.hp_seen_at) > 300000) continue;
-            const hmark = `hp|${d.map_level}|${d.ch}|${d.hp_pct}|${d.hp_seen_at}`;
-            if (appliedMark['h_' + id] === hmark) continue;
-            appliedMark['h_' + id] = hmark;
-            db.ref(`rooms/${currentRoom}/bosses/${d.map_level}_${d.ch}/hp`)
-              .set({ p: d.hp_pct, t: Date.now() });
         }
     }
 
