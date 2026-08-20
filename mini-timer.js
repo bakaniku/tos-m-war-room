@@ -24,7 +24,9 @@
  font-family:'JetBrains Mono',ui-monospace,monospace;transform-origin:bottom right;
  display:none;flex-direction:column;gap:4px;user-select:none;}
 #miniTimerPanel.open{display:flex;}
-#miniTimerPanel.inpip{position:static;transform-origin:top left;margin:6px;}
+#miniTimerPanel.inpip{position:static;transform-origin:top left;margin:6px;
+ width:calc(100vw - 12px);transform:none !important;}
+#miniTimerPanel.inpip #mtBar{display:none;}
 .mtCol{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
 .mtCard{box-sizing:border-box;display:flex;flex-direction:column;gap:2px;padding:4px 5px;
  background:rgba(8,10,8,.9);border:1px solid rgba(74,222,128,.32);border-radius:4px;
