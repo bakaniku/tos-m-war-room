@@ -1112,6 +1112,7 @@ function renderList() {
                 <div class="timer-container">
                     <div class="stage-row" id="sr_${id}">
                         <span class="stage-label" id="t_${id}" style="color:${st.isGrey?'#555':st.color}">...</span>
+                        ${(b.hp && b.hp.p != null && b.targetTime === 0 && Date.now() - (b.hp.t || 0) < 600000) ? `<span style="font-size:13px;color:${b.hp.p <= 25 ? '#f55' : b.hp.p <= 60 ? '#fa0' : '#8d8'};">❤${b.hp.p}%</span>` : ''}
                         ${nextHtml}
                     </div>
                     <div class="elapsed-row" id="e_${id}"></div>

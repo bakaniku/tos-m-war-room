@@ -1112,6 +1112,7 @@ function renderList() {
                 <div class="timer-container">
                     <div class="stage-row" id="sr_${id}">
                         <span class="stage-label" id="t_${id}" style="color:${st.isGrey?'#555':st.color}">...</span>
+                        ${(b.hp && b.hp.p != null && b.targetTime === 0 && Date.now() - (b.hp.t || 0) < 600000) ? `<span style="font-size:13px;color:${b.hp.p <= 25 ? '#f55' : b.hp.p <= 60 ? '#fa0' : '#8d8'};">❤${b.hp.p}%</span>` : ''}
                         ${nextHtml}
                     </div>
                     <div class="elapsed-row" id="e_${id}"></div>
@@ -1753,18 +1754,21 @@ function initChat() {
     }
     #detectorDrawerPanel {
         position: fixed;
-        top: 0;
-        right: 0;
+        bottom: 64px;
+        right: 12px;
+        top: auto;
         z-index: 7000;
-        width: min(440px, 92vw);
-        height: 100vh;
+        width: min(300px, 92vw);
+        max-height: 55vh;
         background: #0a0a0a;
-        box-shadow: -18px 0 36px rgba(0, 0, 0, 0.58);
-        transform: translateX(100%);
-        transition: transform .25s ease;
+        border: 1px solid #222;
+        border-radius: 12px;
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6);
+        display: none;
+        overflow: hidden;
     }
     #detectorDrawerPanel.open {
-        transform: translateX(0);
+        display: block;
     }
     .detectorDrawerHeader {
         height: 40px;
@@ -1803,7 +1807,7 @@ function initChat() {
         </label>
         <button id="detectorDrawerClose" type="button" aria-label="關閉偵測抽屜">×</button>
     </div>
-    <div id="nativeDetBoard" style="padding:12px;color:#ddd;font-size:14px;overflow-y:auto;height:calc(100vh - 40px);">
+    <div id="nativeDetBoard" style="padding:10px;color:#ddd;font-size:13px;overflow-y:auto;max-height:calc(55vh - 42px);">
         <div style="opacity:.6;">等待偵測資料…</div>
     </div>
 </aside>
@@ -1865,6 +1869,7 @@ function initChat() {
                     <span style="opacity:.6;font-size:12px;">${stale ? '⚠ 離線 · ' : ''}${ageText}</span>
                 </div>
                 <div style="margin-top:4px;">${mapText} <span style="color:#6cc;">${chText}</span></div>
+                ${d.hp_pct != null && d.hp_seen_at ? `<div style="margin-top:2px;color:#f88;">血量 ${d.hp_pct}%（${d.hp_seen_at.slice(11, 16)}）</div>` : ''}
                 ${d.respawn && d.respawn_seen_at ? `<div style="margin-top:2px;color:#e66;">重生倒數 ${d.respawn_full || d.respawn}（讀於 ${d.respawn_seen_at.slice(11, 16)}）</div>` : ''}
                 <div style="opacity:.45;font-size:11px;margin-top:2px;">${id}</div>
             </div>`;
@@ -1912,6 +1917,18 @@ function initChat() {
             const cur = (window.currentData || {})[`${d.map_level}_${d.ch}`];
             if (cur && cur.targetTime > 0 && Math.abs((cur.targetTime - now) - detMs) < 180000) continue;
             saveBoss(String(d.map_level), String(d.ch), d.respawn);
+        }
+        // 血量代寫: 寫進卡片的 hp 子欄位 (不經 saveBoss, 不影響階段/計時/記錄)
+        for (const id of Object.keys(latest)) {
+            const d = latest[id] || {};
+            if (d.hp_pct == null || !d.map_level || !d.ch) continue;
+            if (!d.updated_at || now - d.updated_at > STALE_MS) continue;
+            if (!d.hp_seen_at || now - Date.parse(d.hp_seen_at) > 300000) continue;
+            const hmark = `hp|${d.map_level}|${d.ch}|${d.hp_pct}|${d.hp_seen_at}`;
+            if (appliedMark['h_' + id] === hmark) continue;
+            appliedMark['h_' + id] = hmark;
+            db.ref(`rooms/${currentRoom}/bosses/${d.map_level}_${d.ch}/hp`)
+              .set({ p: d.hp_pct, t: Date.now() });
         }
     }
 
