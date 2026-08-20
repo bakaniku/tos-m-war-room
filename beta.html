@@ -1865,6 +1865,7 @@ function initChat() {
                     <span style="opacity:.6;font-size:12px;">${stale ? '⚠ 離線 · ' : ''}${ageText}</span>
                 </div>
                 <div style="margin-top:4px;">${mapText} <span style="color:#6cc;">${chText}</span></div>
+                ${d.respawn && d.respawn_seen_at ? `<div style="margin-top:2px;color:#e66;">重生倒數 ${d.respawn_full || d.respawn}（讀於 ${d.respawn_seen_at.slice(11, 16)}）</div>` : ''}
                 <div style="opacity:.45;font-size:11px;margin-top:2px;">${id}</div>
             </div>`;
         }).join('');
@@ -1894,6 +1895,21 @@ function initChat() {
             const cur = (window.currentData || {})[`${d.map_level}_${d.ch}`];
             if (cur && cur.lastInput === d.stage) continue;  // 卡片已是相同狀態, 不重寫
             saveBoss(String(d.map_level), String(d.ch), d.stage);
+        }
+        // 重生倒數代填: 偵測器讀到徽章面板的紅色倒數 (格式 "1:14" = 1時14分).
+        // 卡片剩餘時間與偵測值相差 <3 分鐘就不重寫, 避免面板開著時每分鐘洗一次.
+        for (const id of Object.keys(latest)) {
+            const d = latest[id] || {};
+            if (!d.respawn || !d.map_level || !d.ch) continue;
+            if (!d.updated_at || now - d.updated_at > STALE_MS) continue;
+            const rmark = `rsp|${d.map_level}|${d.ch}|${d.respawn_seen_at}`;
+            if (appliedMark['r_' + id] === rmark) continue;
+            appliedMark['r_' + id] = rmark;
+            const parts = d.respawn.split(':');
+            const detMs = (parseInt(parts[0]) * 60 + parseInt(parts[1])) * 60000;
+            const cur = (window.currentData || {})[`${d.map_level}_${d.ch}`];
+            if (cur && cur.targetTime > 0 && Math.abs((cur.targetTime - now) - detMs) < 180000) continue;
+            saveBoss(String(d.map_level), String(d.ch), d.respawn);
         }
     }
 
