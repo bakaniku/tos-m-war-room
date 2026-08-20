@@ -105,22 +105,30 @@
     function pick() {
         const d = window.currentData || {};
         const now = Date.now();
-        const rows = Object.entries(d).map(([id, b]) => ({ id, b }));
+        const entries = Object.entries(d).filter(([, b]) => b && b.lastInput != null);
+        // 卡1/2: 沿用主頁排序 (階段 > 超時 > 倒數), 跟房間顯示永遠一致
+        let base = [];
+        try {
+            base = sortItems(entries.slice())
+                .filter(([id, b]) => {
+                    const st = getBossStatus(b, id);
+                    return !st.isGrey && st.weight >= 0 && st.weight !== 7;
+                })
+                .slice(0, 2).map(([id, b]) => ({ id, b }));
+        } catch (e) { base = []; }
+        const used = new Set(base.map(r => r.id));
+        const rows = entries.map(([id, b]) => ({ id, b }));
         const cds = rows.filter(r => r.b.targetTime > now)
             .sort((a, b) => a.b.targetTime - b.b.targetTime);
-        const over = rows.filter(r => r.b.targetTime > 0 && r.b.targetTime <= now)
+        const over = rows.filter(r => r.b.targetTime > 0 && r.b.targetTime <= now
+                && now - r.b.targetTime < 7200000)
             .sort((a, b) => a.b.targetTime - b.b.targetTime);
         const stg = rows.filter(r => r.b.targetTime === 0 && /^(ON|階段)/.test(r.b.displayValue || ''))
             .sort((a, b) => stageW(b.b.displayValue) - stageW(a.b.displayValue));
-        const base = cds.slice(0, 2);
-        while (base.length < 2 && stg[base.length - cds.slice(0, 2).length]) {
-            base.push(stg[base.length - cds.slice(0, 2).length]);
-        }
-        const used = new Set(base.map(r => r.id));
         let third = null;
         if (mode === 0) third = stg.find(r => !used.has(r.id)) || null;
         else if (mode === 1) third = cds.find(r => !used.has(r.id)) || null;
-        else third = over.length ? over[0] : null;
+        else third = over.find(r => !used.has(r.id)) || null;
         return { base, third, now };
     }
 
