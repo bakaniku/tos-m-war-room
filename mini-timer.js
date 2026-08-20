@@ -241,7 +241,7 @@
             pipWin = await documentPictureInPicture.requestWindow({ width: 320, height: 200 });
         } catch (e) { return; }
         const pcss = pipWin.document.createElement('style');
-        pcss.textContent = css.textContent + '\nbody{margin:0;background:#050605;}';
+        pcss.textContent = css.textContent + '\nhtml,body{margin:0;background:#050605;overflow:hidden;}';
         pipWin.document.head.appendChild(pcss);
         panel.classList.add('inpip');
         pipWin.document.body.appendChild(panel);
