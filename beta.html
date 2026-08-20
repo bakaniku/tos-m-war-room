@@ -1113,7 +1113,7 @@ function renderList() {
                     <div class="stage-row" id="sr_${id}">
                         <span class="stage-label" id="t_${id}" style="color:${st.isGrey?'#555':st.color}">...</span>
                         ${nextHtml}
-                        ${(b.hp && b.hp.p != null && b.targetTime === 0 && Date.now() - (b.hp.t || 0) < 600000) ? `<span style="font-size:13px;color:${b.hp.p <= 25 ? '#f55' : b.hp.p <= 60 ? '#fa0' : '#8d8'};">❤${b.hp.p}%</span>` : ''}
+                        ${(b.hp && b.hp.p != null && b.displayValue === 'ON' && Date.now() - (b.hp.t || 0) < 600000) ? `<span style="font-size:13px;color:${b.hp.p <= 25 ? '#f55' : b.hp.p <= 60 ? '#fa0' : '#8d8'};">❤${b.hp.p}%</span>` : ''}
                     </div>
                     <div class="elapsed-row" id="e_${id}"></div>
                 </div>
@@ -1924,6 +1924,7 @@ function initChat() {
         for (const id of Object.keys(latest)) {
             const d = latest[id] || {};
             if (d.hp_pct == null || !d.map_level || !d.ch) continue;
+            if (d.stage !== 'ON') continue;  // 血量只屬於 ON 階段的 BOSS 本體
             if (d.map_fresh === false) continue;
             if (!d.updated_at || now - d.updated_at > STALE_MS) continue;
             if (!d.hp_seen_at || now - Date.parse(d.hp_seen_at) > 300000) continue;
