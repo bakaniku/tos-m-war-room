@@ -1804,6 +1804,10 @@ function initChat() {
         <label style="font-size:12px;font-weight:normal;display:flex;align-items:center;gap:4px;cursor:pointer;">
             <input type="checkbox" id="nativeDetAutoWrite"> 自動代寫計時（此裝置）
         </label>
+        <label style="font-size:11px;font-weight:normal;display:flex;align-items:center;gap:3px;cursor:pointer;opacity:.75;"
+               title="預設只代寫你自己認領的偵測器, 避免多人重複寫入同一筆; 若隊友只開偵測器沒開網頁, 才需要打開這個">
+            <input type="checkbox" id="nativeDetWriteOthers"> 也代寫他人
+        </label>
         <button id="detectorDrawerClose" type="button" aria-label="關閉偵測抽屜">×</button>
     </div>
     <div id="nativeDetBoard" style="padding:10px;color:#ddd;font-size:13px;overflow-y:auto;max-height:calc(55vh - 42px);">
@@ -1862,6 +1866,10 @@ function initChat() {
             const mapText = d.map_name ? `Lv.${d.map_level} ${d.map_name}` : '（非野外地圖）';
             const chText = d.ch ? `CH.${d.ch}` : '';
             const ageText = age === null ? '無時間' : (age < 60 ? `${age} 秒前` : `${Math.floor(age / 60)} 分前`);
+            // 房間歸屬: 影子節點全域共用, 只有同房間 (或你手動勾選) 的偵測器才會寫進你的卡片
+            const sameRoom = !!d.room && !!currentRoom && d.room === currentRoom;
+            const roomTxt = sameRoom ? `本房間` : (d.room ? `其他房間 ${d.room}` : '待認領');
+            const isMine = mine.indexOf(id) >= 0;
             return `<div style="border:1px solid #333;border-radius:8px;padding:10px;margin-bottom:8px;${stale ? 'opacity:.4;' : ''}">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <b style="color:${stale ? '#888' : stageColor};">${stageText}</b>
@@ -1870,7 +1878,13 @@ function initChat() {
                 <div style="margin-top:4px;">${mapText} <span style="color:#6cc;">${chText}</span></div>
                 ${d.hp_pct != null && d.hp_seen_at ? `<div style="margin-top:2px;color:#f88;">血量 ${d.hp_pct}%（${d.hp_seen_at.slice(11, 16)}）</div>` : ''}
                 ${d.respawn && d.respawn_seen_at ? `<div style="margin-top:2px;color:#e66;">重生倒數 ${d.respawn_full || d.respawn}（讀於 ${d.respawn_seen_at.slice(11, 16)}）</div>` : ''}
-                <div style="opacity:.45;font-size:11px;margin-top:2px;">${id}</div>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
+                    <span style="opacity:.45;font-size:11px;">${id}</span>
+                    <span style="font-size:11px;color:${sameRoom ? '#6c6' : '#a66'};">${roomTxt}</span>
+                    <span data-claim="${id}" style="margin-left:auto;font-size:11px;cursor:pointer;
+                        padding:1px 6px;border-radius:8px;border:1px solid ${isMine ? '#4ade80' : '#444'};
+                        color:${isMine ? '#9fdfb4' : '#888'};">${isMine ? '我的 V' : '這是我的'}</span>
+                </div>
             </div>`;
         }).join('');
     }
@@ -1883,7 +1897,43 @@ function initChat() {
     autoWriteBox.addEventListener('change', () => {
         localStorage.setItem('nativeDetAutoWrite', autoWriteBox.checked ? '1' : '0');
     });
+    // 預設只代寫「自己認領的偵測器」: 每筆偵測恰好被寫一次, 房間內多人同時
+    // 開著網頁也不會重複寫入或讓卡片在不同讀取時序間來回跳.
+    const writeOthersBox = document.getElementById('nativeDetWriteOthers');
+    writeOthersBox.checked = localStorage.getItem('nativeDetWriteOthers') === '1';
+    writeOthersBox.addEventListener('change', () => {
+        localStorage.setItem('nativeDetWriteOthers', writeOthersBox.checked ? '1' : '0');
+    });
     const WRITABLE = { R1: 1, R2: 1, R3: 1, R4: 1, ON: 1 };
+    // 「我的偵測器」清單 (跨房間記憶): 認領一次之後, 你進哪個房間,
+    // 網頁就把綁定寫成該房號, 偵測器會自動跟著搬過去 —— 房號不寫死在設定檔.
+    let mine = [];
+    function loadMine() {
+        try { mine = JSON.parse(localStorage.getItem('nativeDetMine') || '[]'); }
+        catch (e) { mine = []; }
+    }
+    function saveMine() { localStorage.setItem('nativeDetMine', JSON.stringify(mine)); }
+    function bindMineToRoom() {
+        if (!currentRoom) return;
+        mine.forEach(id => db.ref('shared/nativeDetectorBind/' + id).set(currentRoom));
+    }
+    loadMine();
+    let applyState = {};
+    board.addEventListener('click', e => {
+        const cid = e.target && e.target.dataset && e.target.dataset.claim;
+        if (!cid) return;
+        loadMine();
+        const i = mine.indexOf(cid);
+        if (i >= 0) { mine.splice(i, 1); db.ref('shared/nativeDetectorBind/' + cid).remove(); }
+        else {
+            mine.push(cid);
+            db.ref('shared/nativeDetectorBind/' + cid).set(currentRoom);
+            // 認領後立刻清掉待認領區的節點, 免得同一台同時出現在兩個清單
+            db.ref('shared/nativeDetector/_unassigned/' + cid).remove();
+        }
+        saveMine();
+        render();
+    });
     const appliedMark = {};   // collector_id -> 已代寫過的 "stage|map|ch|updated_at"
 
     function autoWrite() {
@@ -1891,6 +1941,9 @@ function initChat() {
         const now = Date.now();
         for (const id of Object.keys(latest)) {
             const d = latest[id] || {};
+            // 預設只代寫自己認領的偵測器 (勾「也代寫他人」才擴及同房間其他人)
+            if (!(mine.indexOf(id) >= 0
+                  || (writeOthersBox.checked && d.room && d.room === currentRoom))) continue;
             if (!WRITABLE[d.stage] || !d.map_level || !d.ch) continue;
             if (d.map_fresh === false) continue;  // 地圖名被遮擋未確認時不寫 (防跨圖誤植)
             if (!d.updated_at || now - d.updated_at > STALE_MS) continue;
@@ -1905,6 +1958,9 @@ function initChat() {
         // 卡片剩餘時間與偵測值相差 <3 分鐘就不重寫, 避免面板開著時每分鐘洗一次.
         for (const id of Object.keys(latest)) {
             const d = latest[id] || {};
+            // 預設只代寫自己認領的偵測器 (勾「也代寫他人」才擴及同房間其他人)
+            if (!(mine.indexOf(id) >= 0
+                  || (writeOthersBox.checked && d.room && d.room === currentRoom))) continue;
             if (!d.respawn || !d.map_level || !d.ch) continue;
             if (d.map_fresh === false) continue;
             if (!d.updated_at || now - d.updated_at > STALE_MS) continue;
@@ -1921,10 +1977,40 @@ function initChat() {
         }
     }
 
-    db.ref('shared/nativeDetector').on('value', s => {
-        latest = s.val() || {};
+    // 只訂閱「自己房號」那一層 —— 從資料來源就看不到別的房間, 不是靠前端過濾.
+    // 另外訂閱 _unassigned (未在 detector_config.json 填房號者), 讓使用者
+    // 還能在清單裡找到自己的偵測器並手動勾選套用.
+    let bucketRoom = {}, bucketUn = {};
+    function mergeBuckets() {
+        latest = {};
+        for (const [k, v] of Object.entries(bucketRoom)) {
+            if (v && typeof v === 'object') latest[k] = { ...v, room: currentRoom };
+        }
+        for (const [k, v] of Object.entries(bucketUn)) {
+            if (v && typeof v === 'object' && !latest[k]) latest[k] = { ...v, room: '' };
+        }
         render();
         autoWrite();
+    }
+    // 訂閱必須在「進入房間之後」才建立, 且換房要重訂 —— 頁面剛載入時
+    // currentRoom 還是空字串, 直接訂閱會變成訂到根目錄而讀到所有房間的資料.
+    let subRoom = null, subbedTo = null;
+    function subscribeRoom() {
+        if (currentRoom === subbedTo) return;
+        if (subRoom) { try { subRoom.off(); } catch (e) {} subRoom = null; }
+        bucketRoom = {};
+        subbedTo = currentRoom;
+        if (!currentRoom) { mergeBuckets(); return; }
+        subRoom = db.ref('shared/nativeDetector/' + currentRoom);
+        subRoom.on('value', s => { bucketRoom = s.val() || {}; mergeBuckets(); });
+        bindMineToRoom();
+    }
+    setInterval(subscribeRoom, 1000);
+    setInterval(bindMineToRoom, 30000);
+    subscribeRoom();
+    db.ref('shared/nativeDetector/_unassigned').on('value', s => {
+        bucketUn = s.val() || {};
+        mergeBuckets();
     });
     setInterval(render, 1000);
 })();
