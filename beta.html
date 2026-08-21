@@ -1862,6 +1862,9 @@ function initChat() {
             const mapText = d.map_name ? `Lv.${d.map_level} ${d.map_name}` : '（非野外地圖）';
             const chText = d.ch ? `CH.${d.ch}` : '';
             const ageText = age === null ? '無時間' : (age < 60 ? `${age} 秒前` : `${Math.floor(age / 60)} 分前`);
+            // 房間歸屬: 影子節點全域共用, 只有同房間 (或你手動勾選) 的偵測器才會寫進你的卡片
+            const sameRoom = !!d.room && !!currentRoom && d.room === currentRoom;
+            const roomTxt = d.room ? (sameRoom ? `房間 ${d.room}` : `其他房間 ${d.room}`) : '未設房間';
             return `<div style="border:1px solid #333;border-radius:8px;padding:10px;margin-bottom:8px;${stale ? 'opacity:.4;' : ''}">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <b style="color:${stale ? '#888' : stageColor};">${stageText}</b>
@@ -1870,7 +1873,12 @@ function initChat() {
                 <div style="margin-top:4px;">${mapText} <span style="color:#6cc;">${chText}</span></div>
                 ${d.hp_pct != null && d.hp_seen_at ? `<div style="margin-top:2px;color:#f88;">血量 ${d.hp_pct}%（${d.hp_seen_at.slice(11, 16)}）</div>` : ''}
                 ${d.respawn && d.respawn_seen_at ? `<div style="margin-top:2px;color:#e66;">重生倒數 ${d.respawn_full || d.respawn}（讀於 ${d.respawn_seen_at.slice(11, 16)}）</div>` : ''}
-                <div style="opacity:.45;font-size:11px;margin-top:2px;">${id}</div>
+                <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
+                    <span style="opacity:.45;font-size:11px;">${id}</span>
+                    <span style="font-size:11px;color:${sameRoom ? '#6c6' : '#a66'};">${roomTxt}</span>
+                    ${sameRoom ? '' : `<label style="margin-left:auto;font-size:11px;cursor:pointer;color:#9fdfb4;">
+                        <input type="checkbox" data-apply="${id}" ${applyState[id] ? 'checked' : ''}> 套用</label>`}
+                </div>
             </div>`;
         }).join('');
     }
@@ -1884,6 +1892,20 @@ function initChat() {
         localStorage.setItem('nativeDetAutoWrite', autoWriteBox.checked ? '1' : '0');
     });
     const WRITABLE = { R1: 1, R2: 1, R3: 1, R4: 1, ON: 1 };
+    // 未聲明房間的偵測器需手動勾選才套用 (記在本機, 依房間分別記憶)
+    let applyState = {};
+    function loadApply() {
+        try { applyState = JSON.parse(localStorage.getItem('nativeDetApply_' + currentRoom) || '{}'); }
+        catch (e) { applyState = {}; }
+    }
+    loadApply();
+    board.addEventListener('change', e => {
+        const cid = e.target && e.target.dataset && e.target.dataset.apply;
+        if (!cid) return;
+        loadApply();
+        applyState[cid] = e.target.checked;
+        localStorage.setItem('nativeDetApply_' + currentRoom, JSON.stringify(applyState));
+    });
     const appliedMark = {};   // collector_id -> 已代寫過的 "stage|map|ch|updated_at"
 
     function autoWrite() {
@@ -1891,6 +1913,8 @@ function initChat() {
         const now = Date.now();
         for (const id of Object.keys(latest)) {
             const d = latest[id] || {};
+            // 房間隔離: 只套用同房間, 或你手動勾選過的偵測器
+            if (!((d.room && d.room === currentRoom) || applyState[id])) continue;
             if (!WRITABLE[d.stage] || !d.map_level || !d.ch) continue;
             if (d.map_fresh === false) continue;  // 地圖名被遮擋未確認時不寫 (防跨圖誤植)
             if (!d.updated_at || now - d.updated_at > STALE_MS) continue;
@@ -1905,6 +1929,8 @@ function initChat() {
         // 卡片剩餘時間與偵測值相差 <3 分鐘就不重寫, 避免面板開著時每分鐘洗一次.
         for (const id of Object.keys(latest)) {
             const d = latest[id] || {};
+            // 房間隔離: 只套用同房間, 或你手動勾選過的偵測器
+            if (!((d.room && d.room === currentRoom) || applyState[id])) continue;
             if (!d.respawn || !d.map_level || !d.ch) continue;
             if (d.map_fresh === false) continue;
             if (!d.updated_at || now - d.updated_at > STALE_MS) continue;
