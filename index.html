@@ -1930,5 +1930,32 @@ function initChat() {
 })();
 </script>
 <script src="mini-timer.js"></script>
+
+<script id="appVersionGate">
+// 版本閘門: 舊分頁 (含舊的自動代寫邏輯) 會讀全域根目錄, 可能把別的房間的
+// 偵測資料寫進你的房間. 這裡比對 Firebase 上的目前版本, 不符就提示/自動重整.
+(function () {
+    const APP_VERSION = '2026.08.21-a';
+    try {
+        db.ref('shared/appVersion').on('value', s => {
+            const v = s.val();
+            if (!v || typeof v !== 'string' || v === APP_VERSION) return;
+            if (!sessionStorage.getItem('verReloaded')) {
+                sessionStorage.setItem('verReloaded', '1');
+                location.reload(true);
+                return;
+            }
+            if (document.getElementById('verBanner')) return;
+            const b = document.createElement('div');
+            b.id = 'verBanner';
+            b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#a30;' +
+                'color:#fff;padding:8px;text-align:center;font-size:14px;';
+            b.textContent = '有新版本 (' + v + ')，請按 Ctrl+F5 強制重新整理，' +
+                '舊版可能把其他房間的偵測資料寫進你的房間。';
+            document.body.appendChild(b);
+        });
+    } catch (e) {}
+})();
+</script>
 </body>
 </html>
