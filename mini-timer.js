@@ -106,7 +106,7 @@
         return m ? parseFloat(m[0]) : 0;
     }
 
-    const MODES = ['⇄ 高進度', '⇄ 倒數短', '⇄ 超時久'];
+    const MODES = ['<> 高進度', '<> 倒數短', '<> 超時久', '<> 置頂進度'];
 
     function pick() {
         const d = window.currentData || {};
@@ -136,7 +136,18 @@
         let third = null;
         if (mode === 0) third = stg.find(r => !used.has(r.id)) || null;
         else if (mode === 1) third = cds.find(r => !used.has(r.id)) || null;
-        else third = over.find(r => !used.has(r.id)) || null;
+        else if (mode === 2) third = over.find(r => !used.has(r.id)) || null;
+        else {
+            // 置頂進度: 只看主頁標星(★)的卡片, 取階段最高的 (置頂清單存在
+            // localStorage, 與主頁 getBossStatus().pinned 同一份資料)
+            let pins = {};
+            try { pins = JSON.parse(localStorage.getItem('tos_pinned_bosses') || '{}'); } catch (e) {}
+            third = stg.find(r => pins[`${currentRoom}_${r.id}`] && !used.has(r.id))
+                || rows.filter(r => pins[`${currentRoom}_${r.id}`])
+                       .sort((a, b) => stageW(b.b.displayValue) - stageW(a.b.displayValue))
+                       .find(r => !used.has(r.id))
+                || null;
+        }
         return { base, third, now };
     }
 
@@ -150,10 +161,10 @@
         const remain = b.targetTime - now;
         let valStyle, valTxt;
         if (isCd) {
+            // 倒數一律綠色; 紅色專屬「超時」, 一眼就能區分還沒到 vs 已過時
             valTxt = fmt(remain);
-            const red = remain < 300000;
-            valStyle = 'color:' + (red ? '#ff3b30' : '#00e83c') + ';' +
-                (red ? 'animation:miniPulse 1.1s ease-in-out infinite;' : '');
+            valStyle = 'color:#00e83c;' +
+                (remain < 300000 ? 'animation:miniPulse 1.1s ease-in-out infinite;' : '');
         } else if (isOver) {
             valTxt = '+' + fmt(now - b.targetTime);
             valStyle = 'color:#ff3b30;';
@@ -213,7 +224,7 @@
 
     function onPanelClick(e) {
         const t = e.target;
-        if (t.dataset && t.dataset.cycle) { mode = (mode + 1) % 3; saveCfg(); render(); return; }
+        if (t.dataset && t.dataset.cycle) { mode = (mode + 1) % MODES.length; saveCfg(); render(); return; }
         const doAct = (id, fn) => {
             if ((locks[id] || 0) > Date.now()) return;
             locks[id] = Date.now() + 2000;
