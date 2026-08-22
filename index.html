@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.5.7</title>
+    <title>TOS M FB TIME v1.5.8</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -250,7 +250,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.5.7</div>
+        <div class="ver-info">v1.5.8</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="" maxlength="10"
                 oninput="this.value=this.value.replace('#','')"
@@ -287,7 +287,7 @@
                 </div>
             </div>
             <div class="room-info">
-                <span class="version-tag">v1.5.7</span>
+                <span class="version-tag">v1.5.8</span>
                 <button id="langBtn" onclick="toggleLang()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">日本語</button>
                 <button onclick="toggleHelpPanel()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 8px; border-radius:12px; cursor:pointer;">？</button>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
@@ -643,7 +643,7 @@ db.ref('protected_rooms').on('value', s => {
         }
     });
 });
-const currentVersion = "1.5.7";
+const currentVersion = "1.5.8";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
 let globalNextLocked = false;
@@ -1808,6 +1808,11 @@ function initChat() {
                title="預設只代寫你自己認領的偵測器, 避免多人重複寫入同一筆; 若隊友只開偵測器沒開網頁, 才需要打開這個">
             <input type="checkbox" id="nativeDetWriteOthers"> 也代寫他人
         </label>
+        <label style="font-size:11px;font-weight:normal;display:flex;align-items:center;gap:3px;opacity:.75;"
+               title="開著野外活動面板時分流讀不到（面板蓋住 CH 字樣）。填在這裡的地圖等級有多個分流，讀不到分流時寧可不填，避免寫錯卡片；沒填的地圖一律當作 1 分流。逗號分隔。">
+            多分流圖<input type="text" id="nativeDetMultiCh" placeholder="184,181,173"
+                        style="width:92px;font-size:11px;padding:1px 3px;background:#222;color:#ddd;border:1px solid #555;border-radius:3px;">
+        </label>
         <button id="detectorDrawerClose" type="button" aria-label="關閉偵測抽屜">×</button>
     </div>
     <div id="nativeDetBoard" style="padding:10px;color:#ddd;font-size:13px;overflow-y:auto;max-height:calc(55vh - 42px);">
@@ -1904,6 +1909,20 @@ function initChat() {
     writeOthersBox.addEventListener('change', () => {
         localStorage.setItem('nativeDetWriteOthers', writeOthersBox.checked ? '1' : '0');
     });
+    // 多分流地圖清單: 偵測器開著野外活動面板時讀不到分流 (面板蓋住 CH 字樣,
+    // 實測 212 輪 0% 讀得到), 這時偵測器誠實回報 ch=null. 絕大多數地圖只有
+    // 1 分流, 直接填 1 就對; 少數多分流地圖 (目前 184 有 4 個) 填錯會寫進別的
+    // 分流的卡片, 所以列在這裡的一律不猜、不寫。
+    // 放網頁而不是寫死在 exe: 分流結構會隨改版變, 寫死就得重新打包才能改。
+    const multiChBox = document.getElementById('nativeDetMultiCh');
+    multiChBox.value = localStorage.getItem('nativeDetMultiCh') || '184';
+    multiChBox.addEventListener('change', () => {
+        localStorage.setItem('nativeDetMultiCh', multiChBox.value.trim());
+    });
+    function multiChSet() {
+        return new Set((multiChBox.value || '').split(/[,，\s]+/)
+                       .map(s => s.trim()).filter(Boolean));
+    }
     const WRITABLE = { R1: 1, R2: 1, R3: 1, R4: 1, ON: 1 };
     // 「我的偵測器」清單 (跨房間記憶): 認領一次之後, 你進哪個房間,
     // 網頁就把綁定寫成該房號, 偵測器會自動跟著搬過去 —— 房號不寫死在設定檔.
@@ -1961,19 +1980,26 @@ function initChat() {
             // 預設只代寫自己認領的偵測器 (勾「也代寫他人」才擴及同房間其他人)
             if (!(mine.indexOf(id) >= 0
                   || (writeOthersBox.checked && d.room && d.room === currentRoom))) continue;
-            if (!d.respawn || !d.map_level || !d.ch) continue;
+            if (!d.respawn || !d.map_level) continue;
             if (d.map_fresh === false) continue;
             if (!d.updated_at || now - d.updated_at > STALE_MS) continue;
             // 倒數讀取本身要夠新: 面板關閉後殘留的舊讀值不能拿來填 (它已經不準了)
             if (!d.respawn_seen_at || now - Date.parse(d.respawn_seen_at) > 600000) continue;
-            const rmark = `rsp|${d.map_level}|${d.ch}|${d.respawn_seen_at}`;
+            // 分流讀不到時的處置 (2026-08-22): 面板蓋住 CH 字樣是常態, 不是故障。
+            // 大多數地圖只有 1 分流 -> 填 1; 多分流圖填錯會寫進別人的卡片 -> 不寫。
+            let ch = d.ch;
+            if (!ch) {
+                if (multiChSet().has(String(d.map_level))) continue;
+                ch = 1;
+            }
+            const rmark = `rsp|${d.map_level}|${ch}|${d.respawn_seen_at}`;
             if (appliedMark['r_' + id] === rmark) continue;
             appliedMark['r_' + id] = rmark;
             const parts = d.respawn.split(':');
             const detMs = (parseInt(parts[0]) * 60 + parseInt(parts[1])) * 60000;
-            const cur = (window.currentData || {})[`${d.map_level}_${d.ch}`];
+            const cur = (window.currentData || {})[`${d.map_level}_${ch}`];
             if (cur && cur.targetTime > 0 && Math.abs((cur.targetTime - now) - detMs) < 180000) continue;
-            saveBoss(String(d.map_level), String(d.ch), d.respawn);
+            saveBoss(String(d.map_level), String(ch), d.respawn);
         }
     }
 
