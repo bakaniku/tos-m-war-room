@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.6.3</title>
+    <title>TOS M FB TIME v1.6.4</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -250,7 +250,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.6.3</div>
+        <div class="ver-info">v1.6.4</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="" maxlength="10"
                 oninput="this.value=this.value.replace('#','')"
@@ -287,7 +287,7 @@
                 </div>
             </div>
             <div class="room-info">
-                <span class="version-tag">v1.6.3</span>
+                <span class="version-tag">v1.6.4</span>
                 <button id="langBtn" onclick="toggleLang()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">日本語</button>
                 <button onclick="toggleHelpPanel()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 8px; border-radius:12px; cursor:pointer;">？</button>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
@@ -643,7 +643,7 @@ db.ref('protected_rooms').on('value', s => {
         }
     });
 });
-const currentVersion = "1.6.3";
+const currentVersion = "1.6.4";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
 let globalNextLocked = false;
@@ -2062,6 +2062,15 @@ function initChat() {
             // 上次加保護名單時只改了倒數那條路徑, 這條漏掉, 於是同一件事
             // 在兩個迴圈裡有兩套規矩.
             let ch = d.ch;
+            // 合理性檢查 (2026-08-24): 使用者確認「除了 184 / 181, 其他地圖很難
+            // 超過 2 分流, 大部分只有 1」. 實測偵測器在單分流圖上把 ch 讀成 4
+            // 共 20 次 (155/148/170/181), 分數全落在 0.707~0.777 的雜訊帶,
+            // 而真實的多分流讀取除了 184 之外只有 ch=2. 所以「不在多分流清單裡
+            // 卻讀到 3 以上」直接視為誤讀, 走跟「讀不到」同一條路.
+            // 為什麼不在偵測器端用分數門檻擋: ch=3 的分數是雙峰 (p5=0.740 /
+            // 中位=1.000), 任何絕對門檻都會砍掉 184 近三成的合法 ch3.
+            // 這裡改用「這張圖到底有沒有那麼多分流」這個外部知識, 比分數可靠.
+            if (ch && ch >= 3 && !multiChSet().has(String(d.map_level))) ch = null;
             if (!ch) {
                 if (multiChSet().has(String(d.map_level))) continue;  // 多分流圖寧可不寫
                 ch = 1;
@@ -2108,6 +2117,8 @@ function initChat() {
             // 分流讀不到時的處置 (2026-08-22): 面板蓋住 CH 字樣是常態, 不是故障。
             // 大多數地圖只有 1 分流 -> 填 1; 多分流圖填錯會寫進別人的卡片 -> 不寫。
             let ch = d.ch;
+            // 與階段那條路徑同一套規矩 (見上): 不在多分流清單裡卻讀到 3 以上 = 誤讀
+            if (ch && ch >= 3 && !multiChSet().has(String(d.map_level))) ch = null;
             if (!ch) {
                 if (multiChSet().has(String(d.map_level))) continue;
                 ch = 1;

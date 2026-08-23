@@ -49,6 +49,15 @@ CASES = [
                         "stage": "R1", "map_fresh": True, "ch": 1},   "115_1"),
     ("qa_sub_idle",    {"map_level": 117, "map_name": "測試B",
                         "stage": "R1", "map_fresh": True, "ch": 1},   "117_1"),
+    # 分流合理性 (1.6.4): 不在多分流清單裡的圖讀到 ch>=3 = 誤讀 -> 當成讀不到 -> ch1
+    ("qa_ch4_single",  {"map_level": 155, "map_name": "史達里小鎮",
+                        "stage": "R3", "map_fresh": True, "ch": 4},   "155_1"),
+    # 對照: 在清單裡的圖 (184) 讀到 ch=3 是合法的, 要照填
+    ("qa_ch3_multi",   {"map_level": 184, "map_name": "亞夏克地牢1層",
+                        "stage": "R2", "map_fresh": True, "ch": 3},   "184_3"),
+    # 對照: 不在清單裡但只讀到 ch=2 -> 仍然放行 (使用者: 其他圖「很難超過 2」)
+    ("qa_ch2_other",   {"map_level": 173, "map_name": "星之塔21樓",
+                        "stage": "R1", "map_fresh": True, "ch": 2},   "173_2"),
 ]
 # 這兩張卡要先鋪好「既有內容」, autoWrite 才有東西可以被擋/被覆蓋
 PRESEED = {
@@ -59,7 +68,10 @@ PRESEED = {
 }
 EXPECT_VALUE = {"157_1": "R2", "181_2": "R4",
                 "115_1": "R1.3",   # 新鮮 -> 保護生效, 不該被動
-                "117_1": "R1"}     # 閒置 -> 保護失效, 該被覆蓋
+                "117_1": "R1",     # 閒置 -> 保護失效, 該被覆蓋
+                "155_1": "R3",     # ch4 被判為誤讀 -> 退回 ch1
+                "184_3": "R2",     # 184 在清單裡, ch3 合法
+                "173_2": "R1"}     # ch2 不受影響
 
 
 def _req(path, method="GET", body=None):
@@ -94,10 +106,14 @@ def check():
     ok = True
     for cid, extra, want in CASES:
         if want is None:
-            hit = [k for k in got if k.startswith(f"{extra['map_level']}_")]
-            good = not hit
-            print(f"  {'OK ' if good else 'NG '} {cid:<16} 期望不寫  -> "
-                  f"{'沒有被寫出' if good else '竟然寫了 ' + str(hit)}")
+            # 檢查「這個案例出錯時會產生的那一格」, 不是整張地圖 ——
+            # 2026-08-24 踩到: 兩個案例同樣用 184 (一個測「分流讀不到要跳過」,
+            # 一個測「ch3 合法要照填」), 用 startswith 檢查會把後者合法寫出的
+            # 184_3 當成前者的違規. 測試自己的判準錯了, 比被測程式錯更難發現.
+            bad_key = f"{extra['map_level']}_{extra.get('ch') or 1}"
+            good = bad_key not in got
+            print(f"  {'OK ' if good else 'NG '} {cid:<16} 期望不寫 {bad_key}  -> "
+                  f"{'沒有被寫出' if good else '竟然寫了 ' + repr(got[bad_key])}")
         else:
             good = got.get(want) == EXPECT_VALUE[want]
             print(f"  {'OK ' if good else 'NG '} {cid:<16} 期望 {want}="
