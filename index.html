@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.6.1</title>
+    <title>TOS M FB TIME v1.6.2</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -250,7 +250,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.6.1</div>
+        <div class="ver-info">v1.6.2</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="" maxlength="10"
                 oninput="this.value=this.value.replace('#','')"
@@ -287,7 +287,7 @@
                 </div>
             </div>
             <div class="room-info">
-                <span class="version-tag">v1.6.1</span>
+                <span class="version-tag">v1.6.2</span>
                 <button id="langBtn" onclick="toggleLang()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">日本語</button>
                 <button onclick="toggleHelpPanel()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 8px; border-radius:12px; cursor:pointer;">？</button>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
@@ -643,7 +643,7 @@ db.ref('protected_rooms').on('value', s => {
         }
     });
 });
-const currentVersion = "1.6.1";
+const currentVersion = "1.6.2";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
 let globalNextLocked = false;
@@ -2051,13 +2051,25 @@ function initChat() {
             // 預設只代寫自己認領的偵測器 (勾「也代寫他人」才擴及同房間其他人)
             if (!(mine.indexOf(id) >= 0
                   || (writeOthersBox.checked && d.room && d.room === currentRoom))) continue;
-            if (!WRITABLE[d.stage] || !d.map_level || !d.ch) continue;
+            if (!WRITABLE[d.stage] || !d.map_level) continue;
             if (d.map_fresh === false) continue;  // 地圖名被遮擋未確認時不寫 (防跨圖誤植)
             if (!d.updated_at || now - d.updated_at > STALE_MS) continue;
-            const mark = `${d.stage}|${d.map_level}|${d.ch}|${d.updated_at}`;
+            // 分流讀不到時的處置 —— 與下面「重生倒數」那段用同一套規矩.
+            // 2026-08-24 實機爆發: 這裡原本是硬性 `|| !d.ch` 直接跳過, 而
+            // 「面板開著蓋住 CH 那格」是打 BOSS 時的常態 -> 單分流地圖的
+            // R1~ON 永遠寫不進去. 使用者回報的「155 1 R1 明明偵測到卻沒填,
+            // 157/159 也一樣」就是這個 —— 那三張都是單分流圖.
+            // 上次加保護名單時只改了倒數那條路徑, 這條漏掉, 於是同一件事
+            // 在兩個迴圈裡有兩套規矩.
+            let ch = d.ch;
+            if (!ch) {
+                if (multiChSet().has(String(d.map_level))) continue;  // 多分流圖寧可不寫
+                ch = 1;
+            }
+            const mark = `${d.stage}|${d.map_level}|${ch}|${d.updated_at}`;
             if (appliedMark[id] === mark) continue;
             appliedMark[id] = mark;
-            const cur = (window.currentData || {})[`${d.map_level}_${d.ch}`];
+            const cur = (window.currentData || {})[`${d.map_level}_${ch}`];
             if (cur && cur.lastInput === d.stage) continue;  // 卡片已是相同狀態, 不重寫
             // 不要把手動填的「小數階段」拉回整數: 偵測器只讀得到 R1~R4/ON,
             // 讀不到 1.3 / 1.5 這種細分。有人手動填 階段1.3 之後偵測器仍讀到
@@ -2070,8 +2082,8 @@ function initChat() {
                     if (!isNaN(cn) && !isNaN(dn) && Math.floor(cn) === Math.floor(dn) && cn > dn) continue;
                 }
             }
-            saveBoss(String(d.map_level), String(d.ch), d.stage);
-            noteAutoFill(d.map_level, d.ch, d.stage, 'stage');
+            saveBoss(String(d.map_level), String(ch), d.stage);
+            noteAutoFill(d.map_level, ch, d.stage, 'stage');
         }
         // 重生倒數代填: 偵測器讀到徽章面板的紅色倒數 (格式 "1:14" = 1時14分).
         // 卡片剩餘時間與偵測值相差 <3 分鐘就不重寫, 避免面板開著時每分鐘洗一次.
