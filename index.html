@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.5.8</title>
+    <title>TOS M FB TIME v1.5.9</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -250,7 +250,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.5.8</div>
+        <div class="ver-info">v1.5.9</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="" maxlength="10"
                 oninput="this.value=this.value.replace('#','')"
@@ -287,7 +287,7 @@
                 </div>
             </div>
             <div class="room-info">
-                <span class="version-tag">v1.5.8</span>
+                <span class="version-tag">v1.5.9</span>
                 <button id="langBtn" onclick="toggleLang()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">日本語</button>
                 <button onclick="toggleHelpPanel()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 8px; border-radius:12px; cursor:pointer;">？</button>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
@@ -643,7 +643,7 @@ db.ref('protected_rooms').on('value', s => {
         }
     });
 });
-const currentVersion = "1.5.8";
+const currentVersion = "1.5.9";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
 let globalNextLocked = false;
@@ -1757,8 +1757,8 @@ function initChat() {
         right: 12px;
         top: auto;
         z-index: 7000;
-        width: min(300px, 92vw);
-        max-height: 55vh;
+        width: min(340px, 94vw);
+        max-height: 62vh;
         background: #0a0a0a;
         border: 1px solid #222;
         border-radius: 12px;
@@ -1796,26 +1796,68 @@ function initChat() {
         color: #fff;
         border-color: #0f0;
     }
+    /* 設定區: 從標題列移出來 —— 300px 寬的抽屜塞不下 4 個控制項,
+       實測擠成每個 label 各自換行, 而且輸入框窄到看不見內容 */
+    #detectorSettingsToggle {
+        width: 30px; height: 30px; padding: 0; border-radius: 8px;
+        border: 1px solid #333; background: #111; color: #aaa;
+        font-size: 15px; line-height: 1; cursor: pointer;
+    }
+    #detectorSettingsToggle:hover, #detectorSettingsToggle.on {
+        color: #0f0; border-color: #0f0;
+    }
+    #detectorSettings {
+        display: none;
+        padding: 10px 12px;
+        border-bottom: 1px solid #1f1f1f;
+        background: #0d0d0d;
+    }
+    #detectorSettings.open { display: block; }
+    .detSetRow {
+        display: flex; align-items: flex-start; gap: 7px;
+        padding: 6px 0; color: #ccc; font-size: 12px; font-weight: normal;
+    }
+    .detSetRow + .detSetRow { border-top: 1px solid #171717; }
+    .detSetRow input[type=checkbox] { margin: 2px 0 0 0; flex: none; cursor: pointer; }
+    .detSetRow small { display: block; color: #777; font-size: 10.5px; margin-top: 2px; line-height: 1.35; }
+    .detSetRow input[type=text] {
+        width: 100%; box-sizing: border-box; margin-top: 5px;
+        font-size: 13px; padding: 5px 7px; letter-spacing: .5px;
+        background: #1a1a1a; color: #ffd479; border: 1px solid #444; border-radius: 5px;
+    }
+    .detSetRow input[type=text]:focus { outline: none; border-color: #0f0; }
 </style>
 <button id="detectorDrawerToggle" type="button">🎯 偵測</button>
 <aside id="detectorDrawerPanel" aria-label="TOS M 偵測抽屜" aria-hidden="true">
     <div class="detectorDrawerHeader">
         <span>偵測</span>
-        <label style="font-size:12px;font-weight:normal;display:flex;align-items:center;gap:4px;cursor:pointer;">
-            <input type="checkbox" id="nativeDetAutoWrite"> 自動代寫計時（此裝置）
-        </label>
-        <label style="font-size:11px;font-weight:normal;display:flex;align-items:center;gap:3px;cursor:pointer;opacity:.75;"
-               title="預設只代寫你自己認領的偵測器, 避免多人重複寫入同一筆; 若隊友只開偵測器沒開網頁, 才需要打開這個">
-            <input type="checkbox" id="nativeDetWriteOthers"> 也代寫他人
-        </label>
-        <label style="font-size:11px;font-weight:normal;display:flex;align-items:center;gap:3px;opacity:.75;"
-               title="開著野外活動面板時分流讀不到（面板蓋住 CH 字樣）。填在這裡的地圖等級有多個分流，讀不到分流時寧可不填，避免寫錯卡片；沒填的地圖一律當作 1 分流。逗號分隔。">
-            多分流圖<input type="text" id="nativeDetMultiCh" placeholder="184,181,173"
-                        style="width:92px;font-size:11px;padding:1px 3px;background:#222;color:#ddd;border:1px solid #555;border-radius:3px;">
-        </label>
-        <button id="detectorDrawerClose" type="button" aria-label="關閉偵測抽屜">×</button>
+        <span id="detAutoBadge" style="font-size:11px;font-weight:normal;opacity:.8;"></span>
+        <span style="margin-left:auto;display:flex;gap:6px;">
+            <button id="detectorSettingsToggle" type="button" aria-label="偵測設定" title="設定">⚙</button>
+            <button id="detectorDrawerClose" type="button" aria-label="關閉偵測抽屜">×</button>
+        </span>
     </div>
-    <div id="nativeDetBoard" style="padding:10px;color:#ddd;font-size:13px;overflow-y:auto;max-height:calc(55vh - 42px);">
+    <div id="detectorSettings">
+        <label class="detSetRow" style="cursor:pointer;">
+            <input type="checkbox" id="nativeDetAutoWrite">
+            <span>自動代寫計時（此裝置）
+                <small>只有勾選的裝置會寫。多台同時勾會重複寫入。</small></span>
+        </label>
+        <label class="detSetRow" style="cursor:pointer;">
+            <input type="checkbox" id="nativeDetWriteOthers">
+            <span>也代寫他人
+                <small>預設只代寫你認領的偵測器。隊友只開偵測器沒開網頁時才需要。</small></span>
+        </label>
+        <div class="detSetRow" style="flex-direction:column;align-items:stretch;gap:0;">
+            <span>多分流地圖
+                <small>逗號分隔的地圖等級。偵測器開著野外活動面板時讀不到分流（面板蓋住 CH 字樣），
+                       列在這裡的圖寧可不寫也不猜；沒列的一律當 1 分流。</small></span>
+            <input type="text" id="nativeDetMultiCh" placeholder="184,181,173"
+                   inputmode="numeric" autocomplete="off" spellcheck="false">
+            <span id="multiChHint" style="font-size:10.5px;color:#777;margin-top:4px;"></span>
+        </div>
+    </div>
+    <div id="nativeDetBoard" style="padding:10px 12px;color:#ddd;font-size:13px;overflow-y:auto;max-height:calc(62vh - 42px);">
         <div style="opacity:.6;">等待偵測資料…</div>
     </div>
 </aside>
@@ -1875,20 +1917,29 @@ function initChat() {
             const sameRoom = !!d.room && !!currentRoom && d.room === currentRoom;
             const roomTxt = sameRoom ? `本房間` : (d.room ? `其他房間 ${d.room}` : '待認領');
             const isMine = mine.indexOf(id) >= 0;
-            return `<div style="border:1px solid #333;border-radius:8px;padding:10px;margin-bottom:8px;${stale ? 'opacity:.4;' : ''}">
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <b style="color:${stale ? '#888' : stageColor};">${stageText}</b>
-                    <span style="opacity:.6;font-size:12px;">${stale ? '⚠ 離線 · ' : ''}${ageText}</span>
+            const sub = [];
+            if (d.hp_pct != null && d.hp_seen_at)
+                sub.push(`<span style="color:#f88;">血量 ${d.hp_pct}%</span>
+                          <span style="opacity:.45;">${d.hp_seen_at.slice(11, 16)}</span>`);
+            if (d.respawn && d.respawn_seen_at)
+                sub.push(`<span style="color:#e66;">重生 ${d.respawn_full || d.respawn}</span>
+                          <span style="opacity:.45;">${d.respawn_seen_at.slice(11, 16)}</span>`);
+            return `<div style="border:1px solid ${stale ? '#242424' : '#333'};border-radius:9px;
+                        padding:9px 11px 8px;margin-bottom:9px;background:#101010;${stale ? 'opacity:.45;' : ''}">
+                <div style="display:flex;align-items:baseline;gap:8px;">
+                    <b style="color:${stale ? '#888' : stageColor};font-size:14px;letter-spacing:.3px;">${stageText}</b>
+                    <span style="margin-left:auto;opacity:.55;font-size:11px;white-space:nowrap;">${stale ? '⚠ 離線 · ' : ''}${ageText}</span>
                 </div>
-                <div style="margin-top:4px;">${mapText} <span style="color:#6cc;">${chText}</span></div>
-                ${d.hp_pct != null && d.hp_seen_at ? `<div style="margin-top:2px;color:#f88;">血量 ${d.hp_pct}%（${d.hp_seen_at.slice(11, 16)}）</div>` : ''}
-                ${d.respawn && d.respawn_seen_at ? `<div style="margin-top:2px;color:#e66;">重生倒數 ${d.respawn_full || d.respawn}（讀於 ${d.respawn_seen_at.slice(11, 16)}）</div>` : ''}
-                <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
-                    <span style="opacity:.45;font-size:11px;">${id}</span>
-                    <span style="font-size:11px;color:${sameRoom ? '#6c6' : '#a66'};">${roomTxt}</span>
-                    <span data-claim="${id}" style="margin-left:auto;font-size:11px;cursor:pointer;
-                        padding:1px 6px;border-radius:8px;border:1px solid ${isMine ? '#4ade80' : '#444'};
-                        color:${isMine ? '#9fdfb4' : '#888'};">${isMine ? '我的 V' : '這是我的'}</span>
+                <div style="margin-top:6px;font-size:13px;line-height:1.4;">
+                    ${mapText}${chText ? ` <span style="color:#6cc;font-weight:600;">${chText}</span>` : ''}
+                </div>
+                ${sub.length ? `<div style="margin-top:5px;font-size:12px;display:flex;flex-direction:column;gap:2px;">${sub.map(x => `<div>${x}</div>`).join('')}</div>` : ''}
+                <div style="display:flex;align-items:center;gap:6px;margin-top:8px;padding-top:7px;border-top:1px solid #1e1e1e;">
+                    <span style="opacity:.4;font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px;">${id}</span>
+                    <span style="font-size:10.5px;color:${sameRoom ? '#6c6' : '#a66'};white-space:nowrap;">${roomTxt}</span>
+                    <span data-claim="${id}" style="margin-left:auto;font-size:11px;cursor:pointer;white-space:nowrap;
+                        padding:3px 9px;border-radius:9px;border:1px solid ${isMine ? '#4ade80' : '#444'};
+                        color:${isMine ? '#9fdfb4' : '#999'};">${isMine ? '✓ 我的' : '這是我的'}</span>
                 </div>
             </div>`;
         }).join('');
@@ -1898,10 +1949,19 @@ function initChat() {
     //     階段到計時卡片 (走既有 saveBoss, 繼承保護房/黑名單等全部邏輯).
     //     只有勾選的裝置會寫 —— 建議只由偵測器擁有者勾選, 避免多端重複寫. ═══
     const autoWriteBox = document.getElementById('nativeDetAutoWrite');
+    const autoBadge = document.getElementById('detAutoBadge');
     autoWriteBox.checked = localStorage.getItem('nativeDetAutoWrite') === '1';
+    // 設定收在 ⚙ 裡之後, 標題列要留一個「現在到底有沒有在代寫」的指示,
+    // 否則使用者得點開設定才知道 —— 那是最重要的一個開關
+    function syncAutoBadge() {
+        autoBadge.textContent = autoWriteBox.checked ? '● 代寫中' : '○ 未代寫';
+        autoBadge.style.color = autoWriteBox.checked ? '#4ade80' : '#777';
+    }
     autoWriteBox.addEventListener('change', () => {
         localStorage.setItem('nativeDetAutoWrite', autoWriteBox.checked ? '1' : '0');
+        syncAutoBadge();
     });
+    syncAutoBadge();
     // 預設只代寫「自己認領的偵測器」: 每筆偵測恰好被寫一次, 房間內多人同時
     // 開著網頁也不會重複寫入或讓卡片在不同讀取時序間來回跳.
     const writeOthersBox = document.getElementById('nativeDetWriteOthers');
@@ -1915,14 +1975,36 @@ function initChat() {
     // 分流的卡片, 所以列在這裡的一律不猜、不寫。
     // 放網頁而不是寫死在 exe: 分流結構會隨改版變, 寫死就得重新打包才能改。
     const multiChBox = document.getElementById('nativeDetMultiCh');
-    multiChBox.value = localStorage.getItem('nativeDetMultiCh') || '184';
-    multiChBox.addEventListener('change', () => {
-        localStorage.setItem('nativeDetMultiCh', multiChBox.value.trim());
-    });
+    const multiChHint = document.getElementById('multiChHint');
+    // localStorage 可能存過空字串, 那代表「使用者刻意清空」, 不該被 '184' 蓋掉
+    const savedMulti = localStorage.getItem('nativeDetMultiCh');
+    multiChBox.value = savedMulti === null ? '184' : savedMulti;
     function multiChSet() {
-        return new Set((multiChBox.value || '').split(/[,，\s]+/)
+        return new Set((multiChBox.value || '').split(/[,，、\s]+/)
                        .map(s => s.trim()).filter(Boolean));
     }
+    function multiChSave() {
+        localStorage.setItem('nativeDetMultiCh', multiChBox.value.trim());
+        const s = [...multiChSet()];
+        multiChHint.textContent = s.length
+            ? `目前生效：${s.map(v => 'Lv.' + v).join('、')}（讀不到分流時不寫）`
+            : '目前沒有保護任何地圖 —— 讀不到分流時一律填 CH.1';
+    }
+    // input 而不是只有 change: 邊打邊看得到生效清單, 不用先失焦才知道有沒有存進去
+    multiChBox.addEventListener('input', multiChSave);
+    multiChSave();
+
+    // 設定區收合 (狀態記在本機, 下次打開抽屜維持原樣)
+    const setPanel = document.getElementById('detectorSettings');
+    const setToggle = document.getElementById('detectorSettingsToggle');
+    function applySettingsOpen(open) {
+        setPanel.classList.toggle('open', open);
+        setToggle.classList.toggle('on', open);
+        localStorage.setItem('nativeDetSettingsOpen', open ? '1' : '0');
+    }
+    applySettingsOpen(localStorage.getItem('nativeDetSettingsOpen') === '1');
+    setToggle.addEventListener('click', () =>
+        applySettingsOpen(!setPanel.classList.contains('open')));
     const WRITABLE = { R1: 1, R2: 1, R3: 1, R4: 1, ON: 1 };
     // 「我的偵測器」清單 (跨房間記憶): 認領一次之後, 你進哪個房間,
     // 網頁就把綁定寫成該房號, 偵測器會自動跟著搬過去 —— 房號不寫死在設定檔.
