@@ -42,8 +42,24 @@ CASES = [
                         "stage": "R4", "map_fresh": True, "ch": 2},  "181_2"),
     ("qa_notfresh",    {"map_level": 163, "map_name": "克利黑爾紀念區",
                         "stage": "R1", "map_fresh": False, "ch": 1}, None),
+    # 小數階段保護的時效 (1.6.3): 卡片已是 R1.3 而偵測器讀到 R1 ——
+    #   卡片「新鮮」-> 保護生效, 不覆蓋 (那是隊友當下手填的更精確資訊)
+    #   卡片「閒置」-> 保護失效, 直接覆蓋 (陳年殘留不該擋住偵測器)
+    ("qa_sub_fresh",   {"map_level": 115, "map_name": "測試A",
+                        "stage": "R1", "map_fresh": True, "ch": 1},   "115_1"),
+    ("qa_sub_idle",    {"map_level": 117, "map_name": "測試B",
+                        "stage": "R1", "map_fresh": True, "ch": 1},   "117_1"),
 ]
-EXPECT_VALUE = {"157_1": "R2", "181_2": "R4"}
+# 這兩張卡要先鋪好「既有內容」, autoWrite 才有東西可以被擋/被覆蓋
+PRESEED = {
+    # 新鮮的 R1.3 (startTime = 現在) -> 期望維持 R1.3
+    "115_1": {"aged_s": 60,      "lastInput": "R1.3", "displayValue": "階段1.3"},
+    # 閒置的 R1.3 (startTime = 3 小時前, 超過頁面的兩小時門檻) -> 期望被蓋成 R1
+    "117_1": {"aged_s": 3 * 3600, "lastInput": "R1.3", "displayValue": "階段1.3"},
+}
+EXPECT_VALUE = {"157_1": "R2", "181_2": "R4",
+                "115_1": "R1.3",   # 新鮮 -> 保護生效, 不該被動
+                "117_1": "R1"}     # 閒置 -> 保護失效, 該被覆蓋
 
 
 def _req(path, method="GET", body=None):
@@ -104,6 +120,17 @@ if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "check"
     if cmd == "setup":
         _req(f"rooms/{ROOM}/bosses", "DELETE")
+        now_ms = int(time.time() * 1000)
+        for cid, cfg in PRESEED.items():
+            mp, ch = cid.split("_")
+            _req(f"rooms/{ROOM}/bosses/{cid}", "PUT", {
+                "map": mp, "ch": ch,
+                "lastInput": cfg["lastInput"], "displayValue": cfg["displayValue"],
+                "startTime": now_ms - cfg["aged_s"] * 1000,
+                "targetTime": 0, "isMax": False, "isFlash": False,
+                "callPriority": 0, "memberCount": 0, "updater": "qa",
+            })
+            print(f"  預鋪 {cid} = {cfg['lastInput']} (startTime {cfg['aged_s']//60} 分鐘前)")
         push(bind=True)
         print(f"\n  測試房間 = {ROOM}; 接著開頁面進這個房號, 勾自動代寫並認領 qa_* 偵測器")
     elif cmd == "refresh":
