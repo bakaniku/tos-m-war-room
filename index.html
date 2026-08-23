@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.5.9</title>
+    <title>TOS M FB TIME v1.6.0</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -250,7 +250,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.5.9</div>
+        <div class="ver-info">v1.6.0</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="" maxlength="10"
                 oninput="this.value=this.value.replace('#','')"
@@ -287,7 +287,7 @@
                 </div>
             </div>
             <div class="room-info">
-                <span class="version-tag">v1.5.9</span>
+                <span class="version-tag">v1.6.0</span>
                 <button id="langBtn" onclick="toggleLang()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">日本語</button>
                 <button onclick="toggleHelpPanel()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 8px; border-radius:12px; cursor:pointer;">？</button>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
@@ -643,7 +643,7 @@ db.ref('protected_rooms').on('value', s => {
         }
     });
 });
-const currentVersion = "1.5.9";
+const currentVersion = "1.6.0";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
 let globalNextLocked = false;
@@ -2006,6 +2006,12 @@ function initChat() {
     setToggle.addEventListener('click', () =>
         applySettingsOpen(!setPanel.classList.contains('open')));
     const WRITABLE = { R1: 1, R2: 1, R3: 1, R4: 1, ON: 1 };
+    // 代寫成功的回饋: 迷你計時窗 (含彈出置頂小窗) 會顯示這筆, 讓掃圖時
+    // 不必切回本頁就知道「這張填好了, 可以換下一張」。只記錄, 不做 UI。
+    function noteAutoFill(map, ch, val, kind) {
+        window.__tosmLastAutoFill = { map: String(map), ch: String(ch),
+                                      val: String(val), kind, t: Date.now() };
+    }
     // 「我的偵測器」清單 (跨房間記憶): 認領一次之後, 你進哪個房間,
     // 網頁就把綁定寫成該房號, 偵測器會自動跟著搬過去 —— 房號不寫死在設定檔.
     let mine = [];
@@ -2054,6 +2060,7 @@ function initChat() {
             const cur = (window.currentData || {})[`${d.map_level}_${d.ch}`];
             if (cur && cur.lastInput === d.stage) continue;  // 卡片已是相同狀態, 不重寫
             saveBoss(String(d.map_level), String(d.ch), d.stage);
+            noteAutoFill(d.map_level, d.ch, d.stage, 'stage');
         }
         // 重生倒數代填: 偵測器讀到徽章面板的紅色倒數 (格式 "1:14" = 1時14分).
         // 卡片剩餘時間與偵測值相差 <3 分鐘就不重寫, 避免面板開著時每分鐘洗一次.
@@ -2082,6 +2089,7 @@ function initChat() {
             const cur = (window.currentData || {})[`${d.map_level}_${ch}`];
             if (cur && cur.targetTime > 0 && Math.abs((cur.targetTime - now) - detMs) < 180000) continue;
             saveBoss(String(d.map_level), String(ch), d.respawn);
+            noteAutoFill(d.map_level, ch, d.respawn, 'respawn');
         }
     }
 

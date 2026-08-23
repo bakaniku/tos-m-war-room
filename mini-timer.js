@@ -62,6 +62,20 @@
  border-radius:16px;background:#111;border:1px solid #333;color:#9fdfb4;font-size:13px;
  cursor:pointer;}
 #miniTimerToggle:hover{border-color:#4ade80;}
+/* 填入回饋條: 掃圖時的核心用途 —— 看到它變綠就代表這張圖寫好了, 可以換下一張,
+   不必切回網頁確認。放在卡片上方是因為掃圖時眼睛盯的是這一行, 不是卡片。 */
+#mtFill{box-sizing:border-box;min-height:20px;display:flex;align-items:center;gap:6px;
+ padding:2px 7px;border-radius:3px;font-size:11px;line-height:1.3;
+ border:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.55);color:#6d766e;
+ white-space:nowrap;overflow:hidden;}
+#mtFill.idle{opacity:.55;}
+#mtFill.ok{border-color:rgba(74,222,128,.55);background:rgba(24,64,38,.75);color:#b7ecc9;}
+#mtFill.fresh{animation:mtFillFlash 1.1s ease-out 2;}
+#mtFill b{color:#fff;font-weight:700;}
+#mtFill .mtFillVal{color:#ffd479;font-weight:700;}
+#mtFill .mtFillAge{margin-left:auto;opacity:.6;font-size:10px;}
+@keyframes mtFillFlash{0%{background:rgba(74,222,128,.55);border-color:#4ade80;}
+ 100%{background:rgba(24,64,38,.75);border-color:rgba(74,222,128,.55);}}
 `;
     document.head.appendChild(css);
 
@@ -71,6 +85,7 @@
 <div id="mtBar"><span id="mtPip" title="彈出成置頂小窗 (蓋在遊戲上)">⧉ 彈出</span>
 <span id="mtShrink" title="縮小">−</span><span id="mtGrow" title="放大">＋</span>
 <span id="mtClose" title="收起">×</span></div>
+<div id="mtFill" class="idle"></div>
 <div class="mtRow" id="mtCards"></div>
 <div class="mtRow"><input id="mtInput" placeholder="80 3 R1.5">
 <div id="mtShrink2" class="mtScaleBtn" title="縮小">−</div>
@@ -202,12 +217,37 @@
 <span class="mtSub">${sub}</span></div>${act}</div>`;
     }
 
+    // 最近一次「偵測器代寫成功」的回饋. index.html 的 autoWrite 會設定
+    // window.__tosmLastAutoFill = {map, ch, val, kind, t}; 這裡只負責顯示。
+    // 掃圖流程: 落地 -> 開面板 -> 這條變綠 -> 直接換下一張, 不用切回網頁確認。
+    let fillSeenT = 0;
+    function renderFill(doc) {
+        const el = doc.getElementById('mtFill');
+        if (!el) return;
+        const f = window.__tosmLastAutoFill;
+        if (!f) {
+            el.className = 'idle';
+            el.textContent = '等待偵測器填入…';
+            return;
+        }
+        const age = Math.max(0, Math.round((Date.now() - f.t) / 1000));
+        const ageTxt = age < 60 ? `${age}s` : `${Math.floor(age / 60)}m`;
+        const isNew = f.t !== fillSeenT;
+        if (isNew) fillSeenT = f.t;
+        el.className = 'ok' + (age <= 3 ? ' fresh' : '');
+        el.innerHTML = `<span>✅</span><b>${f.map}-${f.ch}</b>`
+            + `<span class="mtFillVal">${f.val}</span>`
+            + `<span style="opacity:.65;">${f.kind === 'stage' ? '階段' : '倒數'}已填</span>`
+            + `<span class="mtFillAge">${ageTxt}</span>`;
+    }
+
     function render() {
         if (!visible && !pipWin) return;
         const { base, third, now } = pick();
         const doc = pipWin ? pipWin.document : document;
         const cardsEl = doc.getElementById('mtCards');
         if (!cardsEl) return;
+        renderFill(doc);
         cardsEl.innerHTML = cardHtml(base[0], false, now) + cardHtml(base[1], false, now)
             + cardHtml(third, true, now);
         if (pipWin) {
