@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.6.4</title>
+    <title>TOS M FB TIME v1.6.5</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -250,7 +250,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.6.4</div>
+        <div class="ver-info">v1.6.5</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="" maxlength="10"
                 oninput="this.value=this.value.replace('#','')"
@@ -287,7 +287,7 @@
                 </div>
             </div>
             <div class="room-info">
-                <span class="version-tag">v1.6.4</span>
+                <span class="version-tag">v1.6.5</span>
                 <button id="langBtn" onclick="toggleLang()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">日本語</button>
                 <button onclick="toggleHelpPanel()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 8px; border-radius:12px; cursor:pointer;">？</button>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
@@ -643,7 +643,7 @@ db.ref('protected_rooms').on('value', s => {
         }
     });
 });
-const currentVersion = "1.6.4";
+const currentVersion = "1.6.5";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
 let globalNextLocked = false;
@@ -1544,6 +1544,18 @@ function startSession(id) {
         document.getElementById('bossInput').addEventListener('keypress', e => { if(e.key==='Enter') addBoss(); });
         const userRef = db.ref(`rooms/${currentRoom}/users`).push({ name: myName, fixedId: myFixedId });
         userRef.onDisconnect().remove();
+        // 斷線後把自己加回「在線」名單 (2026-08-26 使用者回報).
+        // 原本只在進房時 push 一次並掛一次 onDisconnect —— 連線一斷 (手機切到
+        // 背景、螢幕休眠、網路抖一下) 節點就被移除, 而**重連之後沒有任何程式碼
+        // 把它加回去**, 於是人還在房裡, 名字卻永遠消失了。待越久越容易中。
+        // .info/connected 是 Firebase 的連線狀態, 每次 (重新) 連上都會觸發:
+        // 重掛 onDisconnect 之後再寫回自己. userRef 的 key 在 push 時就固定了,
+        // 所以是覆寫同一個節點, 不會產生分身。
+        db.ref('.info/connected').on('value', s => {
+            if (s.val() !== true) return;
+            userRef.onDisconnect().remove();
+            userRef.set({ name: myName, fixedId: myFixedId });
+        });
 
         // 即時監聽黑名單（僅保護房間，若自己被封則啟動隱形懲罰）
         if (isProtectedRoom()) {
