@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PiP 可行性探針</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; padding:16px; background:#111; color:#ddd;
+         font-family:-apple-system,"PingFang TC",system-ui,sans-serif; font-size:15px; }
+  h1 { font-size:17px; margin:0 0 4px; color:#0f0; }
+  .sub { color:#888; font-size:12px; margin-bottom:14px; }
+  button { width:100%; padding:16px; font-size:17px; font-weight:bold;
+           background:#0f0; color:#000; border:none; border-radius:10px;
+           margin:8px 0; -webkit-appearance:none; }
+  button:disabled { background:#444; color:#888; }
+  #log { background:#000; border:1px solid #333; border-radius:8px; padding:10px;
+         font-family:ui-monospace,Menlo,monospace; font-size:12px; line-height:1.6;
+         white-space:pre-wrap; word-break:break-all; min-height:180px; }
+  .ok   { color:#0f0; }
+  .bad  { color:#f55; }
+  .warn { color:#fc0; }
+  .dim  { color:#777; }
+  video { width:180px; border:1px solid #333; border-radius:6px; background:#000;
+          display:block; margin:10px auto; }
+  canvas { display:none; }
+</style>
+</head>
+<body>
+<h1>PiP 可行性探針</h1>
+<div class="sub">用 iPad 開這一頁，按下面的按鈕。每一步成功或失敗都會列出來。</div>
+
+<button id="go">① 開始測試（請按這裡）</button>
+<button id="pip" disabled>② 進入子母畫面</button>
+<video id="v" playsinline muted></video>
+<canvas id="c" width="320" height="180"></canvas>
+<div id="log"></div>
+
+<script>
+const logEl = document.getElementById('log');
+function say(msg, cls) {
+  const d = document.createElement('div');
+  if (cls) d.className = cls;
+  d.textContent = msg;
+  logEl.appendChild(d);
+}
+function step(n, ok, detail) {
+  say((ok ? '✔ ' : '✘ ') + n + (detail ? '  → ' + detail : ''), ok ? 'ok' : 'bad');
+}
+
+// 環境資訊: 失敗時要知道是哪個系統/瀏覽器版本
+say('UA: ' + navigator.userAgent, 'dim');
+say('螢幕: ' + screen.width + '×' + screen.height +
+    '  觸控點: ' + (navigator.maxTouchPoints || 0), 'dim');
+say('—'.repeat(30), 'dim');
+
+const v = document.getElementById('v');
+const c = document.getElementById('c');
+const ctx = c.getContext('2d');
+
+// 動畫: PiP 需要真的有畫面在動, 靜態畫布有些版本會拒絕
+let t0 = Date.now();
+function draw() {
+  const s = Math.floor((Date.now() - t0) / 1000);
+  ctx.fillStyle = '#111'; ctx.fillRect(0, 0, 320, 180);
+  ctx.fillStyle = '#0f0';
+  ctx.font = 'bold 26px -apple-system, sans-serif';
+  ctx.fillText('184-3  R2', 20, 60);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 40px ui-monospace, monospace';
+  ctx.fillText(String(Math.floor(s / 60)).padStart(2, '0') + ':' +
+               String(s % 60).padStart(2, '0'), 20, 120);
+  ctx.fillStyle = '#888';
+  ctx.font = '13px -apple-system, sans-serif';
+  ctx.fillText('若這裡的秒數在跳, 串流就是活的', 20, 158);
+  requestAnimationFrame(draw);
+}
+
+document.getElementById('go').onclick = async () => {
+  logEl.innerHTML = '';
+  say('UA: ' + navigator.userAgent, 'dim');
+  say('—'.repeat(30), 'dim');
+
+  // 1) Document PiP (桌面 Chrome 用的那個, iPad 一定沒有)
+  step('Document PiP API', 'documentPictureInPicture' in window,
+       ('documentPictureInPicture' in window) ? '有 (桌面 Chromium)' : '沒有 (iPad 預期如此)');
+
+  // 2) canvas.captureStream
+  let stream = null;
+  try {
+    draw();
+    stream = c.captureStream(30);
+    step('canvas.captureStream()', !!stream,
+         stream ? ('視訊軌 ' + stream.getVideoTracks().length + ' 條') : '回傳空值');
+  } catch (e) {
+    step('canvas.captureStream()', false, e.name + ': ' + e.message);
+    say('到這裡就走不下去了 —— 這條路在此裝置不可行。', 'bad');
+    return;
+  }
+
+  // 3) 餵給 video 並播放 (必須在使用者手勢裡呼叫 play)
+  try {
+    v.srcObject = stream;
+    v.muted = true;
+    v.setAttribute('playsinline', '');
+    await v.play();
+    step('video.play()', true, '尺寸 ' + v.videoWidth + '×' + v.videoHeight);
+  } catch (e) {
+    step('video.play()', false, e.name + ': ' + e.message);
+    say('影片播不起來, PiP 不可能成功。', 'bad');
+    return;
+  }
+
+  // 4) PiP 支援度: iOS 用 webkit 前綴那組
+  const hasStd = typeof v.requestPictureInPicture === 'function';
+  const hasWk  = typeof v.webkitSetPresentationMode === 'function';
+  const wkOk   = hasWk && typeof v.webkitSupportsPresentationMode === 'function' &&
+                 v.webkitSupportsPresentationMode('picture-in-picture');
+  step('標準 requestPictureInPicture', hasStd, hasStd ? '有' : '沒有');
+  step('WebKit webkitSetPresentationMode', hasWk, hasWk ? '有' : '沒有');
+  step('WebKit 宣稱支援 PiP', !!wkOk, wkOk ? '是' : '否 (可能是設定關閉或此串流不受支援)');
+  if (document.pictureInPictureEnabled === false) {
+    say('注意: document.pictureInPictureEnabled = false', 'warn');
+  }
+
+  if (!hasStd && !hasWk) {
+    say('兩種 PiP API 都沒有 —— 這條路在此裝置不可行。', 'bad');
+    return;
+  }
+  document.getElementById('pip').disabled = false;
+  say('', '');
+  say('前置都過了。請按下面的「② 進入子母畫面」。', 'warn');
+  say('（分開兩個按鈕是因為 iOS 要求 PiP 必須由使用者手勢直接觸發）', 'dim');
+};
+
+document.getElementById('pip').onclick = async () => {
+  // iOS 優先走 webkit 那組; 桌面走標準 API
+  try {
+    if (typeof v.webkitSetPresentationMode === 'function') {
+      v.webkitSetPresentationMode('picture-in-picture');
+      // webkit 沒有回傳 Promise, 只能事後確認
+      setTimeout(() => {
+        const mode = v.webkitPresentationMode;
+        step('webkitSetPresentationMode', mode === 'picture-in-picture',
+             '目前模式 = ' + mode);
+        if (mode === 'picture-in-picture') {
+          say('', '');
+          say('成功！現在切到遊戲，看小窗會不會浮在上面、秒數會不會繼續跳。', 'ok');
+          say('這兩件事都成立，這條路才算真的通。', 'warn');
+        } else {
+          say('呼叫了但沒有進入 PiP —— WebKit 拒絕了這個串流。', 'bad');
+        }
+      }, 800);
+    } else {
+      await v.requestPictureInPicture();
+      step('requestPictureInPicture', true, '已進入');
+      say('成功（桌面）。iPad 上要看的是 webkit 那條。', 'ok');
+    }
+  } catch (e) {
+    step('進入 PiP', false, e.name + ': ' + e.message);
+  }
+};
+</script>
+</body>
+</html>
