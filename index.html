@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.6.6</title>
+    <title>TOS M FB TIME v1.6.7</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -197,6 +197,22 @@
         .pin-btn { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--pin-border); background: var(--pin-bg); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; font-size: 11px; color: var(--pin-color); transition: 0.2s; flex-shrink: 0; }
         .pin-btn.pinned { border-color: #ffca28; background: #2a2200; color: #ffca28; box-shadow: 0 0 5px rgba(255,202,40,0.3); }
         body.light .pin-btn.pinned { background: #fff8e0; color: #8a6500; border-color: #c8960a; box-shadow: none; }
+        /* 對話與編輯紀錄並排 (2026-08-26): 紀錄原本佔滿整行卻只用到不到 1/3
+           的寬度, 把兩者放進同一列, 對話 2/3、紀錄 1/3。
+           兩邊都可以各自隱藏 —— flex 會自動讓留下的那個佔滿整行, 不必特別處理。
+           align-items 用 flex-start 而不是 stretch: 試過 stretch 讓兩框齊平,
+           但那會讓「內容多的那邊」把另一邊一起撐高 —— 實測 10 筆紀錄把面板撐到
+           495px, 對話框跟著變 495px 而訊息區固定 150px, 多出 300px 空白。
+           各自保持自然高度、上緣對齊才是對的。*/
+        .chat-log-row { display: flex; gap: 10px; align-items: flex-start; }
+        .chat-log-row > #chatPanel { flex: 2 1 0; min-width: 0; }
+        .chat-log-row > #logPanel  { flex: 1 1 0; min-width: 0; }
+        /* 窄畫面 (手機/Slide Over) 並排會擠成兩條細縫, 改回上下堆疊 */
+        @media (max-width: 720px) {
+            /* align-items 要改回 stretch: 直向排列時 flex-start 的語意變成
+               「靠左、寬度縮到內容」, 實測對話 290px、紀錄 335px 兩個都沒填滿 */
+            .chat-log-row { flex-direction: column; gap: 0; align-items: stretch; }
+        }
         #chatPanel { margin-bottom: 15px; background: var(--chat-bg); border: 1px solid var(--chat-border); border-radius: 10px; overflow: hidden; transition: all 0.3s ease; }
         #chatPanel.chat-hidden { display: none; }
         .chat-msgs { overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
@@ -250,7 +266,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.6.6</div>
+        <div class="ver-info">v1.6.7</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="" maxlength="10"
                 oninput="this.value=this.value.replace('#','')"
@@ -287,7 +303,7 @@
                 </div>
             </div>
             <div class="room-info">
-                <span class="version-tag">v1.6.6</span>
+                <span class="version-tag">v1.6.7</span>
                 <button id="langBtn" onclick="toggleLang()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">日本語</button>
                 <button onclick="toggleHelpPanel()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 8px; border-radius:12px; cursor:pointer;">？</button>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
@@ -313,11 +329,21 @@
             </div>
         </div>
 
-        <div id="chatPanel" class="chat-full">
-            <div class="chat-msgs" id="chatMsgs"></div>
-            <div class="chat-input-row">
-                <input type="text" id="chatInput" placeholder="輸入訊息…" maxlength="80">
-                <button onclick="sendMsg()">送出</button>
+        <div class="chat-log-row">
+            <div id="chatPanel" class="chat-full">
+                <div class="chat-msgs" id="chatMsgs"></div>
+                <div class="chat-input-row">
+                    <input type="text" id="chatInput" placeholder="輸入訊息…" maxlength="80">
+                    <button onclick="sendMsg()">送出</button>
+                </div>
+            </div>
+
+            <div id="logPanel" style="display:none; background:#0a0a0a; border:1px solid #1a1a1a; border-radius:10px; overflow:hidden; margin-bottom:15px;">
+                <div style="padding:8px 12px; font-size:12px; color:#0f0; background:#111; display:flex; justify-content:space-between; align-items:center;">
+                    <span>📜 最近編輯紀錄</span>
+                    <button onclick="viewFullLogs()" style="background:none;border:1px solid #444;color:#888;font-size:10px;padding:2px 6px;border-radius:4px;cursor:pointer;">查看完整 100 則</button>
+                </div>
+                <div id="logList" style="max-height:180px; overflow-y:auto; padding:10px; font-size:11px; line-height:1.6; font-family:monospace;"></div>
             </div>
         </div>
 
@@ -329,14 +355,6 @@
 
         <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 階段(R)/分鐘" oninput="checkDuplicate()">
         <div class="input-hint" id="inputHint">範例：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 12:30 ｜ 80 3 ON</div>
-
-        <div id="logPanel" style="display:none; background:#0a0a0a; border:1px solid #1a1a1a; border-radius:10px; overflow:hidden; margin-bottom:15px;">
-            <div style="padding:8px 12px; font-size:12px; color:#0f0; background:#111; display:flex; justify-content:space-between; align-items:center;">
-                <span>📜 最近編輯紀錄</span>
-                <button onclick="viewFullLogs()" style="background:none;border:1px solid #444;color:#888;font-size:10px;padding:2px 6px;border-radius:4px;cursor:pointer;">查看完整 100 則</button>
-            </div>
-            <div id="logList" style="max-height:180px; overflow-y:auto; padding:10px; font-size:11px; line-height:1.6; font-family:monospace;"></div>
-        </div>
 
         <div id="renderArea"></div>
     </div>
@@ -643,7 +661,7 @@ db.ref('protected_rooms').on('value', s => {
         }
     });
 });
-const currentVersion = "1.6.6";
+const currentVersion = "1.6.7";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
 let globalNextLocked = false;
@@ -1315,7 +1333,9 @@ function cycleLogMode() {
     const mode = logDisplayModes[currentLogModeIndex];
     const panel = document.getElementById('logPanel'), btnText = document.getElementById('logBtnText'), btn = document.getElementById('logBtn');
     if (mode === 0) { panel.style.display = 'none'; btnText.innerText = 'OFF'; btn.style.opacity = '0.3'; }
-    else            { panel.style.display = 'block'; btnText.innerText = mode;  btn.style.opacity = '1';   renderLogs(lastLogData); }
+    // display 用空字串交還給 CSS —— 寫死 'block' 會蓋掉 .chat-log-row 的
+    // flex-direction:column, 紀錄面板的高度就不會跟著對話延伸
+    else            { panel.style.display = '';      btnText.innerText = mode;  btn.style.opacity = '1';   renderLogs(lastLogData); }
 }
 function viewFullLogs() {
     if (!lastLogData) { alert("尚無編輯紀錄"); return; }
