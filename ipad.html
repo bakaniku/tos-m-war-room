@@ -62,11 +62,12 @@ body.narrow #roomLabel { font-size: 13px; letter-spacing: 0; }
 body.narrow #online { font-size: 10px; }
 body.narrow #exitBtn { font-size: 10px; padding: 4px 6px; }
 body.narrow #list { padding: 2px 6px 8px; gap: 5px; }
-body.narrow .card { flex-wrap: wrap; column-gap: 6px; row-gap: 4px; padding: 8px 9px; }
-body.narrow .card .status { flex-basis: 100%; line-height: 1.05; }
-body.narrow .card.hero .status { font-size: 26px; }
-body.narrow .card .nextBtn { flex: 1 1 100%; min-height: 40px; }
-body.narrow .card .delBtn { order: 2; padding: 6px 2px; }
+body.narrow .card { flex-wrap: wrap; column-gap: 6px; row-gap: 3px; padding: 7px 8px; }
+body.narrow .card .info { order: 1; flex: 1 1 60%; flex-direction: row; align-items: baseline; gap: 5px; }
+body.narrow .card .delBtn { order: 2; flex: 0 0 auto; padding: 4px 2px; }
+body.narrow .card .status { order: 3; flex: 1 1 auto; line-height: 1.1; font-size: 17px; align-self: center; }
+body.narrow .card.hero .status { font-size: 22px; }
+body.narrow .card .nextBtn { order: 4; flex: 0 0 auto; min-width: 52px; min-height: 36px; font-size: 12px; padding: 0 8px; }
 body.narrow #cmdRow { flex-wrap: wrap; gap: 6px; }
 body.narrow #cmdInput { flex: 1 1 100%; min-height: 40px; }
 body.narrow #sendBtn { flex: 1 1 100%; min-height: 40px; font-size: 13px; }
