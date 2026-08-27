@@ -293,7 +293,23 @@
 
     async function openPip() {
         if (!('documentPictureInPicture' in window)) {
-            alert('此瀏覽器不支援置頂小窗 (需要 Chrome 116+)');
+            // 2026-08-27: 原本一律回「需要 Chrome 116+」。那在 iPad 上技術正確
+            // 但毫無用處 —— iPadOS 的每個瀏覽器底層都是 WebKit (裝 Chrome 也一樣),
+            // 這個 API 永遠不會有, 使用者照著訊息去換瀏覽器只是白費力氣。
+            // 實測 canvas -> video -> PiP 那條替代路線也被 WebKit 擋掉
+            // (webkitSupportsPresentationMode 對 MediaStream 回傳 false)。
+            // iPad 真正可行的是系統層的「幕前調度」, 把遊戲和瀏覽器並排成兩個
+            // 視窗 —— 使用者實機確認可行, 而且比小窗更好用 (整頁都在、能輸入)。
+            // 訊息要指向做得到的那條路, 不是做不到的那條。
+            var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            var NL = String.fromCharCode(10);   // 避免跳脫字元在編輯流程中被吃掉
+            alert(isIOS
+                ? 'iPhone / iPad 無法使用置頂小窗（系統限制，換瀏覽器也沒用）。' + NL + NL
+                  + '改用「幕前調度 Stage Manager」：' + NL
+                  + '設定 → 多工處理 → 開啟幕前調度，' + NL
+                  + '就能讓遊戲和這個網頁變成兩個並排的視窗。'
+                : '此瀏覽器不支援置頂小窗（需要 Chrome / Edge 116 以上的桌面版）。');
             return;
         }
         try {
