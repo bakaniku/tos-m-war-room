@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>TOS M TIME · iPad</title>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+<style>
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: #000; color: #fff; font-family: -apple-system, 'PingFang TC', sans-serif; overscroll-behavior: none; }
+#app { height: 100%; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+input { font-family: ui-monospace, Menlo, monospace; }
+@keyframes flash { 0%,100%{opacity:1;} 50%{opacity:0.25;} }
+@keyframes urgentPulse { 0%,100%{box-shadow:0 0 4px rgba(255,51,0,0.5);} 50%{box-shadow:0 0 16px rgba(255,51,0,0.9);} }
+/* 登入 */
+#login { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; }
+#login h1 { color: #0f0; font-size: 26px; font-weight: 800; letter-spacing: 1px; margin: 0; }
+#login .sub { color: #444; font-size: 11px; margin-top: -10px; }
+#login input { width: 100%; max-width: 200px; background: #111; border: 1px solid #333; color: #fff; padding: 13px; border-radius: 10px; text-align: center; outline: none; }
+#roomInput { font-size: 18px; letter-spacing: 3px; }
+#nameInput { font-size: 15px; }
+#joinBtn { width: 100%; max-width: 228px; min-height: 48px; background: #0f0; color: #000; border: none; border-radius: 10px; font-size: 16px; font-weight: 800; cursor: pointer; }
+#loginErr { color: #f66; font-size: 12px; min-height: 16px; }
+/* 主畫面 */
+#main { display: none; flex-direction: column; height: 100%; }
+#hdr { display: flex; align-items: center; white-space: nowrap; gap: 8px; padding: 8px 12px 6px; flex-shrink: 0; }
+#roomLabel { color: #0f0; font-size: 17px; font-weight: 800; letter-spacing: 1px; }
+#online { color: #555; font-size: 12px; } #online b { color: #0f0; font-weight: 400; }
+#hdr .sp { flex: 1; }
+#exitBtn { background: none; border: 1px solid #333; color: #555; font-size: 11px; padding: 5px 10px; border-radius: 12px; cursor: pointer; white-space: nowrap; }
+#list { flex: 1; overflow-y: auto; padding: 2px 10px 10px; display: flex; flex-direction: column; gap: 7px; -webkit-overflow-scrolling: touch; }
+.card { display: flex; align-items: center; gap: 9px; background: #111; border: 1px solid #222; border-radius: 11px; padding: 11px 12px; }
+.card.grey { background: #0a0a0a; }
+.card.urgent { border-color: #FF3300; animation: urgentPulse 1.5s infinite; }
+.card .info { order: 1; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.card .title { color: #aaa; font-size: 14px; font-weight: 700; white-space: nowrap; }
+.card.grey .title { color: #444; }
+.card .sub { color: #666; font-size: 11px; font-family: ui-monospace, Menlo, monospace; }
+.card.grey .sub { color: #333; }
+.card .status { order: 3; font-size: 20px; font-weight: 800; font-family: ui-monospace, Menlo, monospace; white-space: nowrap; }
+.card.hero .status { font-size: 32px; }
+.card .status.fl { animation: flash 0.5s step-end 10; }
+.card .nextBtn { order: 4; min-width: 56px; min-height: 44px; background: #000; border: 2px solid currentColor; border-radius: 9px; font-size: 13px; font-weight: 800; cursor: pointer; flex-shrink: 0; }
+.card .delBtn { order: 5; background: none; border: none; color: #333; font-size: 17px; padding: 10px 2px 10px 4px; cursor: pointer; flex-shrink: 0; line-height: 1; }
+#killedToggle { background: none; border: 1px dashed #2a2a2a; color: #556; border-radius: 9px; min-height: 40px; font-size: 12px; cursor: pointer; display: none; }
+#inputBar { flex-shrink: 0; background: #0a0a0a; border-top: 1px solid #1a1a1a; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); }
+#hint { font-size: 10px; min-height: 14px; padding: 0 2px 4px; color: #555; }
+#hint.warn { color: #f33; }
+#cmdRow { display: flex; gap: 8px; }
+#cmdInput { flex: 1; min-width: 0; min-height: 46px; background: #050505; border: none; border-bottom: 2px solid #0f0; color: #fff; font-size: 16px; padding: 0 8px; outline: none; }
+#sendBtn { min-width: 64px; min-height: 46px; background: #0f0; color: #000; border: none; border-radius: 10px; font-size: 15px; font-weight: 800; cursor: pointer; }
+/* 窄縫模式（Slide Over 被遊戲擠到剩窄條時） */
+@media (max-width: 280px) {
+  #hdr { gap: 5px; padding: 6px 7px 4px; }
+  #roomLabel { font-size: 13px; letter-spacing: 0; }
+  #online { font-size: 10px; }
+  #exitBtn { font-size: 10px; padding: 4px 6px; }
+  #list { padding: 2px 6px 8px; gap: 5px; }
+  .card { flex-wrap: wrap; column-gap: 6px; row-gap: 4px; padding: 8px 9px; }
+  .card .status { flex-basis: 100%; line-height: 1.05; }
+  .card.hero .status { font-size: 26px; }
+  .card .nextBtn { flex: 1 1 100%; min-height: 40px; }
+  .card .delBtn { order: 2; padding: 6px 2px; }
+  #cmdRow { flex-wrap: wrap; gap: 6px; }
+  #cmdInput { flex: 1 1 100%; min-height: 40px; }
+  #sendBtn { flex: 1 1 100%; min-height: 40px; font-size: 13px; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="login">
+    <h1>TOS M TIME</h1>
+    <div class="sub">iPad Slide Over 版</div>
+    <input id="roomInput" placeholder="房號" maxlength="6" autocapitalize="characters">
+    <input id="nameInput" placeholder="稱呼（留空用固定ID）" maxlength="10">
+    <button id="joinBtn">進入房間</button>
+    <div id="loginErr"></div>
+  </div>
+  <div id="main">
+    <div id="hdr">
+      <span id="roomLabel"></span>
+      <span id="online">在線 <b id="onlineN">0</b></span>
+      <span class="sp"></span>
+      <button id="exitBtn">退出</button>
+    </div>
+    <div id="list"></div>
+    <div id="inputBar">
+      <div id="hint">範例：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 ON ｜ 80 3 DE</div>
+      <div id="cmdRow">
+        <input id="cmdInput" placeholder="地圖 分流 階段(R)/分鐘" autocapitalize="none" autocorrect="off">
+        <button id="sendBtn">送出</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+firebase.initializeApp({
+  apiKey: "AIzaSyAff__U1cLBr92gYmtbWpm80zO4rHvObUI",
+  authDomain: "tos-m-fb.firebaseapp.com",
+  databaseURL: "https://tos-m-fb-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "tos-m-fb"
+});
+const db = firebase.database();
+const $ = id => document.getElementById(id);
+let room = '', myName = '', userRef = null, bosses = {}, killedOpen = false;
+
+function fixedId() {
+  let id = localStorage.getItem('tos_fixed_id');
+  if (!id) { id = '#' + Math.floor(1000 + Math.random() * 9000); localStorage.setItem('tos_fixed_id', id); }
+  return id;
+}
+$('nameInput').placeholder = '稱呼（留空用 ' + fixedId() + '）';
+
+function join(r, n) {
+  r = r.trim().toUpperCase();
+  if (!r) { $('loginErr').textContent = '請輸入房號'; return; }
+  room = r; myName = (n || '').trim() || fixedId();
+  localStorage.setItem('tos_ipad_room', r);
+  localStorage.setItem('tos_ipad_name', (n || '').trim());
+  db.ref(`rooms/${r}/users`).once('value', snap => {
+    const users = snap.val() ? Object.values(snap.val()) : [];
+    if (users.some(u => u.name === myName)) myName += '(' + Math.floor(Math.random() * 99).toString().padStart(2, '0') + ')';
+    userRef = db.ref(`rooms/${r}/users`).push({ name: myName, fixedId: fixedId() });
+    userRef.onDisconnect().remove();
+    db.ref('.info/connected').on('value', s => {
+      if (s.val() !== true || !userRef) return;
+      userRef.onDisconnect().remove();
+      userRef.set({ name: myName, fixedId: fixedId() });
+    });
+    db.ref(`rooms/${r}/users`).on('value', s => { $('onlineN').textContent = Object.keys(s.val() || {}).length; });
+    db.ref(`rooms/${r}/bosses`).on('value', s => { bosses = s.val() || {}; render(); });
+    $('roomLabel').textContent = r;
+    $('login').style.display = 'none';
+    $('main').style.display = 'flex';
+  });
+}
+function exitRoom() {
+  db.ref(`rooms/${room}/bosses`).off(); db.ref(`rooms/${room}/users`).off(); db.ref('.info/connected').off();
+  if (userRef) { userRef.remove(); userRef = null; }
+  localStorage.removeItem('tos_ipad_room');
+  room = ''; bosses = {};
+  $('main').style.display = 'none'; $('login').style.display = 'flex';
+}
+
+/* ── 與原站相同的解析/儲存邏輯 ── */
+function saveBoss(map, ch, val) {
+  const id = `${map}_${ch}`;
+  const oldData = bosses[id] || null;
+  const oldStatus = oldData ? (oldData.displayValue || '新建立') : '新建立';
+  let valStr = val.toString().trim();
+  const existingCount = oldData ? (oldData.memberCount || 0) : 0;
+  let memberCount = existingCount;
+  const parts = valStr.split(/\s+/);
+  if (parts.length >= 2 && /^\d+$/.test(parts[parts.length - 1])) { memberCount = parseInt(parts[parts.length - 1]); valStr = parts.slice(0, -1).join(' '); }
+  let dv = valStr, tt = 0, fl = false, uv = valStr.toUpperCase();
+  if (uv.startsWith('00')) { let r = uv.replace('00', ''); uv = (r.length === 2 && !r.includes('.')) ? ('R' + r[0] + '.' + r[1]) : ('R' + r); }
+  if (uv.startsWith('XX')) { dv = '閒置'; }
+  else if (uv.startsWith('DE')) { dv = '已擊殺'; }
+  else if (uv === 'ON') { dv = 'ON'; fl = true; }
+  else if (uv.startsWith('R')) { const rn = uv.substring(1); dv = '階段' + rn; if (parseFloat(rn) >= 4.0) fl = true; }
+  else { const ps = uv.split(/[:.：]/); tt = Date.now() + ((ps.length === 2 ? parseInt(ps[0]) * 60 + parseInt(ps[1]) : parseFloat(uv) || 0) * 60000); }
+  const oldIsMax = oldData ? !!oldData.isMax : false;
+  const payload = { map, ch, targetTime: tt, lastInput: uv, displayValue: dv, startTime: Date.now(), isFlash: fl, updater: myName, memberCount, isMax: memberCount >= 30 ? true : oldIsMax };
+  if (tt > 0 || uv.startsWith('DE')) { payload.callPriority = 0; payload.memberCount = 0; payload.isMax = false; }
+  db.ref(`rooms/${room}/bosses/${id}`).update(payload);
+  setTimeout(() => db.ref(`rooms/${room}/bosses/${id}/isFlash`).set(false), 3000);
+  db.ref(`rooms/${room}/logs`).push({ name: myName, boss: `${map}-${ch}`, oldVal: oldStatus, newVal: dv, t: Date.now() });
+}
+function status(b) {
+  const now = Date.now(), twoHours = 7200000;
+  const li = b.lastInput.toString().toUpperCase();
+  const isGrey = li.startsWith('XX') || (b.targetTime > 0 && now - b.targetTime > twoHours) || (b.targetTime === 0 && now - b.startTime > twoHours);
+  let weight = -1;
+  const stageVal = parseFloat(((b.displayValue || '').match(/[\d.]+/) || [0])[0]) || 0;
+  if (li.startsWith('DE')) weight = 7;
+  else if (b.displayValue === 'ON') weight = 6;
+  else if (b.displayValue.includes('階段4')) weight = 5;
+  else if (b.displayValue.includes('階段3')) weight = 4;
+  else if (b.displayValue.includes('階段2')) weight = 3;
+  else if (b.displayValue.includes('階段1')) weight = 2;
+  else if (b.targetTime > 0) weight = b.targetTime > now ? 1 : 0;
+  const colors = { 7: '#9dadc1', 6: '#FF00FF', 5: '#FF1493', 4: '#FF4500', 3: '#FFA500', 2: '#FFFF00', 1: '#00FF00', 0: '#FF3300' };
+  return { isGrey, weight, stageVal, color: colors[weight] || '#fff', mapLv: parseInt(((b.map || '').match(/\d+/) || [0])[0]) || 0 };
+}
+function triggerNext(m, c) {
+  db.ref(`rooms/${room}/bosses/${m}_${c}`).once('value', s => {
+    const d = s.val(); if (!d) return;
+    const cur = d.lastInput.toString().toUpperCase();
+    if (d.targetTime > 0 && d.targetTime <= Date.now()) { saveBoss(m, c, 'R1'); return; }
+    if (cur === 'ON') { saveBoss(m, c, 'DE1'); db.ref(`rooms/${room}/bosses/${m}_${c}/callPriority`).set(0); }
+    else if (cur.startsWith('R')) { const n = parseFloat(cur.substring(1)) || 0; const nx = Math.floor(n) + 1; if (nx >= 5) saveBoss(m, c, 'ON'); else saveBoss(m, c, 'R' + nx); }
+    else saveBoss(m, c, 'ON');
+  });
+}
+function submit() {
+  const p = $('cmdInput').value.trim().split(/\s+/);
+  if (p.length < 3) return;
+  saveBoss(p[0], p[1], p.slice(2).join(' '));
+  $('cmdInput').value = '';
+  updateHint();
+}
+
+/* ── 渲染 ── */
+function mkCard(b, st, isHero, killedOnly) {
+  const now = Date.now();
+  let statusText, sub;
+  if (b.targetTime > 0) {
+    const d = Math.floor((b.targetTime - now) / 1000), a = Math.abs(d);
+    const hh = Math.floor(a / 3600), mm = Math.floor((a % 3600) / 60), ss = a % 60;
+    statusText = `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+    const end = new Date(b.targetTime);
+    sub = `至 ${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`;
+  } else {
+    const diff = Math.max(0, now - b.startTime);
+    const m = Math.floor(diff / 60000), s = Math.floor((diff % 60000) / 1000);
+    statusText = b.lastInput.toString().toUpperCase().startsWith('DE') ? '已擊殺' : b.displayValue;
+    sub = `(${m}:${String(s).padStart(2, '0')})`;
+  }
+  const expired = b.targetTime > 0 && b.targetTime <= now;
+  let color = st.isGrey ? '#555' : st.color;
+  if (b.targetTime > 0 && !st.isGrey) color = expired ? '#FF3300' : '#00FF00';
+  const hasNext = !killedOnly && (b.targetTime === 0 || expired) && st.weight !== 7 && !st.isGrey;
+  const card = document.createElement('div');
+  card.className = 'card' + (st.isGrey ? ' grey' : '') + (expired && !st.isGrey ? ' urgent' : '') + (isHero ? ' hero' : '');
+  const info = document.createElement('div'); info.className = 'info';
+  info.innerHTML = `<div class="title">${b.map} - ${b.ch}</div><div class="sub">${sub}</div>`;
+  card.appendChild(info);
+  const stEl = document.createElement('div');
+  stEl.className = 'status' + (b.isFlash ? ' fl' : ''); stEl.style.color = color; stEl.textContent = statusText;
+  card.appendChild(stEl);
+  if (hasNext) {
+    const btn = document.createElement('button'); btn.className = 'nextBtn'; btn.style.color = color;
+    btn.textContent = b.displayValue === 'ON' ? 'KILL' : 'NEXT';
+    btn.onclick = () => triggerNext(b.map, b.ch);
+    card.appendChild(btn);
+  }
+  if (!killedOnly) {
+    const del = document.createElement('button'); del.className = 'delBtn'; del.textContent = '×';
+    del.onclick = () => { if (!st.isGrey) saveBoss(b.map, b.ch, 'XX1'); };
+    card.appendChild(del);
+  }
+  return card;
+}
+function render() {
+  const list = $('list'); if (!room) return;
+  const all = Object.entries(bosses);
+  const stOf = {}; all.forEach(([id, b]) => stOf[id] = status(b));
+  const active = all.filter(([id]) => stOf[id].weight !== 7);
+  const killed = all.filter(([id]) => stOf[id].weight === 7);
+  active.sort((a, b) => {
+    const A = stOf[a[0]], B = stOf[b[0]];
+    if (A.isGrey !== B.isGrey) return A.isGrey ? 1 : -1;
+    const sw = w => (w === 0 ? 1.5 : w);
+    if (A.weight !== B.weight) return sw(B.weight) - sw(A.weight);
+    if (A.weight >= 2 && A.weight <= 5) return B.stageVal - A.stageVal;
+    if (A.weight <= 1.5) return a[1].targetTime - b[1].targetTime;
+    return B.mapLv - A.mapLv;
+  });
+  list.innerHTML = '';
+  active.forEach(([id, b], i) => list.appendChild(mkCard(b, stOf[id], i === 0 && !stOf[id].isGrey, false)));
+  if (killed.length) {
+    const tg = document.createElement('button'); tg.id = 'killedToggle'; tg.style.display = 'block';
+    tg.textContent = (killedOpen ? '▾ 收合' : '▸ 已擊殺區間') + ` (${killed.length})`;
+    tg.onclick = () => { killedOpen = !killedOpen; render(); };
+    list.appendChild(tg);
+    if (killedOpen) killed.sort((a, b) => b[1].startTime - a[1].startTime).forEach(([id, b]) => list.appendChild(mkCard(b, stOf[id], false, true)));
+  }
+}
+function updateHint() {
+  const p = $('cmdInput').value.trim().split(/\s+/);
+  const dup = p.length === 2 && !!bosses[`${p[0]}_${p[1]}`];
+  const narrow = window.innerWidth < 280;
+  $('hint').className = dup ? 'warn' : '';
+  $('hint').textContent = dup ? '⚠️ 該地圖分流已存在' : (narrow ? '80 3 R1.5 / ON / DE' : '範例：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 ON ｜ 80 3 DE');
+}
+
+setInterval(render, 1000);
+$('joinBtn').onclick = () => join($('roomInput').value, $('nameInput').value);
+$('roomInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('joinBtn').click(); });
+$('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('joinBtn').click(); });
+$('exitBtn').onclick = exitRoom;
+$('sendBtn').onclick = submit;
+$('cmdInput').addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+$('cmdInput').addEventListener('input', updateHint);
+window.addEventListener('resize', updateHint);
+const sr = localStorage.getItem('tos_ipad_room');
+if (sr) { $('roomInput').value = sr; $('nameInput').value = localStorage.getItem('tos_ipad_name') || ''; join(sr, $('nameInput').value); }
+</script>
+</body>
+</html>
