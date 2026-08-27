@@ -11,7 +11,11 @@
 <style>
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; background: #000; color: #fff; font-family: -apple-system, 'PingFang TC', sans-serif; overscroll-behavior: none; }
-#app { height: 100%; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+#app { height: 100%; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; width: 100%; }
+body.panel #app { width: var(--panel-w, 280px); border-right: 1px solid #1a1a1a; }
+#grip { position: fixed; top: 0; bottom: 0; left: calc(var(--panel-w, 100vw) - 14px); width: 28px; z-index: 50; cursor: ew-resize; touch-action: none; display: flex; align-items: center; justify-content: center; }
+#grip::before { content: ''; width: 5px; height: 52px; border-radius: 3px; background: #333; }
+#grip.on::before { background: #0f0; }
 input { font-family: ui-monospace, Menlo, monospace; }
 @keyframes flash { 0%,100%{opacity:1;} 50%{opacity:0.25;} }
 @keyframes urgentPulse { 0%,100%{box-shadow:0 0 4px rgba(255,51,0,0.5);} 50%{box-shadow:0 0 16px rgba(255,51,0,0.9);} }
@@ -52,22 +56,20 @@ input { font-family: ui-monospace, Menlo, monospace; }
 #cmdRow { display: flex; gap: 8px; }
 #cmdInput { flex: 1; min-width: 0; min-height: 46px; background: #050505; border: none; border-bottom: 2px solid #0f0; color: #fff; font-size: 16px; padding: 0 8px; outline: none; }
 #sendBtn { min-width: 64px; min-height: 46px; background: #0f0; color: #000; border: none; border-radius: 10px; font-size: 15px; font-weight: 800; cursor: pointer; }
-/* 窄縫模式（Slide Over 被遊戲擠到剩窄條時） */
-@media (max-width: 280px) {
-  #hdr { gap: 5px; padding: 6px 7px 4px; }
-  #roomLabel { font-size: 13px; letter-spacing: 0; }
-  #online { font-size: 10px; }
-  #exitBtn { font-size: 10px; padding: 4px 6px; }
-  #list { padding: 2px 6px 8px; gap: 5px; }
-  .card { flex-wrap: wrap; column-gap: 6px; row-gap: 4px; padding: 8px 9px; }
-  .card .status { flex-basis: 100%; line-height: 1.05; }
-  .card.hero .status { font-size: 26px; }
-  .card .nextBtn { flex: 1 1 100%; min-height: 40px; }
-  .card .delBtn { order: 2; padding: 6px 2px; }
-  #cmdRow { flex-wrap: wrap; gap: 6px; }
-  #cmdInput { flex: 1 1 100%; min-height: 40px; }
-  #sendBtn { flex: 1 1 100%; min-height: 40px; font-size: 13px; }
-}
+/* 窄縫模式（視窗或面板寬 < 280px 時） */
+body.narrow #hdr { gap: 5px; padding: 6px 7px 4px; }
+body.narrow #roomLabel { font-size: 13px; letter-spacing: 0; }
+body.narrow #online { font-size: 10px; }
+body.narrow #exitBtn { font-size: 10px; padding: 4px 6px; }
+body.narrow #list { padding: 2px 6px 8px; gap: 5px; }
+body.narrow .card { flex-wrap: wrap; column-gap: 6px; row-gap: 4px; padding: 8px 9px; }
+body.narrow .card .status { flex-basis: 100%; line-height: 1.05; }
+body.narrow .card.hero .status { font-size: 26px; }
+body.narrow .card .nextBtn { flex: 1 1 100%; min-height: 40px; }
+body.narrow .card .delBtn { order: 2; padding: 6px 2px; }
+body.narrow #cmdRow { flex-wrap: wrap; gap: 6px; }
+body.narrow #cmdInput { flex: 1 1 100%; min-height: 40px; }
+body.narrow #sendBtn { flex: 1 1 100%; min-height: 40px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -96,6 +98,7 @@ input { font-family: ui-monospace, Menlo, monospace; }
       </div>
     </div>
   </div>
+  <div id="grip" title="拖拉調整寬度／雙擊恢復全寬"></div>
 </div>
 <script>
 firebase.initializeApp({
@@ -106,6 +109,41 @@ firebase.initializeApp({
 });
 const db = firebase.database();
 const $ = id => document.getElementById(id);
+/* 面板寬度：?w=280 設定並記住；?w=full 恢復全寬 */
+(function () {
+  const q = new URLSearchParams(location.search).get('w');
+  if (q === 'full' || q === '0') localStorage.removeItem('tos_panel_w');
+  else if (q && parseInt(q) > 0) localStorage.setItem('tos_panel_w', parseInt(q));
+  applyPanel();
+  window.addEventListener('resize', applyPanel);
+})();
+function applyPanel() {
+  const w = parseInt(localStorage.getItem('tos_panel_w')) || 0;
+  const eff = w > 0 ? Math.min(w, window.innerWidth) : window.innerWidth;
+  document.body.classList.toggle('panel', w > 0);
+  document.body.classList.toggle('narrow', eff < 280);
+  document.body.style.setProperty('--panel-w', (w > 0 ? eff : window.innerWidth) + 'px');
+}
+/* 拖拉把手：調整面板寬度，雙擊恢復全寬 */
+(function () {
+  const grip = $('grip');
+  let lastTap = 0;
+  grip.addEventListener('pointerdown', e => {
+    const now = Date.now();
+    if (now - lastTap < 350) { localStorage.removeItem('tos_panel_w'); applyPanel(); updateHint(); lastTap = 0; return; }
+    lastTap = now;
+    grip.classList.add('on');
+    grip.setPointerCapture(e.pointerId);
+    const move = ev => {
+      const w = Math.max(120, Math.round(ev.clientX));
+      localStorage.setItem('tos_panel_w', w);
+      applyPanel();
+    };
+    const up = () => { grip.classList.remove('on'); grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); updateHint(); };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+  });
+})();
 let room = '', myName = '', userRef = null, bosses = {}, killedOpen = false;
 
 function fixedId() {
@@ -273,7 +311,7 @@ function render() {
 function updateHint() {
   const p = $('cmdInput').value.trim().split(/\s+/);
   const dup = p.length === 2 && !!bosses[`${p[0]}_${p[1]}`];
-  const narrow = window.innerWidth < 280;
+  const narrow = document.body.classList.contains('narrow');
   $('hint').className = dup ? 'warn' : '';
   $('hint').textContent = dup ? '⚠️ 該地圖分流已存在' : (narrow ? '80 3 R1.5 / ON / DE' : '範例：80 3 R1.5 ｜ 80 3 0015 ｜ 80 3 ON ｜ 80 3 DE');
 }
