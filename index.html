@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.6.9</title>
+    <title>TOS M FB TIME v1.7.0</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -132,6 +132,19 @@
            房號列/在線/公告/排序/提示 等等吃掉, 第一屏只看得到 5 張卡。
            使用者要的是「卡片 + 輸入框」, 其餘收起來。
            用收合而不是移除: 留一個 ⋯ 鈕可以展開, 手機使用者不會突然失去功能。*/
+        /* 等級篩選 (2026-08-28): 只藏卡片, 不動資料, 只影響自己 (存 localStorage) */
+        .lv-filter-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+                         margin-bottom: 10px; font-size: 12px; color: #666; }
+        .lv-filter-row input { width: 62px; background: #111; border: 1px solid #333; color: #ddd;
+                               font-size: 12px; padding: 4px 6px; border-radius: 6px; outline: none;
+                               -moz-appearance: textfield; }
+        .lv-filter-row input::-webkit-outer-spin-button,
+        .lv-filter-row input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .lv-filter-row button { background: none; border: 1px solid #444; color: #888; font-size: 11px;
+                                padding: 3px 9px; border-radius: 10px; cursor: pointer; }
+        .lv-filter-row .lv-count { color: #ffcc00; }
+        body.light .lv-filter-row { color: #888; }
+        body.light .lv-filter-row input { background: #fff; border-color: #ccc; color: #333; }
         .ui-expand-btn { display: none; background: none; border: 1px solid #444; color: #888;
                          font-size: 13px; line-height: 1; padding: 2px 8px; border-radius: 10px;
                          cursor: pointer; }
@@ -144,7 +157,11 @@
             body:not(.ui-expanded) .notice-bar,
             body:not(.ui-expanded) .chat-log-row,
             body:not(.ui-expanded) .sort-row,
+            body:not(.ui-expanded) .lv-filter-row,
             body:not(.ui-expanded) .input-hint { display: none; }
+            /* 篩選一旦生效就強制顯示 —— 卡片被藏起來卻看不到原因, 就是今天
+               踩過三次的那種「壞掉的那側剛好看不見」 */
+            body.lv-active .lv-filter-row { display: flex !important; }
             /* 卡片壓到約 80px: 拿掉最下面那排小圖示 (星標/號召/MAX/人數/編輯者),
                那些在窄縫裡點不準也不是當下要看的; 階段、倒數、NEXT 全部保留 */
             body:not(.ui-expanded) .card-actions { display: none; }
@@ -296,7 +313,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.6.9</div>
+        <div class="ver-info">v1.7.0</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="" maxlength="10"
                 oninput="this.value=this.value.replace('#','')"
@@ -335,7 +352,7 @@
                 </div>
             </div>
             <div class="room-info" id="headerTools">
-                <span class="version-tag">v1.6.9</span>
+                <span class="version-tag">v1.7.0</span>
                 <button id="langBtn" onclick="toggleLang()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">日本語</button>
                 <button onclick="toggleHelpPanel()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 8px; border-radius:12px; cursor:pointer;">？</button>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
@@ -383,6 +400,15 @@
             <button id="sortTimeBtn" class="btn-toggle active" onclick="setSort('time')">時間排序</button>
             <button id="sortGroupBtn" class="btn-toggle" onclick="setSort('group')">分組排序</button>
             <button id="sortMapBtn" class="btn-toggle" onclick="setSort('map')">地圖排序</button>
+        </div>
+
+        <div class="lv-filter-row">
+            <span>等級篩選</span>
+            <input type="number" id="lvMin" inputmode="numeric" placeholder="最低" oninput="applyLvFilter()">
+            <span>~</span>
+            <input type="number" id="lvMax" inputmode="numeric" placeholder="最高" oninput="applyLvFilter()">
+            <button onclick="clearLvFilter()">清除</button>
+            <span class="lv-count" id="lvCount"></span>
         </div>
 
         <input type="text" id="bossInput" class="main-input" placeholder="地圖 分流 階段(R)/分鐘" oninput="checkDuplicate()">
@@ -693,7 +719,7 @@ db.ref('protected_rooms').on('value', s => {
         }
     });
 });
-const currentVersion = "1.6.9";
+const currentVersion = "1.7.0";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
 let globalNextLocked = false;
@@ -911,6 +937,46 @@ function toggleR4Sfx()     { isR4SfxEnabled=!isR4SfxEnabled;   document.getEleme
 function toggleWarn()      { showWarningIcon=!showWarningIcon;  document.getElementById('warnBtn').classList.toggle('active',showWarningIcon);   renderList(); }
 function toggleColorMode() { colorMode=colorMode===1?2:1; document.getElementById('colorModeBtn').innerText=colorMode===1?'🎨':'🖌️'; renderList(); }
 function togglePinAlert()  { pinAlertMode=!pinAlertMode; document.getElementById('pinAlertBtn').classList.toggle('active',pinAlertMode); }
+/* ── 等級篩選 ──
+   只隱藏卡片, 不動 Firebase 上的任何資料; 設定存在自己的瀏覽器, 不影響隊友。
+   刻意不做成全房共用: 一個人調錯範圍會讓所有人的卡片一起消失, 而且很難查。*/
+let lvFilter = { min: null, max: null };
+function lvPass(map) {
+    if (lvFilter.min === null && lvFilter.max === null) return true;
+    const n = parseInt((String(map || '').match(/\d+/) || [NaN])[0]);
+    if (isNaN(n)) return true;   // 讀不出等級的卡片一律保留, 不因篩選而消失
+    if (lvFilter.min !== null && n < lvFilter.min) return false;
+    if (lvFilter.max !== null && n > lvFilter.max) return false;
+    return true;
+}
+function applyLvFilter() {
+    const rd = id => { const v = (document.getElementById(id).value || '').trim();
+                       const n = parseInt(v); return (v === '' || isNaN(n)) ? null : n; };
+    lvFilter = { min: rd('lvMin'), max: rd('lvMax') };
+    try { localStorage.setItem('lvFilter', JSON.stringify(lvFilter)); } catch (e) {}
+    document.body.classList.toggle('lv-active', lvFilter.min !== null || lvFilter.max !== null);
+    renderList();
+}
+function clearLvFilter() {
+    document.getElementById('lvMin').value = '';
+    document.getElementById('lvMax').value = '';
+    applyLvFilter();
+}
+(function restoreLvFilter() {
+    // 還原時三件事都要做. 只還原變數的話, 重整之後卡片被藏起來、輸入框卻是空的,
+    // lv-active 也沒設 -> 精簡模式連提示列都看不到, 使用者只會覺得卡片憑空消失。
+    // (這個漏洞是實測重整才發現的, 光看程式碼會以為「有存有讀」就完成了)
+    try {
+        const v = JSON.parse(localStorage.getItem('lvFilter') || 'null');
+        if (!v || (v.min === null && v.max === null)) return;
+        lvFilter = v;
+        const mn = document.getElementById('lvMin'), mx = document.getElementById('lvMax');
+        if (mn) mn.value = (v.min === null ? '' : v.min);
+        if (mx) mx.value = (v.max === null ? '' : v.max);
+        document.body.classList.add('lv-active');
+    } catch (e) {}
+})();
+
 function toggleCompactUI() {
     const on = document.body.classList.toggle('ui-expanded');
     try { localStorage.setItem('uiExpanded', on ? '1' : '0'); } catch (e) {}
@@ -1084,7 +1150,11 @@ function editMemberCount(event, id) {
 function renderList() {
     const area = document.getElementById('renderArea'); if (!area) return;
     area.innerHTML = ''; Object.values(timers).forEach(clearInterval); timers = {};
-    const all = Object.entries(window.currentData);
+    const everything = Object.entries(window.currentData);
+    const all = everything.filter(([id, b]) => lvPass(b.map));
+    const hidden = everything.length - all.length;
+    const lvCount = document.getElementById('lvCount');
+    if (lvCount) lvCount.textContent = hidden > 0 ? `已隱藏 ${hidden} 張` : '';
     const auth = hasAuth(), myCallAuth = canIUseCall();
     const clearBtn = document.getElementById('clearAllBtn');
     if (clearBtn) clearBtn.style.display = auth ? 'block' : 'none';
@@ -2258,7 +2328,7 @@ function initChat() {
      那個 true 參數在現代瀏覽器早已被忽略, 外部 JS 仍會吃快取 ——
      沒有這個查詢字串, 改了 mini-timer.js 也送不到隊友手上。
      每次改這個檔案時把版本號一起帶上。 -->
-<script src="mini-timer.js?v=1.6.9"></script>
+<script src="mini-timer.js?v=1.7.0"></script>
 
 </body>
 </html>
