@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.6.8</title>
+    <title>TOS M FB TIME v1.6.9</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -126,6 +126,36 @@
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
 
         /* ═══ 卡片 ═══ */
+        /* ── 窄視窗精簡模式 (2026-08-27) ──
+           起因: 使用者用 iPadOS 幕前調度把遊戲和本頁並排, 網頁只剩一條窄縫。
+           實測 360px 寬時, 第一張卡片出現在 y=437 —— 44% 的畫面高度被
+           房號列/在線/公告/排序/提示 等等吃掉, 第一屏只看得到 5 張卡。
+           使用者要的是「卡片 + 輸入框」, 其餘收起來。
+           用收合而不是移除: 留一個 ⋯ 鈕可以展開, 手機使用者不會突然失去功能。*/
+        .ui-expand-btn { display: none; background: none; border: 1px solid #444; color: #888;
+                         font-size: 13px; line-height: 1; padding: 2px 8px; border-radius: 10px;
+                         cursor: pointer; }
+        @media (max-width: 520px) {
+            .ui-expand-btn { display: inline-block; }
+            body.ui-expanded .ui-expand-btn { border-color: #0f0; color: #0f0; }
+            body:not(.ui-expanded) .audio-controls,
+            body:not(.ui-expanded) #headerTools,
+            body:not(.ui-expanded) .user-list-bar,
+            body:not(.ui-expanded) .notice-bar,
+            body:not(.ui-expanded) .chat-log-row,
+            body:not(.ui-expanded) .sort-row,
+            body:not(.ui-expanded) .input-hint { display: none; }
+            /* 卡片壓到約 80px: 拿掉最下面那排小圖示 (星標/號召/MAX/人數/編輯者),
+               那些在窄縫裡點不準也不是當下要看的; 階段、倒數、NEXT 全部保留 */
+            body:not(.ui-expanded) .card-actions { display: none; }
+            body:not(.ui-expanded) .card { padding: 7px 9px 7px; }
+            body:not(.ui-expanded) .card h3 { font-size: 13px; }
+            body:not(.ui-expanded) .stage-label { font-size: 16px; }
+            body:not(.ui-expanded) .card-title-row { margin-bottom: 2px; }
+            body:not(.ui-expanded) .grid-section { margin-bottom: 14px; }
+            body:not(.ui-expanded) .header { margin-bottom: 4px; gap: 4px; }
+            body:not(.ui-expanded) .main-input { margin-bottom: 6px; }
+        }
         .card { background: var(--bg-card); padding: 12px 12px 8px; border-radius: 8px; position: relative; border: 1px solid var(--border); display: flex; flex-direction: column; transition: background 0.25s, border-color 0.25s; }
         .card.compact { padding: 8px 12px 6px; background: var(--bg-card-compact); }
         .card.compact .timer-container { margin-top: 4px; }
@@ -266,7 +296,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.6.8</div>
+        <div class="ver-info">v1.6.9</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="" maxlength="10"
                 oninput="this.value=this.value.replace('#','')"
@@ -287,6 +317,8 @@
                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                 </svg>
+                <button class="ui-expand-btn" onclick="toggleCompactUI()"
+                        title="展開／收合其他區塊">⋯</button>
                 <div class="audio-controls">
                     <button id="voiceBtn" class="audio-btn" onclick="toggleVoice()">🔊</button>
                     <input type="range" id="volRange" class="vol-range" min="0" max="1" step="0.01" value="0.5" oninput="updateVolBg(this)">
@@ -302,8 +334,8 @@
                     </span>
                 </div>
             </div>
-            <div class="room-info">
-                <span class="version-tag">v1.6.8</span>
+            <div class="room-info" id="headerTools">
+                <span class="version-tag">v1.6.9</span>
                 <button id="langBtn" onclick="toggleLang()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">日本語</button>
                 <button onclick="toggleHelpPanel()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 8px; border-radius:12px; cursor:pointer;">？</button>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
@@ -661,7 +693,7 @@ db.ref('protected_rooms').on('value', s => {
         }
     });
 });
-const currentVersion = "1.6.8";
+const currentVersion = "1.6.9";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
 let globalNextLocked = false;
@@ -879,6 +911,14 @@ function toggleR4Sfx()     { isR4SfxEnabled=!isR4SfxEnabled;   document.getEleme
 function toggleWarn()      { showWarningIcon=!showWarningIcon;  document.getElementById('warnBtn').classList.toggle('active',showWarningIcon);   renderList(); }
 function toggleColorMode() { colorMode=colorMode===1?2:1; document.getElementById('colorModeBtn').innerText=colorMode===1?'🎨':'🖌️'; renderList(); }
 function togglePinAlert()  { pinAlertMode=!pinAlertMode; document.getElementById('pinAlertBtn').classList.toggle('active',pinAlertMode); }
+function toggleCompactUI() {
+    const on = document.body.classList.toggle('ui-expanded');
+    try { localStorage.setItem('uiExpanded', on ? '1' : '0'); } catch (e) {}
+}
+(function restoreCompactUI() {
+    try { if (localStorage.getItem('uiExpanded') === '1') document.body.classList.add('ui-expanded'); }
+    catch (e) {}
+})();
 function toggleChat() {
     const panel = document.getElementById('chatPanel'), btn = document.getElementById('chatBtn');
     if      (chatMode==='full')   { chatMode='hidden'; panel.className='chat-hidden'; btn.classList.remove('active'); btn.style.opacity='0.3'; }
@@ -2218,7 +2258,7 @@ function initChat() {
      那個 true 參數在現代瀏覽器早已被忽略, 外部 JS 仍會吃快取 ——
      沒有這個查詢字串, 改了 mini-timer.js 也送不到隊友手上。
      每次改這個檔案時把版本號一起帶上。 -->
-<script src="mini-timer.js?v=1.6.8"></script>
+<script src="mini-timer.js?v=1.6.9"></script>
 
 </body>
 </html>
