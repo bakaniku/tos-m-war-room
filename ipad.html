@@ -257,6 +257,7 @@ function mkCard(b, st, isHero, killedOnly) {
     const diff = Math.max(0, now - b.startTime);
     const m = Math.floor(diff / 60000), s = Math.floor((diff % 60000) / 1000);
     statusText = b.lastInput.toString().toUpperCase().startsWith('DE') ? '已擊殺' : b.displayValue;
+    if (document.body.classList.contains('narrow') && statusText.startsWith('階段')) statusText = '階段' + Math.floor(parseFloat(statusText.replace('階段', '')) || 0);
     sub = `(${m}:${String(s).padStart(2, '0')})`;
   }
   const expired = b.targetTime > 0 && b.targetTime <= now;
