@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.7.1</title>
+    <title>TOS M FB TIME v1.8.0</title>
+    <script src="observation-core.js?v=1.8.0"></script>
+    <script src="map-catalog.js?v=1.8.0"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -324,7 +326,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.7.1</div>
+        <div class="ver-info">v1.8.0</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="" maxlength="10"
                 oninput="this.value=this.value.replace('#','')"
@@ -363,7 +365,7 @@
                 </div>
             </div>
             <div class="room-info" id="headerTools">
-                <span class="version-tag">v1.7.1</span>
+                <span class="version-tag">v1.8.0</span>
                 <button id="langBtn" onclick="toggleLang()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">日本語</button>
                 <button onclick="toggleHelpPanel()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 8px; border-radius:12px; cursor:pointer;">？</button>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
@@ -730,7 +732,7 @@ db.ref('protected_rooms').on('value', s => {
         }
     });
 });
-const currentVersion = "1.7.1";
+const currentVersion = "1.8.0";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
 let globalNextLocked = false;
@@ -1253,6 +1255,7 @@ function renderList() {
                 <div class="card-title-row" id="title_${id}">
                     <h3 id="h3_${id}" onclick="enterInlineEdit('${id}')"><span class="card-location">${b.map} - ${b.ch}</span><span class="det-coverage" hidden tabindex="0" role="img">👁︎</span></h3>${memberDisplayHtml}
                 </div>
+                ${window.TOSMObservation?.manualProtected(b) ? `<button class="manual-guard" onclick="resumeAutoWrite('${id}')" title="人工或舊版資料優先；點擊後等待新的確認觀測接手">🔒 人工優先 · 恢復自動</button>` : ''}
                 <div class="timer-container">
                     <div class="stage-row" id="sr_${id}">
                         <span class="stage-label" id="t_${id}" style="color:${st.isGrey?'#555':st.color}">...</span>
@@ -1375,7 +1378,9 @@ function startTimer(id, b, isGrey, statusColor) {
 }
 
 /* ════════ saveBoss ════════ */
-function saveBoss(map, ch, val, doFocus = false) {
+function saveBoss(map, ch, val, doFocus = false, automatic = null) {
+    const writeRoom = currentRoom, writer = myName;
+    if (automatic && (automatic.room !== writeRoom || !automatic.isCurrent())) return;
     if (isBanned) return; // 靜默攔截
     const pass = protectedRooms[currentRoom];
     if (pass && map.toUpperCase() === "ADMIN" && ch === pass) {
@@ -1415,38 +1420,87 @@ function saveBoss(map, ch, val, doFocus = false) {
 
     const updatePayload = {
         map, ch, targetTime: tt, lastInput: uv, displayValue: dv,
-        startTime: Date.now(), isFlash: flash, updater: myName,
+        startTime: Date.now(), isFlash: flash, updater: writer,
         memberCount: memberCount, isMax: autoMax
     };
 
     if (tt > 0 || uv.startsWith("DE")) {
-        const oldCP = oldData ? (oldData.callPriority || 0) : 0;
         updatePayload.callPriority = 0;
         // 計時 或 擊殺(DE) 才重置人數與MAX；NEXT(R→R, R→ON) 不重置
         updatePayload.memberCount = 0;
         updatePayload.isMax = false;
-        if (oldCP === 1) {
-            setTimeout(() => {
-                const slots = getCallSlots();
-                if (slots.p2id) db.ref(`rooms/${currentRoom}/bosses/${slots.p2id}/callPriority`).set(1);
-            }, 300);
+    }
+
+    // Manual intent persists in the shared card, across reloads and other new clients.
+    updatePayload.writeOrigin = automatic ? 'detector' : 'manual';
+    updatePayload.manualOverride = {active: !automatic, by: writer, at: Date.now()};
+    updatePayload.autoGuard = automatic ? {
+        signature: TOSMObservation.signature(updatePayload),
+        notBefore: oldData?.autoGuard?.notBefore || 0
+    } : null;
+    const afterCommit = () => {
+        if (automatic) automatic.onCommitted?.();
+        if ((tt > 0 || uv.startsWith('DE')) && oldData?.callPriority === 1 && currentRoom === writeRoom) {
+            const slots = getCallSlots();
+            if (slots.p2id) db.ref(`rooms/${writeRoom}/bosses/${slots.p2id}/callPriority`).set(1);
         }
+        // A delayed flash clear may not affect a later human edit.
+        setTimeout(() => db.ref(`rooms/${writeRoom}/bosses/${id}`).transaction(cur => {
+            if (!cur || TOSMObservation.signature(cur) !== TOSMObservation.signature(updatePayload)) return;
+            return {...cur, isFlash:false};
+        }, undefined, false).catch(()=>{}), 3000);
+        if (doFocus && currentRoom === writeRoom) {
+            const inp = document.getElementById('bossInput');
+            if (inp) { inp.value = `${map} ${ch} ${uv}`; inp.focus(); }
+        }
+        document.getElementById('inputHint').classList.remove('warning');
+        const logRef = db.ref(`rooms/${writeRoom}/logs`);
+        logRef.push({name:writer,boss:`${map}-${ch}`,oldVal:oldStatus,newVal:dv,t:Date.now(),
+            source:automatic?'detector':'manual'});
+        logRef.once('value', snapshot => {
+            const total = snapshot.numChildren();
+            if (total > 100) { let count=0; snapshot.forEach(child=>{ if(count<total-100) child.ref.remove(); count++; }); }
+        });
+    };
+    if (automatic) {
+        return db.ref(`rooms/${writeRoom}/bosses/${id}`).transaction(cur => {
+            if (isBanned || currentRoom !== writeRoom || !automatic.isCurrent()
+                || TOSMObservation.signature(cur) !== automatic.expected
+                || !TOSMObservation.autoAllowed(cur, automatic.observedAt)) return;
+            const result = {...cur,...updatePayload};
+            if (!(tt > 0 || uv.startsWith('DE'))) {
+                result.memberCount = cur?.memberCount || 0;
+                result.isMax = !!cur?.isMax;
+            }
+            return result;
+        }, (error, committed) => {
+            if (error) console.warn('自動更新未成功，保留卡片', error);
+            else if (committed) afterCommit();
+            automatic.onFinished?.(!!committed);
+        }, false).catch(()=>{});
     }
-
-    db.ref(`rooms/${currentRoom}/bosses/${id}`).update(updatePayload);
-    setTimeout(() => db.ref(`rooms/${currentRoom}/bosses/${id}/isFlash`).set(false), 3000);
-    if (doFocus) {
-        const inp = document.getElementById('bossInput');
-        if (inp) { inp.value = `${map} ${ch} ${uv}`; inp.focus(); }
-    }
-    document.getElementById('inputHint').classList.remove('warning');
-
-    const logRef = db.ref(`rooms/${currentRoom}/logs`);
-    logRef.push({ name: myName, boss: `${map}-${ch}`, oldVal: oldStatus, newVal: dv, t: Date.now() });
-    logRef.once('value', snapshot => {
-        const total = snapshot.numChildren();
-        if (total > 100) { let count=0; snapshot.forEach(child=>{ if(count<total-100) child.ref.remove(); count++; }); }
+    return db.ref(`rooms/${writeRoom}/bosses/${id}`).update(updatePayload).then(afterCommit).catch(error => {
+        const hint=document.getElementById('inputHint');
+        hint.textContent='人工輸入未儲存成功，請重試'; hint.classList.add('warning');
+        console.warn('人工輸入未儲存成功',error);
     });
+}
+
+function resumeAutoWrite(id) {
+    if (isBanned || !currentRoom) return;
+    const room=currentRoom, before=(window.currentData||{})[id];
+    if (!before) return;
+    const expected=TOSMObservation.signature(before), now=Date.now();
+    return db.ref(`rooms/${room}/bosses/${id}`).transaction(cur=>{
+        if (isBanned || currentRoom!==room || TOSMObservation.signature(cur)!==expected) return;
+        return {...cur,manualOverride:{active:false,by:myName,at:now},
+            autoGuard:{signature:expected,notBefore:now}};
+    },(error,committed)=>{
+        if(error || !committed) {
+            const hint=document.getElementById('inputHint');
+            hint.textContent='卡片已變更或連線失敗，未解除人工保護';
+        }
+    },false).catch(()=>{});
 }
 
 /* ════════ 紀錄 ════════ */
@@ -1917,6 +1971,7 @@ function initChat() {
         font-weight: 700;
         line-height: 1;
     }
+    .manual-guard { display:block; max-width:100%; margin:5px 0; padding:3px 6px; border:1px solid #997a30; border-radius:5px; color:#b78a22; background:transparent; font-size:10px; cursor:pointer; }
     #detectorDrawerToggle:hover {
         border-color: #0f0;
         background: #142014;
@@ -2313,6 +2368,30 @@ function initChat() {
         saveMine();
         render();
     });
+    const O = window.TOSMObservation;
+    const automaticPending = new Set();
+    function observedTime(d) {
+        const o=O?.normalizeObservation(d,currentRoom,window.TOSMMapCatalog||[],Date.now());
+        return o && (o.stage===d.stage || (o.stage==='WAITING' && !WRITABLE[d.stage])) ? o.observed_at : null;
+    }
+    function automaticWrite(id, d, ch, value, kind, markKey, mark) {
+        const room=currentRoom, key=`${d.map_level}_${ch}`, pendingKey=`${room}/${key}`;
+        const cur=(window.currentData||{})[key];
+        if (!O || !O.autoAllowed(cur,observedTime(d)) || automaticPending.has(pendingKey)
+            || window.__tosmBossDataRoom!==room || !ownedFreshDetector(id,d,Date.now())) return;
+        const isCurrent=()=>currentRoom===room && autoWriteBox.checked && !isBanned
+            && window.__tosmBossDataRoom===room && latest[id]===d
+            && ownedFreshDetector(id,d,Date.now()) && d.map_fresh!==false;
+        if (!isCurrent()) return;
+        automaticPending.add(pendingKey);
+        saveBoss(String(d.map_level),String(ch),value,false,{
+            room,expected:O.signature(cur),observedAt:observedTime(d),isCurrent,
+            onCommitted:()=>noteAutoFill(d.map_level,ch,value,kind),
+            onFinished:committed=>{automaticPending.delete(pendingKey);if(committed)appliedMark[markKey]=mark;}
+        });
+    }
+    window.getDetectorObservationContext = () => ({room:currentRoom,latest,
+        owned:mine.slice(),writeOthers:writeOthersBox.checked});
     const appliedMark = {};   // collector_id -> 已代寫過的 "stage|map|ch|updated_at"
 
     // 2026-09-16 使用者要求：只有「現卡 ON + 確認冷卻」才標記 KILLED。
@@ -2385,7 +2464,7 @@ function initChat() {
         const room = currentRoom, key = `${d.map_level}_${d.ch}`, pendingKey = `${room}/${key}`;
         if (window.__tosmBossDataRoom !== room || cooldownPending.has(pendingKey)) return;
         const before = (window.currentData || {})[key];
-        if (!before || before.lastInput !== 'ON' || !Number.isFinite(before.startTime)
+        if (!O || !O.autoAllowed(before,observedTime(d)) || !before || before.lastInput !== 'ON' || !Number.isFinite(before.startTime)
                 || before.startTime > cooldownEpisodes[pendingKey]) return;
         const version = before.startTime, observedAt = d.updated_at, updater = myName;
         const stillValid = () => {
@@ -2398,11 +2477,13 @@ function initChat() {
         // transaction 每次重試都核對伺服器上的 ON 版本，避免蓋掉新的人工作業。
         // applyLocally=false：只有伺服器確認成功才回饋 KILLED，不顯示猜測成功。
         db.ref(`rooms/${room}/bosses/${key}`).transaction(cur => {
-            if (!stillValid() || !cur || cur.lastInput !== 'ON' || cur.startTime !== version
+            if (!stillValid() || !O.autoAllowed(cur,observedTime(d)) || !cur || cur.lastInput !== 'ON' || cur.startTime !== version
                     || String(cur.map) !== String(d.map_level) || String(cur.ch) !== String(d.ch)) return;
-            return { ...cur, targetTime: 0, lastInput: 'DE1', displayValue: '已擊殺',
-                startTime: Date.now(), isFlash: false, updater,
+            const result = { ...cur, targetTime: 0, lastInput: 'DE1', displayValue: '已擊殺',
+                startTime: Date.now(), isFlash: false, updater, writeOrigin:'detector',
                 memberCount: 0, isMax: false, callPriority: 0 };
+            result.autoGuard={signature:O.signature(result),notBefore:cur.autoGuard?.notBefore||0};
+            return result;
         }, (error, committed, snapshot) => {
             cooldownPending.delete(pendingKey);
             if (error) { console.warn('冷卻轉 KILLED 未成功，等待重試', error); return; }
@@ -2416,7 +2497,7 @@ function initChat() {
     }
 
     function autoWrite() {
-        if (!autoWriteBox.checked || !currentRoom || typeof saveBoss !== 'function') return;
+        if (!O || !autoWriteBox.checked || !currentRoom || typeof saveBoss !== 'function') return;
         if (cooldownKilledBox.checked && window.__tosmBossDataRoom !== currentRoom) return;
         const now = Date.now();
         updateCooldownEpisodes(now);
@@ -2461,7 +2542,6 @@ function initChat() {
             if (cooldownPending.has(`${currentRoom}/${d.map_level}_${ch}`)
                     || cooldownForCard(d.map_level, ch, now)) continue;
             if (appliedMark[id] === mark) continue;
-            appliedMark[id] = mark;
             const cur = (window.currentData || {})[`${d.map_level}_${ch}`];
             if (cur && cur.lastInput === d.stage) continue;  // 卡片已是相同狀態, 不重寫
             // 不要把手動填的「小數階段」拉回整數: 偵測器只讀得到 R1~R4/ON,
@@ -2483,8 +2563,7 @@ function initChat() {
                     if (!isNaN(cn) && !isNaN(dn) && Math.floor(cn) === Math.floor(dn) && cn > dn) continue;
                 }
             }
-            saveBoss(String(d.map_level), String(ch), d.stage);
-            noteAutoFill(d.map_level, ch, d.stage, 'stage');
+            automaticWrite(id,d,ch,d.stage,'stage',id,mark);
         }
         // 重生倒數代填: 偵測器讀到徽章面板的紅色倒數 (格式 "1:14" = 1時14分).
         // 卡片剩餘時間與偵測值相差 <3 分鐘就不重寫, 避免面板開著時每分鐘洗一次.
@@ -2522,13 +2601,11 @@ function initChat() {
                     || (cooldownForCard(d.map_level, ch, now) && cooldownCard
                         && (cooldownCard.lastInput === 'ON' || cooldownCard.lastInput === 'DE1')))) continue;
             if (appliedMark['r_' + id] === rmark) continue;
-            appliedMark['r_' + id] = rmark;
             const parts = d.respawn.split(':');
             const detMs = (parseInt(parts[0]) * 60 + parseInt(parts[1])) * 60000;
             const cur = (window.currentData || {})[`${d.map_level}_${ch}`];
             if (cur && cur.targetTime > 0 && Math.abs((cur.targetTime - now) - detMs) < 180000) continue;
-            saveBoss(String(d.map_level), String(ch), d.respawn);
-            noteAutoFill(d.map_level, ch, d.respawn, 'respawn');
+            automaticWrite(id,d,ch,d.respawn,'respawn','r_'+id,rmark);
         }
     }
     // 影子資料可能先於卡片載入；首個卡片 snapshot 到達後再試，失敗不預先去重。
@@ -2548,6 +2625,7 @@ function initChat() {
         }
         render();
         autoWrite();
+        window.dispatchEvent(new Event('tosm-detectors'));
     }
     // 訂閱必須在「進入房間之後」才建立, 且換房要重訂 —— 頁面剛載入時
     // currentRoom 還是空字串, 直接訂閱會變成訂到根目錄而讀到所有房間的資料.
@@ -2581,7 +2659,8 @@ function initChat() {
      那個 true 參數在現代瀏覽器早已被忽略, 外部 JS 仍會吃快取 ——
      沒有這個查詢字串, 改了 mini-timer.js 也送不到隊友手上。
      每次改這個檔案時把版本號一起帶上。 -->
-<script src="mini-timer.js?v=1.7.1"></script>
+<script src="observation-ui.js?v=1.8.0"></script>
+<script src="mini-timer.js?v=1.8.0"></script>
 
 </body>
 </html>

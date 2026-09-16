@@ -5,6 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
+const O = require('./observation-core.js');
 const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 const script = html.match(/<script id="detectorDrawerScript">([\s\S]*?)<\/script>/)[1];
 const NOW = 1800000000000;
@@ -15,6 +16,7 @@ function setup({card = {}, detector = {}, storage = {}, loaded = true, deferred 
     const saved = {nativeDetAutoWrite: '1', nativeDetMine: '["mine"]', ...storage};
     const cards = {'153_2': {map:'153', ch:'2', lastInput:'ON', displayValue:'ON', startTime:NOW-30000,
         memberCount:9, isMax:true, callPriority:1, custom:'keep', ...card}};
+    cards['153_2'].autoGuard ||= {signature:O.signature(cards['153_2']),notBefore:0};
     const node = id => elements[id] ||= {checked:false, value:'', style:{}, innerHTML:'',
         classList:{toggle(){}, contains(){return false;}}, setAttribute(){},
         addEventListener(name, fn){ (this.events ||= {})[name] = fn; }};
@@ -23,13 +25,13 @@ function setup({card = {}, detector = {}, storage = {}, loaded = true, deferred 
         Event:class {constructor(type){this.type=type;}},
         localStorage:{getItem:k=>saved[k]??null, setItem:(k,v)=>{saved[k]=String(v);}},
         document:{getElementById:node, querySelectorAll:()=>[]},
-        window:{currentData:cards, __tosmBossDataRoom:loaded?'ROOM':null,
+        window:{TOSMObservation:O,currentData:cards, __tosmBossDataRoom:loaded?'ROOM':null,
             addEventListener:(name,fn)=>{const previous=events[name];events[name]=()=>{previous?.();fn();};},
             dispatchEvent:e=>events[e.type]?.()},
         currentRoom:'ROOM', myName:'Tester', isBanned:false,
         setInterval(){}, setTimeout(){},
         getBossStatus:()=>({isGrey:false}),
-        saveBoss:(map,ch,val)=>writes.push({map,ch,val}),
+        saveBoss:(map,ch,val,focus,options)=>{writes.push({map,ch,val});options?.onCommitted?.();options?.onFinished?.(true);},
         db:{ref(p){return {
             on:(ev,fn)=>{callbacks[p]=fn;}, off(){}, set(){return Promise.resolve();}, remove(){},
             push(v){logs.push({p,v}); return Promise.resolve();},
@@ -148,6 +150,7 @@ test('confirmed active evidence ends episode so next cooldown can kill next ON',
     const h=setup();h.run();h.state.now+=5000;
     h.set({mine:{...h.d,stage:'ON',cooldown_confirmed:false,updated_at:NOW+1000,respawn:null}});h.run();
     const card={...h.cards['153_2'],lastInput:'ON',startTime:NOW+1000};
+    card.autoGuard={signature:O.signature(card),notBefore:0}; // Explicitly automated next episode.
     h.cards['153_2']=clone(card);h.server['153_2']=clone(card);
     h.set({mine:{...h.d,updated_at:NOW+4000}});h.run();assert.equal(h.logs.length,2);
 });

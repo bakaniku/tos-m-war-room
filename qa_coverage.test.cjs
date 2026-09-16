@@ -6,6 +6,7 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 const { test, before, after } = require('node:test');
 const { chromium } = require('playwright');
+const O = require('./observation-core.js');
 const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 const section = (from, to) => html.slice(html.indexOf(from), html.indexOf(to, html.indexOf(from)));
 const drawer = html.match(/<script id="detectorDrawerScript">([\s\S]*?)<\/script>/)[1]
@@ -15,8 +16,10 @@ const functions = section('function getBossStatus(', 'function enterInlineEdit('
     + section('function renderList(', 'function toggleKilledSection(');
 const fixture = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
 const NOW = 1800000000000;
-const card = (map, ch, extra={}) => ({map:String(map),ch:String(ch),lastInput:'R2',displayValue:'階段2',
-    startTime:NOW-30000,targetTime:0,...extra});
+const card = (map, ch, extra={}) => {
+    const c={map:String(map),ch:String(ch),lastInput:'R2',displayValue:'階段2',startTime:NOW-30000,targetTime:0,...extra};
+    c.autoGuard={signature:O.signature(c),notBefore:0};return c;
+};
 const cards = {'175_1':card(175,1),'181_1':card(181,1),'184_1':card(184,1),'184_2':card(184,2)};
 const det = (map, ch, extra={}) => ({room:'ROOM',map_level:map,ch,map_fresh:true,updated_at:NOW,
     stage:'R2',...extra});
@@ -47,7 +50,7 @@ async function setup(t, data=cards) {
             canIUseCall:()=>false,isProtectedRoom:()=>false,getStatusColor:()=> '#e0a030',
             t:k=>({secMapAll:'全部地圖',secPinned:'置頂'}[k]||k),
             startTimer:(id,b)=>{document.getElementById('t_'+id).textContent=b.displayValue;},
-            saveBoss:(map,ch,val)=>qa.writes.push({kind:'saveBoss',map,ch,val}),
+            saveBoss:(map,ch,val,focus,options)=>{qa.writes.push({kind:'saveBoss',map,ch,val});options?.onCommitted?.();options?.onFinished?.(true);},
             db:{ref(p){return {
                 on:(ev,fn)=>{qa.callbacks[p]=fn;qa.subscriptions.push(p);},off:()=>{},
                 set:v=>{qa.writes.push({kind:'set',p,v});return Promise.resolve();},
@@ -60,6 +63,7 @@ async function setup(t, data=cards) {
         document.getElementById('displayID').textContent='QA（離線測試）';
         document.getElementById('chatPanel').className='chat-hidden';
     },{data,now:NOW});
+    await page.addScriptTag({content:fs.readFileSync(path.join(__dirname,'observation-core.js'),'utf8')});
     await page.addScriptTag({content:functions});
     await page.addScriptTag({content:drawer});
     await page.addStyleTag({content:'*,*::before,*::after{transition:none!important;animation:none!important}'});
