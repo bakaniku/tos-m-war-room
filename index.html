@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.7.0</title>
+    <title>TOS M FB TIME v1.7.1</title>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -212,6 +212,17 @@
             line-height: 1; pointer-events: none; white-space: nowrap;
         }
         body.light .member-top-display { color: #aaa; }
+        .det-coverage {
+            height: 15px; min-width: 18px; margin-left: 4px; vertical-align: middle;
+            display: inline-flex; align-items: center; justify-content: center;
+            font: 14px/1 "Segoe UI Symbol", sans-serif; border-radius: 4px;
+            color: #67ed9c; background: #123923; cursor: help;
+        }
+        .det-coverage[hidden] { display: none; }
+        .det-coverage[data-state="pending"] { color: #ffda70; background: #493815; }
+        .card.has-det-coverage .card-title-row { flex-wrap: wrap; row-gap: 2px; }
+        body.light .det-coverage { color: #176b36; background: #d5efdc; }
+        body.light .det-coverage[data-state="pending"] { color: #805800; background: #fff0bb; }
         /* 人數 inline 輸入框：小巧不搶版面 */
         .member-input {
             width: 38px; font-size: 12px; padding: 0 3px;
@@ -313,7 +324,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.7.0</div>
+        <div class="ver-info">v1.7.1</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="" maxlength="10"
                 oninput="this.value=this.value.replace('#','')"
@@ -352,7 +363,7 @@
                 </div>
             </div>
             <div class="room-info" id="headerTools">
-                <span class="version-tag">v1.7.0</span>
+                <span class="version-tag">v1.7.1</span>
                 <button id="langBtn" onclick="toggleLang()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">日本語</button>
                 <button onclick="toggleHelpPanel()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 8px; border-radius:12px; cursor:pointer;">？</button>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
@@ -719,7 +730,7 @@ db.ref('protected_rooms').on('value', s => {
         }
     });
 });
-const currentVersion = "1.7.0";
+const currentVersion = "1.7.1";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
 let globalNextLocked = false;
@@ -1240,7 +1251,7 @@ function renderList() {
                 ${memberTopHtml}
                 <button class="del" onclick="handleDelClick('${id}')">×</button>
                 <div class="card-title-row" id="title_${id}">
-                    <h3 id="h3_${id}" onclick="enterInlineEdit('${id}')">${b.map} - ${b.ch}</h3>${memberDisplayHtml}
+                    <h3 id="h3_${id}" onclick="enterInlineEdit('${id}')"><span class="card-location">${b.map} - ${b.ch}</span><span class="det-coverage" hidden tabindex="0" role="img">👁︎</span></h3>${memberDisplayHtml}
                 </div>
                 <div class="timer-container">
                     <div class="stage-row" id="sr_${id}">
@@ -1257,6 +1268,7 @@ function renderList() {
                     ${b.updater?`<span class="updater-txt">${b.updater}</span>`:''}
                 </div>
             `;
+            card.querySelector('.det-coverage').dataset.cardId = id;
             grid.appendChild(card);
             startTimer(id, b, st.isGrey, st.color);
         });
@@ -1292,6 +1304,7 @@ function renderList() {
         drawBox(timersList.sort((a,b) => a[1].targetTime - b[1].targetTime), t('secTimer'));
         drawBox(idleList, t('secIdle'));
     }
+    window.refreshDetectorCoverage?.();
 }
 
 function toggleKilledSection(labelEl) {
@@ -1665,6 +1678,7 @@ function isNewerVersion(current, latest) {
 /* ════════ 登入 ════════ */
 function startSession(id) {
     currentRoom = id.toUpperCase();
+    window.refreshDetectorCoverage?.();
     db.ref('app_version').on('value', snapshot => {
         const latest = snapshot.val();
         if (isNewerVersion(currentVersion, latest)) { alert(`${t('updateNotice')}${latest}${t('updateReload')}`); location.reload(true); }
@@ -1715,7 +1729,10 @@ function startSession(id) {
             currentOnlineUsers = u.map(x => x.name);
             updateOnlineUsersDisplay(); renderList();
         });
-        db.ref(`rooms/${currentRoom}/bosses`).on('value', s => {
+        const bossDataRoom = currentRoom;
+        window.__tosmBossDataRoom = null;
+        db.ref(`rooms/${bossDataRoom}/bosses`).on('value', s => {
+            if (currentRoom !== bossDataRoom) return;
             const incoming = s.val() || {};
             Object.keys(incoming).forEach(k => {
                 const b = incoming[k], v = b.lastInput.toString().toUpperCase();
@@ -1730,6 +1747,8 @@ function startSession(id) {
                 lastProcessedInput[k] = v;
             });
             window.currentData = incoming;
+            window.__tosmBossDataRoom = bossDataRoom;
+            window.dispatchEvent(new Event('tosm-boss-data'));
             // 有任何卡片狀態變化 → 鎖定所有 NEXT/KILL 0.5 秒，防止錯報
             const hasChange = Object.keys(incoming).some(k => {
                 const v = incoming[k].lastInput.toString().toUpperCase();
@@ -1977,6 +1996,11 @@ function initChat() {
         background: #1a1a1a; color: #ffd479; border: 1px solid #444; border-radius: 5px;
     }
     .detSetRow input[type=text]:focus { outline: none; border-color: #0f0; }
+    #detectorCoverageSummary {
+        margin: 0 0 10px; padding: 8px 9px; border: 1px solid #394437; border-radius: 7px;
+        color: #c6d7be; background: #182016; font-size: 12px; line-height: 1.5;
+        overflow-wrap: anywhere;
+    }
 </style>
 <button id="detectorDrawerToggle" type="button">🎯 偵測</button>
 <aside id="detectorDrawerPanel" aria-label="TOS M 偵測抽屜" aria-hidden="true">
@@ -1999,6 +2023,11 @@ function initChat() {
             <span>也代寫他人
                 <small>預設只代寫你認領的偵測器。隊友只開偵測器沒開網頁時才需要。</small></span>
         </label>
+        <label class="detSetRow" style="cursor:pointer;">
+            <input type="checkbox" id="nativeDetCooldownKilled">
+            <span>ON 確認冷卻後改為 KILLED
+                <small>確認地圖、分流及冷卻後，將 ON 卡片標記為已擊殺；不以徽章消失判斷。</small></span>
+        </label>
         <div class="detSetRow" style="flex-direction:column;align-items:stretch;gap:0;">
             <span>多分流地圖
                 <small>逗號分隔的地圖等級。偵測器開著野外活動面板時讀不到分流（面板蓋住 CH 字樣），
@@ -2009,7 +2038,10 @@ function initChat() {
         </div>
     </div>
     <div id="nativeDetBoard" style="padding:10px 12px;color:#ddd;font-size:13px;overflow-y:auto;max-height:calc(62vh - 42px);">
+        <div id="detectorCoverageSummary" hidden></div>
+        <div id="nativeDetList">
         <div style="opacity:.6;">等待偵測資料…</div>
+        </div>
     </div>
 </aside>
 <script id="detectorDrawerScript">
@@ -2017,7 +2049,7 @@ function initChat() {
     const toggle = document.getElementById('detectorDrawerToggle');
     const panel = document.getElementById('detectorDrawerPanel');
     const close = document.getElementById('detectorDrawerClose');
-    const board = document.getElementById('nativeDetBoard');
+    const board = document.getElementById('nativeDetList');
 
     if (!toggle || !panel || !close || !board) return;
 
@@ -2049,7 +2081,89 @@ function initChat() {
     const STALE_MS = 120000;
     let latest = {};
 
+    // 唯讀覆蓋：同房位置確認不等同於階段確認，也不授權任何代寫。
+    function calculateCoverage(cards, detectors, room, cardRoom, protectedMaps, now) {
+        const result = { byCard: Object.create(null), uncovered: [], total: 0 };
+        if (!room || cardRoom !== room) return result;
+        const positiveInt = v => {
+            if (typeof v !== 'number' && !(typeof v === 'string' && /^[1-9]\d*$/.test(v))) return null;
+            return Number.isSafeInteger(Number(v)) && Number(v) > 0 ? Number(v) : null;
+        };
+        const cardsByMap = new Map();
+        for (const [key, card] of Object.entries(cards || {})) {
+            if (!card) continue;
+            // 房間允許「70水／70男」等自訂卡片；無法對應偵測位置也要列入缺口。
+            result.byCard[key] = { state: 'uncovered', sources: [] };
+            const map = positiveInt(card.map), ch = positiveInt(card.ch);
+            if (!map || !ch || ch > 4 || key !== `${map}_${ch}`) continue;
+            if (!cardsByMap.has(map)) cardsByMap.set(map, []);
+            cardsByMap.get(map).push(key);
+        }
+        for (const [id, d] of Object.entries(detectors || {})) {
+            if (!d || d.room !== room || !Number.isFinite(d.updated_at)
+                    || !Number.isFinite(now) || now < d.updated_at || now - d.updated_at > STALE_MS) continue;
+            const map = positiveInt(d.map_level);
+            if (!map || !cardsByMap.has(map)) continue;
+            // 對有效偵測輸入沿用一般階段／倒數的分流規則；不修改 autoWrite。
+            let ch = d.ch == null ? null : positiveInt(d.ch);
+            if (d.ch != null && (!ch || ch > 4)) continue;
+            const protectedMap = protectedMaps.has(String(map));
+            if (ch >= 3 && !protectedMap) ch = null;
+            const inferred = !ch && !protectedMap;
+            if (inferred) ch = 1;
+            const pending = d.map_fresh === false || !ch;
+            const keys = ch ? [`${map}_${ch}`] : cardsByMap.get(map);
+            const reason = [d.map_fresh === false ? '地圖待確認' : '', !ch ? '分流未知' : '',
+                inferred ? '推定 CH.1' : ''].filter(Boolean).join('、');
+            for (const key of keys) {
+                const entry = result.byCard[key];
+                if (!entry) continue;
+                entry.sources.push({ id, pending, reason });
+                if (!pending) entry.state = 'confirmed';
+                else if (entry.state !== 'confirmed') entry.state = 'pending';
+            }
+        }
+        const keys = Object.keys(result.byCard).sort((a, b) => {
+            const am = parseInt(cards[a].map, 10), bm = parseInt(cards[b].map, 10);
+            const ac = positiveInt(cards[a].ch) || 0, bc = positiveInt(cards[b].ch) || 0;
+            return (Number.isFinite(am) ? am : Infinity) - (Number.isFinite(bm) ? bm : Infinity)
+                || ac - bc || a.localeCompare(b, 'zh-Hant');
+        });
+        result.total = keys.length;
+        result.uncovered = keys.filter(key => result.byCard[key].state !== 'confirmed');
+        for (const entry of Object.values(result.byCard)) entry.sources.sort((a, b) => a.id.localeCompare(b.id));
+        return result;
+    }
+
+    function refreshCoverage() {
+        const snapshot = calculateCoverage(window.currentData, latest, currentRoom,
+            window.__tosmBossDataRoom, multiChSet(), Date.now());
+        const summary = document.getElementById('detectorCoverageSummary');
+        summary.hidden = !snapshot.total;
+        const text = !snapshot.total ? '' : snapshot.uncovered.length
+            ? `未覆蓋：${snapshot.uncovered.map(key => key.replace('_', '-')).join('、')}`
+            : '全部卡片都有偵測器在看';
+        if (summary.textContent !== text) summary.textContent = text;
+        document.querySelectorAll('.det-coverage').forEach(badge => {
+            const entry = snapshot.byCard[badge.dataset.cardId];
+            const visible = !!entry && entry.state !== 'uncovered';
+            badge.hidden = !visible;
+            badge.closest('.card').classList.toggle('has-det-coverage', visible);
+            badge.dataset.state = visible ? entry.state : '';
+            const title = visible ? [entry.state === 'confirmed' ? '有人監看（位置已確認）' : '位置待確認',
+                ...entry.sources.map(s => `${s.id}：${s.pending ? '待確認' : '已確認'}${s.reason ? `（${s.reason}）` : ''}`),
+                '最近 2 分鐘的位置回報；不代表階段已辨識成功。'].join('\n') : '';
+            if (badge.title !== title) {
+                badge.title = title;
+                badge.setAttribute('aria-label', title);
+            }
+        });
+    }
+    window.refreshDetectorCoverage = refreshCoverage;
+    window.addEventListener('tosm-boss-data', refreshCoverage);
+
     function render() {
+        refreshCoverage();
         const ids = Object.keys(latest);
         if (!ids.length) {
             board.innerHTML = '<div style="opacity:.6;">目前沒有偵測器在線。</div>';
@@ -2120,6 +2234,12 @@ function initChat() {
     writeOthersBox.addEventListener('change', () => {
         localStorage.setItem('nativeDetWriteOthers', writeOthersBox.checked ? '1' : '0');
     });
+    const cooldownKilledBox = document.getElementById('nativeDetCooldownKilled');
+    cooldownKilledBox.checked = localStorage.getItem('nativeDetCooldownKilled') !== '0';
+    cooldownKilledBox.addEventListener('change', () => {
+        localStorage.setItem('nativeDetCooldownKilled', cooldownKilledBox.checked ? '1' : '0');
+        autoWrite();
+    });
     // 多分流地圖清單: 偵測器開著野外活動面板時讀不到分流 (面板蓋住 CH 字樣,
     // 實測 212 輪 0% 讀得到), 這時偵測器誠實回報 ch=null. 絕大多數地圖只有
     // 1 分流, 直接填 1 就對; 少數多分流地圖 (目前 184 有 4 個) 填錯會寫進別的
@@ -2140,6 +2260,7 @@ function initChat() {
         multiChHint.textContent = s.length
             ? `目前生效：${s.map(v => 'Lv.' + v).join('、')}（讀不到分流時不寫）`
             : '目前沒有保護任何地圖 —— 讀不到分流時一律填 CH.1';
+        refreshCoverage();
     }
     // input 而不是只有 change: 邊打邊看得到生效清單, 不用先失焦才知道有沒有存進去
     multiChBox.addEventListener('input', multiChSave);
@@ -2194,14 +2315,124 @@ function initChat() {
     });
     const appliedMark = {};   // collector_id -> 已代寫過的 "stage|map|ch|updated_at"
 
+    // 2026-09-16 使用者要求：只有「現卡 ON + 確認冷卻」才標記 KILLED。
+    // WAITING/舊倒數本身不足以證明冷卻；新版 Python 額外確認當幀地圖和 CH。
+    // 此路徑不猜 CH.1、不建立不存在的卡，也不接受舊版缺少確認欄位的資料。
+    const cooldownPending = new Set();
+    let cooldownKilledCards = {};
+    try { cooldownKilledCards = JSON.parse(localStorage.getItem('nativeDetKilledCards') || '{}') || {}; }
+    catch (e) { cooldownKilledCards = {}; }
+    let cooldownEpisodes = {};
+    try { cooldownEpisodes = JSON.parse(localStorage.getItem('nativeDetCooldownEpisodes') || '{}') || {}; }
+    catch (e) { cooldownEpisodes = {}; }
+    function updateCooldownEpisodes(now) {
+        // 同一段冷卻只處理首次觀測前的 ON；心跳不能反覆蓋掉後來人工重填的 ON。
+        // 暫時失去確認不等於重新開戰，只有明確的新作戰證據才結束此事件。
+        for (const [id, d] of Object.entries(latest)) {
+            if (!d || !ownedFreshDetector(id, d, now) || d.map_fresh !== true
+                    || !Number.isInteger(d.map_level) || !Number.isInteger(d.ch)) continue;
+            const key = `${currentRoom}/${d.map_level}_${d.ch}`;
+            if (WRITABLE[d.stage] && d.updated_at > (cooldownEpisodes[key] || Infinity)) {
+                delete cooldownEpisodes[key];
+            }
+        }
+        for (const [id, d] of Object.entries(latest)) {
+            if (!d || !confirmedCooldown(id, d, now) || !cooldownForCard(d.map_level, d.ch, now)) continue;
+            const key = `${currentRoom}/${d.map_level}_${d.ch}`;
+            if (!Number.isFinite(cooldownEpisodes[key])) cooldownEpisodes[key] = d.updated_at;
+        }
+        localStorage.setItem('nativeDetCooldownEpisodes', JSON.stringify(cooldownEpisodes));
+    }
+    function ownedFreshDetector(id, d, now) {
+        return d.room === currentRoom
+            && (mine.includes(id) || writeOthersBox.checked)
+            && typeof d.updated_at === 'number' && Number.isFinite(d.updated_at)
+            && now >= d.updated_at && now - d.updated_at <= STALE_MS;
+    }
+    function confirmedCooldown(id, d, now) {
+        return cooldownKilledBox.checked && ownedFreshDetector(id, d, now)
+            && d.cooldown_confirmed === true && d.map_fresh === true
+            && !WRITABLE[d.stage]
+            && Number.isInteger(d.map_level) && d.map_level > 0
+            && Number.isInteger(d.ch) && d.ch >= 1 && d.ch <= 4;
+    }
+    function cooldownForCard(map, ch, now) {
+        let candidate = null;
+        for (const [id, d] of Object.entries(latest)) {
+            if (d && String(d.map_level) === String(map) && String(d.ch) === String(ch)
+                    && confirmedCooldown(id, d, now)
+                    && (!candidate || d.updated_at > candidate.d.updated_at)) candidate = { id, d };
+        }
+        if (!candidate) return null;
+        // 同卡另一台偵測器若有較新/同時的作戰證據，冷卻判定有衝突，保留現卡。
+        for (const [id, d] of Object.entries(latest)) {
+            if (d && ownedFreshDetector(id, d, now) && d.map_fresh === true && WRITABLE[d.stage]
+                    && String(d.map_level) === String(map) && String(d.ch) === String(ch)
+                    && d.updated_at >= candidate.d.updated_at) return null;
+        }
+        return candidate;
+    }
+    function preserveDetectedKill(room, key, cur) {
+        const mark = `${room}/${key}`;
+        const stored = cooldownKilledCards[mark];
+        if (!stored) return false;
+        if (cur && cur.lastInput === 'DE1' && cur.startTime === stored) return true;
+        delete cooldownKilledCards[mark];
+        localStorage.setItem('nativeDetKilledCards', JSON.stringify(cooldownKilledCards));
+        return false;
+    }
+    function applyConfirmedCooldown(id, d) {
+        const room = currentRoom, key = `${d.map_level}_${d.ch}`, pendingKey = `${room}/${key}`;
+        if (window.__tosmBossDataRoom !== room || cooldownPending.has(pendingKey)) return;
+        const before = (window.currentData || {})[key];
+        if (!before || before.lastInput !== 'ON' || !Number.isFinite(before.startTime)
+                || before.startTime > cooldownEpisodes[pendingKey]) return;
+        const version = before.startTime, observedAt = d.updated_at, updater = myName;
+        const stillValid = () => {
+            const newest = cooldownForCard(d.map_level, d.ch, Date.now());
+            return !isBanned && autoWriteBox.checked && currentRoom === room
+                && window.__tosmBossDataRoom === room && newest
+                && newest.id === id && newest.d.updated_at === observedAt;
+        };
+        cooldownPending.add(pendingKey);
+        // transaction 每次重試都核對伺服器上的 ON 版本，避免蓋掉新的人工作業。
+        // applyLocally=false：只有伺服器確認成功才回饋 KILLED，不顯示猜測成功。
+        db.ref(`rooms/${room}/bosses/${key}`).transaction(cur => {
+            if (!stillValid() || !cur || cur.lastInput !== 'ON' || cur.startTime !== version
+                    || String(cur.map) !== String(d.map_level) || String(cur.ch) !== String(d.ch)) return;
+            return { ...cur, targetTime: 0, lastInput: 'DE1', displayValue: '已擊殺',
+                startTime: Date.now(), isFlash: false, updater,
+                memberCount: 0, isMax: false, callPriority: 0 };
+        }, (error, committed, snapshot) => {
+            cooldownPending.delete(pendingKey);
+            if (error) { console.warn('冷卻轉 KILLED 未成功，等待重試', error); return; }
+            if (!committed) return;
+            cooldownKilledCards[pendingKey] = snapshot.val().startTime;
+            localStorage.setItem('nativeDetKilledCards', JSON.stringify(cooldownKilledCards));
+            if (currentRoom === room) noteAutoFill(d.map_level, d.ch, 'DE1', 'cooldown');
+            db.ref(`rooms/${room}/logs`).push({ name: updater, boss: `${d.map_level}-${d.ch}`,
+                oldVal: 'ON', newVal: '已擊殺', t: Date.now() });
+        }, false).catch(() => {}); // callback 已處理失敗，不留下未處理的 Promise rejection。
+    }
+
     function autoWrite() {
         if (!autoWriteBox.checked || !currentRoom || typeof saveBoss !== 'function') return;
+        if (cooldownKilledBox.checked && window.__tosmBossDataRoom !== currentRoom) return;
         const now = Date.now();
+        updateCooldownEpisodes(now);
+        if (cooldownKilledBox.checked && window.__tosmBossDataRoom === currentRoom) {
+            for (const [id, d] of Object.entries(latest)) {
+                if (!d || !confirmedCooldown(id, d, now)) continue;
+                const newest = cooldownForCard(d.map_level, d.ch, now);
+                if (newest && newest.id === id) applyConfirmedCooldown(id, d);
+            }
+        }
         for (const id of Object.keys(latest)) {
             const d = latest[id] || {};
             // 預設只代寫自己認領的偵測器 (勾「也代寫他人」才擴及同房間其他人)
             if (!(mine.indexOf(id) >= 0
                   || (writeOthersBox.checked && d.room && d.room === currentRoom))) continue;
+            if (cooldownKilledBox.checked && d.room !== currentRoom) continue;
             if (!WRITABLE[d.stage] || !d.map_level) continue;
             if (d.map_fresh === false) continue;  // 地圖名被遮擋未確認時不寫 (防跨圖誤植)
             if (!d.updated_at || now - d.updated_at > STALE_MS) continue;
@@ -2227,6 +2458,8 @@ function initChat() {
                 ch = 1;
             }
             const mark = `${d.stage}|${d.map_level}|${ch}|${d.updated_at}`;
+            if (cooldownPending.has(`${currentRoom}/${d.map_level}_${ch}`)
+                    || cooldownForCard(d.map_level, ch, now)) continue;
             if (appliedMark[id] === mark) continue;
             appliedMark[id] = mark;
             const cur = (window.currentData || {})[`${d.map_level}_${ch}`];
@@ -2260,6 +2493,7 @@ function initChat() {
             // 預設只代寫自己認領的偵測器 (勾「也代寫他人」才擴及同房間其他人)
             if (!(mine.indexOf(id) >= 0
                   || (writeOthersBox.checked && d.room && d.room === currentRoom))) continue;
+            if (cooldownKilledBox.checked && d.room !== currentRoom) continue;
             if (!d.respawn || !d.map_level) continue;
             if (d.map_fresh === false) continue;
             if (!d.updated_at || now - d.updated_at > STALE_MS) continue;
@@ -2275,6 +2509,18 @@ function initChat() {
                 ch = 1;
             }
             const rmark = `rsp|${d.map_level}|${ch}|${d.respawn_seen_at}`;
+            const cooldownKey = `${d.map_level}_${ch}`;
+            const cooldownCard = (window.currentData || {})[cooldownKey];
+            const cooldownEpisode = cooldownEpisodes[`${currentRoom}/${cooldownKey}`];
+            if (cooldownKilledBox.checked && (
+                    cooldownPending.has(`${currentRoom}/${cooldownKey}`)
+                    || preserveDetectedKill(currentRoom, cooldownKey, cooldownCard)
+                    // 冷卻暫失確認時仍可能帶舊倒數；不能藉倒數旁路蓋掉後來的人工作業。
+                    || (Number.isFinite(cooldownEpisode) && cooldownCard
+                        && Number.isFinite(cooldownCard.startTime)
+                        && cooldownCard.startTime > cooldownEpisode)
+                    || (cooldownForCard(d.map_level, ch, now) && cooldownCard
+                        && (cooldownCard.lastInput === 'ON' || cooldownCard.lastInput === 'DE1')))) continue;
             if (appliedMark['r_' + id] === rmark) continue;
             appliedMark['r_' + id] = rmark;
             const parts = d.respawn.split(':');
@@ -2285,15 +2531,17 @@ function initChat() {
             noteAutoFill(d.map_level, ch, d.respawn, 'respawn');
         }
     }
+    // 影子資料可能先於卡片載入；首個卡片 snapshot 到達後再試，失敗不預先去重。
+    window.addEventListener('tosm-boss-data', autoWrite);
 
     // 只訂閱「自己房號」那一層 —— 從資料來源就看不到別的房間, 不是靠前端過濾.
     // 另外訂閱 _unassigned (未在 detector_config.json 填房號者), 讓使用者
     // 還能在清單裡找到自己的偵測器並手動勾選套用.
-    let bucketRoom = {}, bucketUn = {};
+    let bucketRoom = {}, bucketUn = {}, bucketRoomSource = null;
     function mergeBuckets() {
         latest = {};
-        for (const [k, v] of Object.entries(bucketRoom)) {
-            if (v && typeof v === 'object') latest[k] = { ...v, room: currentRoom };
+        for (const [k, v] of Object.entries(bucketRoomSource === currentRoom ? bucketRoom : {})) {
+            if (v && typeof v === 'object') latest[k] = { ...v, room: bucketRoomSource };
         }
         for (const [k, v] of Object.entries(bucketUn)) {
             if (v && typeof v === 'object' && !latest[k]) latest[k] = { ...v, room: '' };
@@ -2308,10 +2556,15 @@ function initChat() {
         if (currentRoom === subbedTo) return;
         if (subRoom) { try { subRoom.off(); } catch (e) {} subRoom = null; }
         bucketRoom = {};
+        bucketRoomSource = currentRoom;
         subbedTo = currentRoom;
         if (!currentRoom) { mergeBuckets(); return; }
-        subRoom = db.ref('shared/nativeDetector/' + currentRoom);
-        subRoom.on('value', s => { bucketRoom = s.val() || {}; mergeBuckets(); });
+        const subscribedRoom = currentRoom;
+        subRoom = db.ref('shared/nativeDetector/' + subscribedRoom);
+        subRoom.on('value', s => {
+            if (currentRoom !== subscribedRoom) return;
+            bucketRoom = s.val() || {}; mergeBuckets();
+        });
         bindMineToRoom();
     }
     setInterval(subscribeRoom, 1000);
@@ -2328,7 +2581,7 @@ function initChat() {
      那個 true 參數在現代瀏覽器早已被忽略, 外部 JS 仍會吃快取 ——
      沒有這個查詢字串, 改了 mini-timer.js 也送不到隊友手上。
      每次改這個檔案時把版本號一起帶上。 -->
-<script src="mini-timer.js?v=1.7.0"></script>
+<script src="mini-timer.js?v=1.7.1"></script>
 
 </body>
 </html>
