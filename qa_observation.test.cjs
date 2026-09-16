@@ -235,10 +235,17 @@ test('another browser honors stored duration despite its own setting and does no
 });
 test('countdown updates and expires without rebuilding cards or interrupting user input',async t=>{
     const p=await setup(t,card(),{},{minutes:3});await p.evaluate(()=>saveBoss('175','1','R2'));
-    await p.locator('#obsClose').click();assert.match(await p.locator('.manual-guard').textContent(),/3:00/);
+    await p.locator('#obsClose').click();assert.equal(await p.locator('.manual-guard-time').textContent(),'3分');
     await p.evaluate(()=>{qa.card=document.querySelector('.card');});await p.locator('#bossInput').fill('175 1 R');
-    await p.evaluate(()=>{qa.now+=61000;qa.tick();});assert.match(await p.locator('.manual-guard').textContent(),/1:59/);
-    await p.evaluate(()=>{qa.now+=119000;qa.tick();});assert.equal(await p.locator('.manual-guard').isVisible(),false);
+    for(const [elapsed,label] of [[1000,'2分'],[61000,'1分'],[120000,'1分'],[120001,'60秒'],[121000,'59秒'],[179000,'1秒']]) {
+        await p.evaluate(at=>{qa.now=at;qa.tick();},NOW+elapsed);
+        assert.equal(await p.locator('.manual-guard-time').textContent(),label);
+        if(elapsed===121000 && process.env.OBSERVATION_QA_ARTIFACTS) {
+            fs.mkdirSync(process.env.OBSERVATION_QA_ARTIFACTS,{recursive:true});
+            await p.locator('.card').screenshot({path:path.join(process.env.OBSERVATION_QA_ARTIFACTS,'manual-lock-seconds.png')});
+        }
+    }
+    await p.evaluate(()=>{qa.now+=1000;qa.tick();});assert.equal(await p.locator('.manual-guard').isVisible(),false);
     assert.equal(await p.evaluate(()=>qa.card===document.querySelector('.card')),true);
     assert.equal(await p.locator('#bossInput').inputValue(),'175 1 R');assert.equal(await p.locator('#bossInput').evaluate(e=>e===document.activeElement),true);
 });
@@ -303,6 +310,8 @@ test('room switch aborts queued card/observation writes and rejects late snapsho
 });
 test('book handles two Lv70 maps, safe source text, search and desktop/mobile layouts',async t=>{
     const p=await setup(t);await publish(p,{mine:detector()});
+    // Capture the selected theme, not a frame halfway through its transition.
+    await p.addStyleTag({content:'*, *::before, *::after { transition:none !important; animation:none !important; }'});
     assert.equal(await p.locator('.obs-row').count(),106);
     await p.locator('#obsSearch').fill('70');assert.equal(await p.locator('.obs-row').count(),3); // includes Lv.170
     await p.locator('#obsSearch').fill('水路橋');assert.equal(await p.locator('.obs-row').count(),1);
@@ -314,12 +323,14 @@ test('book handles two Lv70 maps, safe source text, search and desktop/mobile la
             await p.screenshot({path:path.join(process.env.OBSERVATION_QA_ARTIFACTS,`book-${width}-${light?'light':'dark'}.png`)});}
     }
     await p.locator('#obsClose').click();
-    for(const width of [1100,390,320]) {
-        await p.setViewportSize({width,height:850});
+    for(const width of [1100,390,320])for(const light of [false,true]) {
+        await p.setViewportSize({width,height:850});await p.evaluate(light=>document.body.classList.toggle('light',light),light);
         assert.equal(await p.locator('.card').evaluate(e=>{
-            const button=e.querySelector('.manual-guard').getBoundingClientRect(),timer=e.querySelector('.timer-container').getBoundingClientRect();
-            return e.scrollWidth>e.clientWidth+1 || button.bottom>timer.top;
-        }),false,'manual protection control fits outside the title and timer');
-        if(process.env.OBSERVATION_QA_ARTIFACTS)await p.screenshot({path:path.join(process.env.OBSERVATION_QA_ARTIFACTS,`manual-card-${width}.png`)});
+            const badge=e.querySelector('.manual-guard').getBoundingClientRect(),timer=e.querySelector('.timer-container').getBoundingClientRect(),
+                time=e.querySelector('.manual-guard-time').getBoundingClientRect(),icon=e.querySelector('.manual-guard-icon').getBoundingClientRect();
+            return e.scrollWidth>e.clientWidth+1 || timer.right>badge.left || time.bottom>icon.top
+                || badge.right>e.getBoundingClientRect().right;
+        }),false,'compact lock stays beside timer with time above icon');
+        if(process.env.OBSERVATION_QA_ARTIFACTS)await p.screenshot({path:path.join(process.env.OBSERVATION_QA_ARTIFACTS,`manual-card-${width}-${light?'light':'dark'}.png`)});
     }
 });

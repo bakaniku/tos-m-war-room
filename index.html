@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.8.1</title>
-    <script src="observation-core.js?v=1.8.1"></script>
-    <script src="map-catalog.js?v=1.8.1"></script>
+    <title>TOS M FB TIME v1.8.2</title>
+    <script src="observation-core.js?v=1.8.2"></script>
+    <script src="map-catalog.js?v=1.8.2"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -326,7 +326,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.8.1</div>
+        <div class="ver-info">v1.8.2</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="" maxlength="10"
                 oninput="this.value=this.value.replace('#','')"
@@ -365,7 +365,7 @@
                 </div>
             </div>
             <div class="room-info" id="headerTools">
-                <span class="version-tag">v1.8.1</span>
+                <span class="version-tag">v1.8.2</span>
                 <button id="langBtn" onclick="toggleLang()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">日本語</button>
                 <button onclick="toggleHelpPanel()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 8px; border-radius:12px; cursor:pointer;">？</button>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
@@ -732,7 +732,7 @@ db.ref('protected_rooms').on('value', s => {
         }
     });
 });
-const currentVersion = "1.8.1";
+const currentVersion = "1.8.2";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
 let globalNextLocked = false;
@@ -1255,13 +1255,18 @@ function renderList() {
                 <div class="card-title-row" id="title_${id}">
                     <h3 id="h3_${id}" onclick="enterInlineEdit('${id}')"><span class="card-location">${b.map} - ${b.ch}</span><span class="det-coverage" hidden tabindex="0" role="img">👁︎</span></h3>${memberDisplayHtml}
                 </div>
-                <span class="manual-guard" hidden></span>
-                <div class="timer-container">
-                    <div class="stage-row" id="sr_${id}">
-                        <span class="stage-label" id="t_${id}" style="color:${st.isGrey?'#555':st.color}">...</span>
-                        ${nextHtml}
+                <div class="card-status">
+                    <div class="timer-container">
+                        <div class="stage-row" id="sr_${id}">
+                            <span class="stage-label" id="t_${id}" style="color:${st.isGrey?'#555':st.color}">...</span>
+                            ${nextHtml}
+                        </div>
+                        <div class="elapsed-row" id="e_${id}"></div>
                     </div>
-                    <div class="elapsed-row" id="e_${id}"></div>
+                    <span class="manual-guard" role="img" tabindex="0" hidden>
+                        <span class="manual-guard-time" aria-hidden="true"></span>
+                        <svg class="manual-guard-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></svg>
+                    </span>
                 </div>
                 <div class="card-actions">
                     <button class="pin-btn ${st.pinned?'pinned':''}" onclick="togglePin('${id}')">★</button>
@@ -1498,14 +1503,20 @@ window.refreshManualProtection = function refreshManualProtection() {
     document.querySelectorAll('.manual-guard').forEach(el=>{
         const p=loaded ? TOSMObservation.manualProtection((window.currentData||{})[el.dataset.cardId],now) : null;
         el.hidden=!p?.active;
+        el.parentElement.classList.toggle('has-manual-guard',!!p?.active);
         if (!p?.active) return;
+        const label=el.querySelector('.manual-guard-time');
         if (p.until===null) {
-            el.textContent='🔒 人工時間異常，請重新填寫';
+            label.textContent='!';
+            el.title='人工時間異常，請重新填寫';
+            el.setAttribute('aria-label',el.title);
             return;
         }
-        const seconds=Math.max(0,Math.ceil((p.until-now)/1000));
-        el.textContent=`🔒 人工保護 ${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')} · 到期自動接手`;
-        el.title=`保護至 ${new Date(p.until).toLocaleTimeString()}，之後等待新的確認觀測`;
+        const remaining=p.until-now, seconds=Math.ceil(remaining/1000);
+        // Compact display requested by user: minutes above a lock; final minute ticks in seconds.
+        label.textContent=remaining<60000 ? `${seconds}秒` : `${Math.floor(remaining/60000)}分`;
+        el.title=`人工保護剩餘 ${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}，到期後等待新的確認觀測`;
+        el.setAttribute('aria-label',`人工保護剩餘 ${label.textContent}，到期自動接手`);
     });
 };
 
@@ -1977,7 +1988,14 @@ function initChat() {
         font-weight: 700;
         line-height: 1;
     }
-    .manual-guard { display:block; max-width:100%; margin:5px 0; padding:3px 6px; border:1px solid #997a30; border-radius:5px; color:#b78a22; background:transparent; font-size:10px; }
+    .card-status { display:flex; flex:1; align-items:center; gap:6px; }
+    .card-status .timer-container { min-width:0; }
+    .card-status.has-manual-guard .stage-row { flex-wrap:wrap; row-gap:2px; }
+    .manual-guard { display:inline-flex; flex:0 0 26px; flex-direction:column; align-items:center; gap:2px; color:#d2ae55; cursor:help; }
+    .manual-guard-time { font:600 10px/1.2 sans-serif; font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .manual-guard-icon { display:block; }
+    .manual-guard:focus-visible { outline:1px solid currentColor; outline-offset:3px; border-radius:3px; }
+    body.light .manual-guard { color:#99751e; }
     .manual-guard[hidden] { display:none; }
     #detectorDrawerToggle:hover {
         border-color: #0f0;
@@ -2689,8 +2707,8 @@ function initChat() {
      那個 true 參數在現代瀏覽器早已被忽略, 外部 JS 仍會吃快取 ——
      沒有這個查詢字串, 改了 mini-timer.js 也送不到隊友手上。
      每次改這個檔案時把版本號一起帶上。 -->
-<script src="observation-ui.js?v=1.8.1"></script>
-<script src="mini-timer.js?v=1.8.1"></script>
+<script src="observation-ui.js?v=1.8.2"></script>
+<script src="mini-timer.js?v=1.8.2"></script>
 
 </body>
 </html>
