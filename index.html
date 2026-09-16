@@ -2399,7 +2399,9 @@ function initChat() {
     function automaticWrite(id, d, ch, value, kind, markKey, mark) {
         const room=currentRoom, key=`${d.map_level}_${ch}`, pendingKey=`${room}/${key}`;
         const cur=(window.currentData||{})[key];
-        if (!O || !O.autoAllowed(cur,observedTime(d),Date.now()) || automaticPending.has(pendingKey)
+        // A new WAITING observation must not make an old cached countdown eligible.
+        const observedAt=kind==='respawn' ? Math.min(observedTime(d)||0,Date.parse(d.respawn_seen_at)) : observedTime(d);
+        if (!O || !O.autoAllowed(cur,observedAt,Date.now()) || automaticPending.has(pendingKey)
             || window.__tosmBossDataRoom!==room || !ownedFreshDetector(id,d,Date.now())) return;
         const isCurrent=()=>currentRoom===room && autoWriteBox.checked && !isBanned
             && window.__tosmBossDataRoom===room && latest[id]===d
@@ -2407,7 +2409,7 @@ function initChat() {
         if (!isCurrent()) return;
         automaticPending.add(pendingKey);
         saveBoss(String(d.map_level),String(ch),value,false,{
-            room,expected:O.signature(cur),observedAt:observedTime(d),isCurrent,
+            room,expected:O.signature(cur),observedAt,isCurrent,
             onCommitted:()=>noteAutoFill(d.map_level,ch,value,kind),
             onFinished:committed=>{automaticPending.delete(pendingKey);if(committed)appliedMark[markKey]=mark;}
         });

@@ -190,6 +190,9 @@ test('manual countdown is protected before expiry and accepts a fresh timer afte
     };
     await emit(NOW+1000);assert.equal((await boss(p)).lastInput,'0:20');
     await emit(NOW+179999);assert.equal((await boss(p)).lastInput,'0:20');
+    await p.evaluate(()=>{qa.now+=2;qa.tick();});
+    await publish(p,{mine:detector(175,'WAITING',NOW+180001,{cooldown_confirmed:true,respawn:'1:20',respawn_seen_at:new Date(NOW+179999).toISOString()})});
+    assert.equal((await boss(p)).lastInput,'0:20','fresh stage proof cannot renew a pre-expiry countdown');
     await emit(NOW+180001);assert.equal((await boss(p)).lastInput,'1:20');
     assert.equal((await boss(p)).autoGuard.notBefore,NOW+180000);
 });
