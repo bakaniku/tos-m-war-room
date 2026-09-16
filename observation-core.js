@@ -8,13 +8,29 @@
     const STAGES = new Set(['R1','R2','R3','R4','ON','WAITING']);
     const finite = n => typeof n === 'number' && Number.isFinite(n);
     const signature = c => c ? JSON.stringify([String(c.map),String(c.ch),c.lastInput,c.startTime,c.targetTime]) : null;
-    // Legacy records have no reliable writer identity. Preserve them until a person
-    // explicitly resumes automation. Also detect writes by old clients that leave
-    // our metadata behind but change the actual card value/time.
-    const manualProtected = c => !!c && (c.manualOverride?.active === true
-        || !c.autoGuard || c.autoGuard.signature !== signature(c));
-    const autoAllowed = (c, observedAt) => !manualProtected(c) && (!c?.autoGuard?.notBefore
-        || (finite(observedAt) && observedAt > c.autoGuard.notBefore));
+    const protectionMinutes = value => [3,4,5].includes(Number(value)) ? Number(value) : 5;
+    // 2026-09-16: user requested a 3-5 minute hold, not an indefinite lock.
+    // Store the selected duration with the card so other clients honor the same
+    // deadline. Legacy/old-client edits use the actual card edit time + 5 minutes;
+    // a heartbeat or page reload must never restart this clock.
+    function manualProtection(c, now=Date.now()) {
+        if (!c || (c.manualOverride?.active!==true && c.autoGuard?.signature===signature(c))) return null;
+        if (!finite(c.startTime) || c.startTime<=0) return {until:null,active:true,minutes:5};
+        const m=c.manualOverride;
+        const minutes=m?.schema===2 && m.signature===signature(c) ? protectionMinutes(m.minutes) : 5;
+        const until=c.startTime+minutes*60000;
+        return {until,active:now<until,minutes};
+    }
+    const manualProtected = (c,now=Date.now()) => manualProtection(c,now)?.active===true;
+    const observationFloor = c => Math.max(manualProtection(c)?.until||0,
+        finite(c?.autoGuard?.notBefore)?c.autoGuard.notBefore:0);
+    function autoAllowed(c, observedAt, now=Date.now()) {
+        if (manualProtected(c,now)) return false;
+        const floor=observationFloor(c);
+        // Expiry resumes eligibility, but only a fresh confirmation AFTER expiry
+        // can take over. Cached observations from inside the hold cannot replay.
+        return !floor || (finite(observedAt) && observedAt>floor && observedAt<=now);
+    }
     function resolveMap(catalog, level, name, cardAlias=false) {
         const maps = catalog.filter(m => m.enabled_in_detector_dictionary);
         if (cardAlias && level === '70男') return maps.find(m=>m.level===70 && m.name_zh_tw==='阿雷魯諾男爵嶺') || null;
@@ -55,5 +71,6 @@
         const conflict=new Set(fresh.map(o=>o.stage)).size>1;
         return {status:conflict?'conflict':now-latest.observed_at>freshMs?'stale':'recent',latest,sources:all};
     }
-    return {signature,manualProtected,autoAllowed,resolveMap,normalizeObservation,validStored,summarize};
+    return {signature,protectionMinutes,manualProtection,manualProtected,observationFloor,autoAllowed,
+        resolveMap,normalizeObservation,validStored,summarize};
 });

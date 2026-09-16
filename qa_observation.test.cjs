@@ -15,14 +15,33 @@ const detector=(level=175,stage='R3',at=NOW,extra={})=>{
     return {room:'ROOM',map_level:level,map_name:name,ch:1,map_fresh:true,stage,updated_at:at,
         observation:{schema:1,map_level:level,map_name:name,ch:1,stage,observed_at:at,evidence:'same_frame_map_channel_stage'},...extra};
 };
-test('legacy/manual cards protected; explicit resume and old-client changes have distinct meaning',()=>{
-    assert.equal(O.manualProtected(card()),true);
-    assert.equal(O.manualProtected(autoCard()),false);
-    assert.equal(O.manualProtected(autoCard({manualOverride:{active:true}})),true);
-    const c=autoCard();c.lastInput='R4';assert.equal(O.manualProtected(c),true);
+test('legacy/manual cards expire from original edit time; old-client changes remain protected',()=>{
+    assert.equal(O.manualProtected(card(),NOW),true);
+    assert.equal(O.manualProtected(autoCard(),NOW),false);
+    assert.equal(O.manualProtected(autoCard({manualOverride:{active:true}}),NOW),true);
+    const c=autoCard();c.lastInput='R4';assert.equal(O.manualProtected(c,NOW),true);
+    for(const c of [card(),card({manualOverride:{active:true}})]) {
+        assert.equal(O.manualProtected(c,NOW+270000),false);
+        assert.equal(O.autoAllowed(c,NOW+270001,NOW+270001),true);
+    }
     const released=autoCard();released.autoGuard.notBefore=NOW;
-    for(const at of [undefined,null,NOW-1,NOW])assert.equal(O.autoAllowed(released,at),false);
-    assert.equal(O.autoAllowed(released,NOW+1),true);
+    for(const at of [undefined,null,NOW-1,NOW])assert.equal(O.autoAllowed(released,at,NOW+1),false);
+    assert.equal(O.autoAllowed(released,NOW+1,NOW+1),true);
+});
+for(const minutes of [3,4,5])test(`${minutes}-minute hold has exact boundaries and rejects cached/future evidence`,()=>{
+    const c=card({startTime:NOW});c.manualOverride={schema:2,active:true,minutes,signature:O.signature(c)};
+    const end=NOW+minutes*60000;
+    assert.equal(O.manualProtection(c,NOW).until,end);
+    assert.equal(O.manualProtected(c,end-1),true);assert.equal(O.manualProtected(c,end),false);
+    for(const at of [undefined,null,NaN,end-1,end,end+2])assert.equal(O.autoAllowed(c,at,end+1),false);
+    assert.equal(O.autoAllowed(c,end+1,end+1),true);
+    c.startTime+=1000; // Old client edits retain stale metadata; use its new edit time + default 5m.
+    assert.equal(O.manualProtection(c,NOW+1000).until,NOW+301000);
+});
+test('invalid duration defaults to five minutes; invalid edit time fails safe',()=>{
+    for(const value of [undefined,null,'',0,2,6,3.5,'forever'])assert.equal(O.protectionMinutes(value),5);
+    assert.equal(O.protectionMinutes('3'),3);
+    for(const startTime of [undefined,null,NaN,0,'bad'])assert.equal(O.manualProtected(card({startTime}),NOW),true);
 });
 test('catalog keeps level70 identities separate and refuses disabled/unknown maps',()=>{
     assert.equal(catalog.length,109);assert.equal(catalog.filter(m=>m.enabled_in_detector_dictionary).length,106);
@@ -60,18 +79,19 @@ const fixture=html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'');
 let browser;
 before(async()=>{browser=await chromium.launch({channel:'chrome',headless:true});});
 after(async()=>{await browser?.close();});
-async function setup(t,initial=card(),observations={}) {
+async function setup(t,initial=card(),observations={},options={}) {
     const context=await browser.newContext({viewport:{width:1100,height:850}});t.after(()=>context.close());
     const p=await context.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));
     await p.route('**/*',r=>r.request().url()==='http://observation.test/'?r.fulfill({contentType:'text/html',body:fixture}):r.abort());
     await p.routeWebSocket('**/*',ws=>ws.close());await p.goto('http://observation.test/');
-    await p.evaluate(({initial,now,observations})=>{
+    await p.evaluate(({initial,now,observations,minutes})=>{
         const clone=x=>x==null?x:JSON.parse(JSON.stringify(x));
         window.qa={now,callbacks:{},intervals:[],queue:[],writes:[],defer:false,fail:false,
             tree:{rooms:{ROOM:{bosses:{'175_1':initial},observations}},shared:{nativeDetector:{ROOM:{},_unassigned:{}}}}};
         Date.now=()=>qa.now;window.setInterval=fn=>qa.intervals.push(fn);window.clearInterval=()=>{};window.setTimeout=()=>{};
         localStorage.setItem('nativeDetMine','["mine"]');localStorage.setItem('nativeDetAutoWrite','1');
         localStorage.setItem('nativeDetMultiCh','184,186,189');
+        if(minutes!==undefined)localStorage.setItem('nativeDetManualProtectMinutes',String(minutes));
         const get=p=>p.split('/').reduce((v,k)=>v?.[k],qa.tree)??null;
         const snapshot=v=>({val:()=>clone(v),numChildren:()=>Object.keys(v||{}).length,forEach:()=>{}});
         const put=(p,v)=>{const parts=p.split('/');let obj=qa.tree;for(const k of parts.slice(0,-1))obj=obj[k]||=( {} );obj[parts.at(-1)]=clone(v);
@@ -84,7 +104,7 @@ async function setup(t,initial=card(),observations={}) {
         Object.assign(window,{currentRoom:'ROOM',myName:'QA',currentData:clone(qa.tree.rooms.ROOM.bosses),__tosmBossDataRoom:'ROOM',
             timers:{},currentSort:'map',localPinned:{},isBanned:false,globalNextLocked:false,protectedRooms:{},
             killedSectionCollapsed:false,lvPass:()=>true,hasAuth:()=>true,hasBanAuth:()=>false,
-            canIUseCall:()=>false,isProtectedRoom:()=>false,getStatusColor:()=>'#e0a030',getCallSlots:()=>({}),
+            canIUseCall:()=>false,isProtectedRoom:()=>false,getStatusColor:()=>'#e0a030',getCallSlots:()=>({}),checkDuplicate:()=>{},
             t:k=>k,startTimer:(id,b)=>{const e=document.getElementById('t_'+id);if(e)e.textContent=b.displayValue;},
             db:{ref(p){return {
                 on:(event,fn)=>{(qa.callbacks[p]||=[]).push(fn);queueMicrotask(()=>fn(snapshot(get(p))));},off:()=>{qa.callbacks[p]=[];},
@@ -106,7 +126,7 @@ async function setup(t,initial=card(),observations={}) {
             };}}});
         qa.tick=()=>qa.intervals.forEach(fn=>fn());
         document.getElementById('loginView').style.display='none';document.getElementById('mainView').style.display='block';
-    },{initial,now:NOW,observations});
+    },{initial,now:options.now??NOW,observations,minutes:options.minutes});
     for(const file of ['observation-core.js','map-catalog.js'])await p.addScriptTag({content:fs.readFileSync(path.join(__dirname,file),'utf8')});
     await p.addScriptTag({content:functions});await p.addScriptTag({content:drawer});
     await p.addScriptTag({content:fs.readFileSync(path.join(__dirname,'observation-ui.js'),'utf8')});
@@ -125,12 +145,14 @@ test('manual timer/stage/ON stay protected while observations are stored indepen
     assert.ok(await p.evaluate(key=>qa.get('rooms/ROOM/observations/'+key),`${map175.catalog_id}_1`));
     assert.equal(await p.evaluate(()=>qa.writes.filter(w=>w.kind==='transaction'&&w.p.includes('/bosses/')).length),0);
 });
-test('legacy records are protected and a resumed card waits for a NEW confirmed observation',async t=>{
+test('legacy records expire automatically and wait for a NEW confirmed observation',async t=>{
     const p=await setup(t);await publish(p,{mine:detector()});assert.equal((await boss(p)).lastInput,'R2');
-    await p.locator('#obsClose').click();await p.locator('.manual-guard').click();
-    await publish(p,{mine:detector()});assert.equal((await boss(p)).lastInput,'R2');
-    await p.evaluate(()=>{qa.now+=2000;});await publish(p,{mine:detector(175,'R3',NOW+2000)});
-    assert.equal((await boss(p)).lastInput,'R3');assert.equal(O.manualProtected(await boss(p)),false);
+    await p.evaluate(()=>{qa.now+=270001;qa.tick();});
+    const stale=detector();stale.updated_at=NOW+270001;
+    await publish(p,{mine:stale});assert.equal((await boss(p)).lastInput,'R2');
+    await publish(p,{mine:detector(175,'R3',NOW+270001)});
+    assert.equal((await boss(p)).lastInput,'R3');assert.equal(O.manualProtected(await boss(p),NOW+270001),false);
+    assert.equal((await boss(p)).autoGuard.notBefore,NOW+270000);
 });
 test('in-flight stage/countdown cannot overwrite a simultaneous human edit',async t=>{
     for(const kind of ['stage','timer']){
@@ -147,6 +169,81 @@ test('manual ON is protected from confirmed cooldown',async t=>{
     const p=await setup(t);await p.evaluate(()=>saveBoss('175','1','ON'));
     await publish(p,{mine:detector(175,'WAITING',NOW,{cooldown_confirmed:true,respawn:'1:20',respawn_seen_at:new Date(NOW).toISOString()})});
     assert.equal((await boss(p)).lastInput,'ON');
+});
+for(const minutes of [3,4,5])test(`manual stage honors ${minutes} minutes and automatically resumes`,async t=>{
+    const p=await setup(t,card(),{},{minutes});await p.evaluate(()=>saveBoss('175','1','R2'));
+    const end=NOW+minutes*60000;
+    assert.equal((await boss(p)).manualOverride.until,end);
+    await p.evaluate(at=>{qa.now=at;qa.tick();},end-1);
+    await publish(p,{mine:detector(175,'R3',end-1)});assert.equal((await boss(p)).lastInput,'R2');
+    await p.evaluate(at=>{qa.now=at;qa.tick();},end);
+    await publish(p,{mine:detector(175,'R3',end)});assert.equal((await boss(p)).lastInput,'R2');
+    await p.evaluate(at=>{qa.now=at;qa.tick();},end+1);
+    await publish(p,{mine:detector(175,'R3',end+1)});
+    assert.equal((await boss(p)).lastInput,'R3');assert.equal((await boss(p)).manualOverride.active,false);
+});
+test('manual countdown is protected before expiry and accepts a fresh timer after expiry',async t=>{
+    const p=await setup(t,card(),{},{minutes:3});await p.evaluate(()=>saveBoss('175','1','0:20'));
+    const emit=async at=>{
+        await p.evaluate(at=>{qa.now=at;qa.tick();},at);
+        await publish(p,{mine:detector(175,'WAITING',at,{cooldown_confirmed:true,respawn:'1:20',respawn_seen_at:new Date(at).toISOString()})});
+    };
+    await emit(NOW+1000);assert.equal((await boss(p)).lastInput,'0:20');
+    await emit(NOW+179999);assert.equal((await boss(p)).lastInput,'0:20');
+    await emit(NOW+180001);assert.equal((await boss(p)).lastInput,'1:20');
+    assert.equal((await boss(p)).autoGuard.notBefore,NOW+180000);
+});
+test('same cooldown episode can kill a later manual ON only after its protection expires',async t=>{
+    const p=await setup(t,autoCard({lastInput:'ON'}),{},{minutes:3});
+    const cooling=at=>detector(175,'WAITING',at,{cooldown_confirmed:true,respawn:'1:20',respawn_seen_at:new Date(at).toISOString()});
+    await publish(p,{mine:cooling(NOW)});assert.equal((await boss(p)).lastInput,'DE1');
+    await p.evaluate(()=>{qa.now+=1000;});await p.evaluate(()=>saveBoss('175','1','ON'));
+    await p.evaluate(()=>{qa.now+=179999;qa.tick();});await publish(p,{mine:cooling(NOW+180999)});
+    assert.equal((await boss(p)).lastInput,'ON');
+    await p.evaluate(()=>{qa.now+=2;qa.tick();});await publish(p,{mine:cooling(NOW+181001)});
+    const c=await boss(p);assert.equal(c.lastInput,'DE1');assert.equal(c.manualOverride.active,false);
+    assert.equal(c.autoGuard.notBefore,NOW+181000);
+    await p.evaluate(()=>qa.tick());assert.equal((await boss(p)).lastInput,'DE1');
+});
+test('manual edit during an expired-card cooldown transaction still wins',async t=>{
+    const p=await setup(t,card({lastInput:'ON',startTime:NOW-301000}));
+    await p.evaluate(()=>{qa.defer=true;});
+    await publish(p,{mine:detector(175,'WAITING',NOW,{cooldown_confirmed:true})});
+    assert.ok(await p.evaluate(()=>qa.queue.length)>0);
+    await p.evaluate(()=>saveBoss('175','1','ON'));
+    await p.evaluate(()=>{qa.defer=false;qa.queue.splice(0).forEach(fn=>fn());});
+    assert.equal((await boss(p)).lastInput,'ON');assert.equal((await boss(p)).startTime,NOW);
+});
+test('changing duration only affects the next manual edit; each edit restarts the hold',async t=>{
+    const p=await setup(t);assert.equal(await p.locator('#nativeDetManualProtectMinutes').inputValue(),'5');
+    await p.evaluate(()=>saveBoss('175','1','R2'));
+    await p.evaluate(()=>{const el=document.getElementById('nativeDetManualProtectMinutes');el.value='3';el.dispatchEvent(new Event('change'));});
+    assert.equal((await boss(p)).manualOverride.until,NOW+300000);
+    await p.evaluate(()=>{qa.now+=100000;});await p.evaluate(()=>saveBoss('175','1','R4'));
+    assert.equal((await boss(p)).manualOverride.until,NOW+280000);
+    assert.equal(await p.evaluate(()=>localStorage.getItem('nativeDetManualProtectMinutes')),'3');
+});
+test('another browser honors stored duration despite its own setting and does not restart on load',async t=>{
+    const first=await setup(t,card(),{},{minutes:3});await first.evaluate(()=>saveBoss('175','1','R2'));
+    const saved=await boss(first),second=await setup(t,saved,{},{minutes:5,now:NOW+179999});
+    await publish(second,{mine:detector(175,'R3',NOW+179999)});assert.equal((await boss(second)).lastInput,'R2');
+    await second.evaluate(()=>{qa.now+=2;qa.tick();});await publish(second,{mine:detector(175,'R3',NOW+180001)});
+    assert.equal((await boss(second)).lastInput,'R3');
+});
+test('countdown updates and expires without rebuilding cards or interrupting user input',async t=>{
+    const p=await setup(t,card(),{},{minutes:3});await p.evaluate(()=>saveBoss('175','1','R2'));
+    await p.locator('#obsClose').click();assert.match(await p.locator('.manual-guard').textContent(),/3:00/);
+    await p.evaluate(()=>{qa.card=document.querySelector('.card');});await p.locator('#bossInput').fill('175 1 R');
+    await p.evaluate(()=>{qa.now+=61000;qa.tick();});assert.match(await p.locator('.manual-guard').textContent(),/1:59/);
+    await p.evaluate(()=>{qa.now+=119000;qa.tick();});assert.equal(await p.locator('.manual-guard').isVisible(),false);
+    assert.equal(await p.evaluate(()=>qa.card===document.querySelector('.card')),true);
+    assert.equal(await p.locator('#bossInput').inputValue(),'175 1 R');assert.equal(await p.locator('#bossInput').evaluate(e=>e===document.activeElement),true);
+});
+test('same fractional stage remains more precise after expiry; next whole stage can take over',async t=>{
+    const p=await setup(t,card(),{},{minutes:3});await p.evaluate(()=>saveBoss('175','1','R1.5'));
+    await p.evaluate(()=>{qa.now+=180001;});await publish(p,{mine:detector(175,'R1',NOW+180001)});
+    assert.equal((await boss(p)).lastInput,'R1.5');
+    await publish(p,{mine:detector(175,'R2',NOW+180001)});assert.equal((await boss(p)).lastInput,'R2');
 });
 test('old-client edits carrying stale automatic metadata are protected',async t=>{
     const p=await setup(t,autoCard());await p.evaluate(()=>{

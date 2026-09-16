@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TOS M FB TIME v1.8.0</title>
-    <script src="observation-core.js?v=1.8.0"></script>
-    <script src="map-catalog.js?v=1.8.0"></script>
+    <title>TOS M FB TIME v1.8.1</title>
+    <script src="observation-core.js?v=1.8.1"></script>
+    <script src="map-catalog.js?v=1.8.1"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
@@ -326,7 +326,7 @@
 <div id="app">
     <div id="loginView" class="login-view">
         <div class="title">TOS M FB TIME</div>
-        <div class="ver-info">v1.8.0</div>
+        <div class="ver-info">v1.8.1</div>
         <div class="input-group">
             <input type="text" id="userNameInput" placeholder="" maxlength="10"
                 oninput="this.value=this.value.replace('#','')"
@@ -365,7 +365,7 @@
                 </div>
             </div>
             <div class="room-info" id="headerTools">
-                <span class="version-tag">v1.8.0</span>
+                <span class="version-tag">v1.8.1</span>
                 <button id="langBtn" onclick="toggleLang()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">日本語</button>
                 <button onclick="toggleHelpPanel()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 8px; border-radius:12px; cursor:pointer;">？</button>
                 <button id="themeBtn" onclick="toggleTheme()" style="background:none; border:1px solid #444; color:#888; font-size:11px; padding:3px 10px; border-radius:12px; cursor:pointer;">☀️ 亮色</button>
@@ -732,7 +732,7 @@ db.ref('protected_rooms').on('value', s => {
         }
     });
 });
-const currentVersion = "1.8.0";
+const currentVersion = "1.8.1";
 let contributorCounts = {}, contributorMax = 1, currentOnlineUsers = [];
 let killedSectionCollapsed = true;
 let globalNextLocked = false;
@@ -1255,7 +1255,7 @@ function renderList() {
                 <div class="card-title-row" id="title_${id}">
                     <h3 id="h3_${id}" onclick="enterInlineEdit('${id}')"><span class="card-location">${b.map} - ${b.ch}</span><span class="det-coverage" hidden tabindex="0" role="img">👁︎</span></h3>${memberDisplayHtml}
                 </div>
-                ${window.TOSMObservation?.manualProtected(b) ? `<button class="manual-guard" onclick="resumeAutoWrite('${id}')" title="人工或舊版資料優先；點擊後等待新的確認觀測接手">🔒 人工優先 · 恢復自動</button>` : ''}
+                <span class="manual-guard" hidden></span>
                 <div class="timer-container">
                     <div class="stage-row" id="sr_${id}">
                         <span class="stage-label" id="t_${id}" style="color:${st.isGrey?'#555':st.color}">...</span>
@@ -1272,6 +1272,7 @@ function renderList() {
                 </div>
             `;
             card.querySelector('.det-coverage').dataset.cardId = id;
+            card.querySelector('.manual-guard').dataset.cardId = id;
             grid.appendChild(card);
             startTimer(id, b, st.isGrey, st.color);
         });
@@ -1308,6 +1309,7 @@ function renderList() {
         drawBox(idleList, t('secIdle'));
     }
     window.refreshDetectorCoverage?.();
+    window.refreshManualProtection?.();
 }
 
 function toggleKilledSection(labelEl) {
@@ -1431,12 +1433,16 @@ function saveBoss(map, ch, val, doFocus = false, automatic = null) {
         updatePayload.isMax = false;
     }
 
-    // Manual intent persists in the shared card, across reloads and other new clients.
+    // Every manual edit starts a shared, bounded hold; reloads/heartbeats do not extend it.
     updatePayload.writeOrigin = automatic ? 'detector' : 'manual';
-    updatePayload.manualOverride = {active: !automatic, by: writer, at: Date.now()};
+    const minutes = TOSMObservation.protectionMinutes(localStorage.getItem('nativeDetManualProtectMinutes'));
+    updatePayload.manualOverride = automatic ? {active:false,by:writer,at:updatePayload.startTime} : {
+        schema:2,active:true,by:writer,at:updatePayload.startTime,minutes,
+        until:updatePayload.startTime+minutes*60000,signature:TOSMObservation.signature(updatePayload)
+    };
     updatePayload.autoGuard = automatic ? {
         signature: TOSMObservation.signature(updatePayload),
-        notBefore: oldData?.autoGuard?.notBefore || 0
+        notBefore: TOSMObservation.observationFloor(oldData)
     } : null;
     const afterCommit = () => {
         if (automatic) automatic.onCommitted?.();
@@ -1466,8 +1472,9 @@ function saveBoss(map, ch, val, doFocus = false, automatic = null) {
         return db.ref(`rooms/${writeRoom}/bosses/${id}`).transaction(cur => {
             if (isBanned || currentRoom !== writeRoom || !automatic.isCurrent()
                 || TOSMObservation.signature(cur) !== automatic.expected
-                || !TOSMObservation.autoAllowed(cur, automatic.observedAt)) return;
+                || !TOSMObservation.autoAllowed(cur, automatic.observedAt, Date.now())) return;
             const result = {...cur,...updatePayload};
+            result.autoGuard.notBefore = TOSMObservation.observationFloor(cur);
             if (!(tt > 0 || uv.startsWith('DE'))) {
                 result.memberCount = cur?.memberCount || 0;
                 result.isMax = !!cur?.isMax;
@@ -1486,22 +1493,21 @@ function saveBoss(map, ch, val, doFocus = false, automatic = null) {
     });
 }
 
-function resumeAutoWrite(id) {
-    if (isBanned || !currentRoom) return;
-    const room=currentRoom, before=(window.currentData||{})[id];
-    if (!before) return;
-    const expected=TOSMObservation.signature(before), now=Date.now();
-    return db.ref(`rooms/${room}/bosses/${id}`).transaction(cur=>{
-        if (isBanned || currentRoom!==room || TOSMObservation.signature(cur)!==expected) return;
-        return {...cur,manualOverride:{active:false,by:myName,at:now},
-            autoGuard:{signature:expected,notBefore:now}};
-    },(error,committed)=>{
-        if(error || !committed) {
-            const hint=document.getElementById('inputHint');
-            hint.textContent='卡片已變更或連線失敗，未解除人工保護';
+window.refreshManualProtection = function refreshManualProtection() {
+    const now=Date.now(), loaded=window.__tosmBossDataRoom===currentRoom;
+    document.querySelectorAll('.manual-guard').forEach(el=>{
+        const p=loaded ? TOSMObservation.manualProtection((window.currentData||{})[el.dataset.cardId],now) : null;
+        el.hidden=!p?.active;
+        if (!p?.active) return;
+        if (p.until===null) {
+            el.textContent='🔒 人工時間異常，請重新填寫';
+            return;
         }
-    },false).catch(()=>{});
-}
+        const seconds=Math.max(0,Math.ceil((p.until-now)/1000));
+        el.textContent=`🔒 人工保護 ${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')} · 到期自動接手`;
+        el.title=`保護至 ${new Date(p.until).toLocaleTimeString()}，之後等待新的確認觀測`;
+    });
+};
 
 /* ════════ 紀錄 ════════ */
 let logDisplayModes = [0, 3, 5, 10], currentLogModeIndex = 1, lastLogData = null;
@@ -1971,7 +1977,8 @@ function initChat() {
         font-weight: 700;
         line-height: 1;
     }
-    .manual-guard { display:block; max-width:100%; margin:5px 0; padding:3px 6px; border:1px solid #997a30; border-radius:5px; color:#b78a22; background:transparent; font-size:10px; cursor:pointer; }
+    .manual-guard { display:block; max-width:100%; margin:5px 0; padding:3px 6px; border:1px solid #997a30; border-radius:5px; color:#b78a22; background:transparent; font-size:10px; }
+    .manual-guard[hidden] { display:none; }
     #detectorDrawerToggle:hover {
         border-color: #0f0;
         background: #142014;
@@ -2051,6 +2058,7 @@ function initChat() {
         background: #1a1a1a; color: #ffd479; border: 1px solid #444; border-radius: 5px;
     }
     .detSetRow input[type=text]:focus { outline: none; border-color: #0f0; }
+    #nativeDetManualProtectMinutes { flex:none; width:auto; margin:0; padding:4px; font-size:12px; background:#1a1a1a; color:#ffd479; border:1px solid #444; border-radius:5px; }
     #detectorCoverageSummary {
         margin: 0 0 10px; padding: 8px 9px; border: 1px solid #394437; border-radius: 7px;
         color: #c6d7be; background: #182016; font-size: 12px; line-height: 1.5;
@@ -2082,6 +2090,13 @@ function initChat() {
             <input type="checkbox" id="nativeDetCooldownKilled">
             <span>ON 確認冷卻後改為 KILLED
                 <small>確認地圖、分流及冷卻後，將 ON 卡片標記為已擊殺；不以徽章消失判斷。</small></span>
+        </label>
+        <label class="detSetRow">
+            <span>人工輸入保護時間
+                <small>每次人工填寫重新計時，到期後由新的確認觀測接手。修改設定適用於下一次填寫。</small></span>
+            <select id="nativeDetManualProtectMinutes" aria-label="人工輸入保護時間">
+                <option value="3">3 分鐘</option><option value="4">4 分鐘</option><option value="5" selected>5 分鐘</option>
+            </select>
         </label>
         <div class="detSetRow" style="flex-direction:column;align-items:stretch;gap:0;">
             <span>多分流地圖
@@ -2219,6 +2234,7 @@ function initChat() {
 
     function render() {
         refreshCoverage();
+        window.refreshManualProtection?.();
         const ids = Object.keys(latest);
         if (!ids.length) {
             board.innerHTML = '<div style="opacity:.6;">目前沒有偵測器在線。</div>';
@@ -2294,6 +2310,12 @@ function initChat() {
     cooldownKilledBox.addEventListener('change', () => {
         localStorage.setItem('nativeDetCooldownKilled', cooldownKilledBox.checked ? '1' : '0');
         autoWrite();
+    });
+    const manualProtectBox = document.getElementById('nativeDetManualProtectMinutes');
+    manualProtectBox.value = String(window.TOSMObservation.protectionMinutes(localStorage.getItem('nativeDetManualProtectMinutes')));
+    manualProtectBox.addEventListener('change', () => {
+        manualProtectBox.value = String(window.TOSMObservation.protectionMinutes(manualProtectBox.value));
+        localStorage.setItem('nativeDetManualProtectMinutes', manualProtectBox.value);
     });
     // 多分流地圖清單: 偵測器開著野外活動面板時讀不到分流 (面板蓋住 CH 字樣,
     // 實測 212 輪 0% 讀得到), 這時偵測器誠實回報 ch=null. 絕大多數地圖只有
@@ -2377,7 +2399,7 @@ function initChat() {
     function automaticWrite(id, d, ch, value, kind, markKey, mark) {
         const room=currentRoom, key=`${d.map_level}_${ch}`, pendingKey=`${room}/${key}`;
         const cur=(window.currentData||{})[key];
-        if (!O || !O.autoAllowed(cur,observedTime(d)) || automaticPending.has(pendingKey)
+        if (!O || !O.autoAllowed(cur,observedTime(d),Date.now()) || automaticPending.has(pendingKey)
             || window.__tosmBossDataRoom!==room || !ownedFreshDetector(id,d,Date.now())) return;
         const isCurrent=()=>currentRoom===room && autoWriteBox.checked && !isBanned
             && window.__tosmBossDataRoom===room && latest[id]===d
@@ -2460,12 +2482,15 @@ function initChat() {
         localStorage.setItem('nativeDetKilledCards', JSON.stringify(cooldownKilledCards));
         return false;
     }
+    function manualHandoverReady(card, d) {
+        return !!O?.manualProtection(card,Date.now()) && O.autoAllowed(card,observedTime(d),Date.now());
+    }
     function applyConfirmedCooldown(id, d) {
         const room = currentRoom, key = `${d.map_level}_${d.ch}`, pendingKey = `${room}/${key}`;
         if (window.__tosmBossDataRoom !== room || cooldownPending.has(pendingKey)) return;
         const before = (window.currentData || {})[key];
-        if (!O || !O.autoAllowed(before,observedTime(d)) || !before || before.lastInput !== 'ON' || !Number.isFinite(before.startTime)
-                || before.startTime > cooldownEpisodes[pendingKey]) return;
+        if (!O || !O.autoAllowed(before,observedTime(d),Date.now()) || !before || before.lastInput !== 'ON' || !Number.isFinite(before.startTime)
+                || (before.startTime > cooldownEpisodes[pendingKey] && !manualHandoverReady(before,d))) return;
         const version = before.startTime, observedAt = d.updated_at, updater = myName;
         const stillValid = () => {
             const newest = cooldownForCard(d.map_level, d.ch, Date.now());
@@ -2477,12 +2502,13 @@ function initChat() {
         // transaction 每次重試都核對伺服器上的 ON 版本，避免蓋掉新的人工作業。
         // applyLocally=false：只有伺服器確認成功才回饋 KILLED，不顯示猜測成功。
         db.ref(`rooms/${room}/bosses/${key}`).transaction(cur => {
-            if (!stillValid() || !O.autoAllowed(cur,observedTime(d)) || !cur || cur.lastInput !== 'ON' || cur.startTime !== version
+            if (!stillValid() || !O.autoAllowed(cur,observedTime(d),Date.now()) || !cur || cur.lastInput !== 'ON' || cur.startTime !== version
                     || String(cur.map) !== String(d.map_level) || String(cur.ch) !== String(d.ch)) return;
             const result = { ...cur, targetTime: 0, lastInput: 'DE1', displayValue: '已擊殺',
                 startTime: Date.now(), isFlash: false, updater, writeOrigin:'detector',
-                memberCount: 0, isMax: false, callPriority: 0 };
-            result.autoGuard={signature:O.signature(result),notBefore:cur.autoGuard?.notBefore||0};
+                memberCount: 0, isMax: false, callPriority: 0,
+                manualOverride:{active:false,by:updater,at:Date.now()} };
+            result.autoGuard={signature:O.signature(result),notBefore:O.observationFloor(cur)};
             return result;
         }, (error, committed, snapshot) => {
             cooldownPending.delete(pendingKey);
@@ -2597,9 +2623,10 @@ function initChat() {
                     // 冷卻暫失確認時仍可能帶舊倒數；不能藉倒數旁路蓋掉後來的人工作業。
                     || (Number.isFinite(cooldownEpisode) && cooldownCard
                         && Number.isFinite(cooldownCard.startTime)
-                        && cooldownCard.startTime > cooldownEpisode)
+                        && cooldownCard.startTime > cooldownEpisode && !manualHandoverReady(cooldownCard,d))
                     || (cooldownForCard(d.map_level, ch, now) && cooldownCard
-                        && (cooldownCard.lastInput === 'ON' || cooldownCard.lastInput === 'DE1')))) continue;
+                        && (cooldownCard.lastInput === 'ON' || cooldownCard.lastInput === 'DE1')
+                        && !manualHandoverReady(cooldownCard,d)))) continue;
             if (appliedMark['r_' + id] === rmark) continue;
             const parts = d.respawn.split(':');
             const detMs = (parseInt(parts[0]) * 60 + parseInt(parts[1])) * 60000;
@@ -2653,14 +2680,15 @@ function initChat() {
         mergeBuckets();
     });
     setInterval(render, 1000);
+    setInterval(autoWrite, 1000);
 })();
 </script>
 <!-- ?v= 是必要的: app_version 觸發的 location.reload(true) 只重載 HTML,
      那個 true 參數在現代瀏覽器早已被忽略, 外部 JS 仍會吃快取 ——
      沒有這個查詢字串, 改了 mini-timer.js 也送不到隊友手上。
      每次改這個檔案時把版本號一起帶上。 -->
-<script src="observation-ui.js?v=1.8.0"></script>
-<script src="mini-timer.js?v=1.8.0"></script>
+<script src="observation-ui.js?v=1.8.1"></script>
+<script src="mini-timer.js?v=1.8.1"></script>
 
 </body>
 </html>
